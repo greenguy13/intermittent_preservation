@@ -1,0 +1,26 @@
+<launch>
+    <arg name="world" default="office"/>
+    <arg name="method" default="treebased_decision"/>
+    <arg name="robot_count" default="2"/>
+
+    <rosparam command="load" file="$(find int_preservation)/param/mission.yaml" subst_value="true"/>
+
+    <node name="Stage" pkg="stage_ros" type="stageros" args="$(find int_preservation)/world/$(arg world)$(arg robot_count).world">
+        <param name="base_watchdog_timeout" value="0" />
+    </node>
+    <node name="map_server" pkg="map_server" type="map_server" args="$(find int_preservation)/param/$(arg world)_map.yaml">
+        <param name="frame_id" value="map" />
+    </node>
+
+    <include file="$(find int_preservation)/launch/robots/robot_sim$(arg robot_count).launch">
+        <arg name="method" value="$(arg method)"/>
+        <arg name="world" value="$(arg world)"/>
+    </include>
+
+    <!--Area-->
+
+    <!--Charging station-->
+
+    <!-- RVIZ to view the visualization -->
+    <node name="RVIZ" pkg="rviz" type="rviz" args=" -d $(find int_preservation)/param/mission.rviz" output="screen" />
+</launch>

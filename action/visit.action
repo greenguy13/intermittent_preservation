@@ -1,0 +1,10 @@
+# Goal
+int8 area
+
+---
+# Result
+bool arrived_goal
+
+---
+# Feedback
+string current_coords

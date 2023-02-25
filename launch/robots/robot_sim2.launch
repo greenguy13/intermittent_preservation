@@ -1,0 +1,18 @@
+<launch>
+    <arg name="world" default="office"/>
+    <arg name="method"/>
+    <group ns="robot_0">
+        <include file="$(find int_preservation)/launch/robots/nodes.launch">
+            <arg name="robot" value="1"/>
+            <arg name="method" value="$(arg method)"/>
+        </include>
+    </group>
+
+    <group ns="robot_1">
+        <include file="$(find int_preservation)/launch/robots/nodes.launch">
+            <arg name="robot" value="2"/>
+            <arg name="method" value="$(arg method)"/>
+        </include>
+    </group>
+
+</launch>
