@@ -21,9 +21,9 @@ Thus:
 import math
 import rospy
 import actionlib
-from intermittent_monitoring.msg import monitorAction, monitorFeedback, monitorResult
-from intermittent_monitoring.srv import flevel, flevelResponse
-from intermittent_monitoring.srv import assignment_notice, assignment_noticeResponse
+from int_preservation.msg import monitorAction, monitorFeedback, monitorResult
+from int_preservation.srv import flevel, flevelResponse
+from int_preservation.srv import assignment_notice, assignment_noticeResponse
 from std_msgs.msg import Float32, Int8
 import project_utils as pu
 
