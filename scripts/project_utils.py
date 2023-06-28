@@ -6,9 +6,9 @@ import pickle
 from os import path
 import rospy
 import tf
-#import shapely.geometry as sg
+import shapely.geometry as sg
 from scipy import stats  # linregress
-#from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error
 
 
 TOTAL_COVERAGE = 1
@@ -311,10 +311,12 @@ def reject_outliers(data):
     return raw_x, raw_y
 
 
-def log_msg(robot_id, msg, debug):
+def log_msg(type, id, msg, debug):
     if debug:
-        rospy.logerr("Robot {}: {}".format(robot_id, msg))
-
+        if type == 'robot':
+            rospy.logwarn("Robot {}: {}".format(id, msg))
+        elif type == 'area':
+            rospy.logwarn("Area {}: {}".format(id, msg))
 
 def in_range(point, polygon):
     x = point[INDEX_FOR_X]

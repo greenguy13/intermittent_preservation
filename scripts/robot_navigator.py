@@ -50,7 +50,7 @@ class RobotNavigator:
 
         rospy.loginfo("Robot {}: Exploration server online...".format(self.robot_id))
 
-    def start_stop(self, req):
+    def start_stop(self):
         if self.current_state != self.STOPPED:
             self.client_motion.cancel_goal()
             self.current_state=self.STOPPED

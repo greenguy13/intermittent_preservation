@@ -1,40 +1,10 @@
+
 debug_mode: 1
 method: $(arg method) # method that is running
 robot_count: $(arg robot_count)    # number of robots on the team
-comm_range: 100 #10  # communication range
-map_inflation_radius: 1   # inflation radius of the robot
 run: $(arg run)
-ros_freq: 10
-proximity: 0.2
-mission_time: 3500
-mission_buffer_time: 180
-
-lawn_mower_resolution: 0.1
-lawn_mower_pose: [-18.8,-18.8]
-lawn_mower_width: 39.5
-lawn_mower_height: 39.5
 discretization_resolution: 0.1 #0.2 #0.1
-map_padding: 1.0
-sample_size: 20
-partition_radius: 5.0
-shore_distance: 5.0
-evaluation_interval: 50.0 #600.0 # TODO the correct one is 600.0
-
-
-delta_ratio: 0.9
-dct_length_scale: 2.0
-dct_variance: 3.2
-dct_observation_variance: 1.0
-dct_radius: 5 # each robot will be covering 5m radius disk at a time
 robot_radius: 1.0
-
-
-epsilon: 0.2
-hotspot_score: 1.5
-
-  # factors for power analysis
-alpha: 0.05
-power: 0.8
 
 robot_velocity: 1.0 #Linear velocity of robot; we assume linear and angular are relatively equal
 max_fmeasure: 100  # Max F-measure of an area
@@ -46,5 +16,5 @@ dec_steps: 3
 restoration: 0.10
 noise: 0.01
 charging_station_radius: 1.0
-nsample_nodes: 4
+nsample_nodes: 2
 degree_criterion_node_selection: 3 #Criterion for area selection, number of degree = 2 suggests leaf areas

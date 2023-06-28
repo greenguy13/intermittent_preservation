@@ -14,6 +14,7 @@
     <param name="robot_id" value="$(arg robot_id)" />
 </node>
 
+<!-- replace with move_base -->
 <node pkg="nav2d_operator" type="operator" name="operator" output="screen">
     <rosparam command="load" file="$(find int_preservation)/param/operator.yaml" subst_value="true"/>
     <rosparam command="load" file="$(find int_preservation)/param/costmap.yaml" ns="local_map" subst_value="true"/>
@@ -23,16 +24,19 @@
 
 <node pkg="nav2d_navigator" type="navigator" name="navigator">
     <rosparam command="load" file="$(find int_preservation)/param/navigator.yaml" subst_value="true"/>
-    <param name="robot_id" value="$(arg robot)"/>
+    <param name="robot_id" value="$(arg robot_id)"/>
 </node>
 
 <node name="GetMap" pkg="nav2d_navigator" type="get_map_client" />
 <node name="SetGoal" pkg="nav2d_navigator" type="set_goal_client" />
 
-
 <node pkg="fake_localization" type="fake_localization" name="fake_localization" respawn="false">
     <param name="odom_frame_id" value="robot_$(arg robot_id)/odom" />
     <param name="base_frame_id" value="robot_$(arg robot_id)/base_link" />
+</node>
+
+<node name="battery" pkg="int_preservation" type="battery">
+    <param name="robot_id" value="$(arg robot_id)"/>
 </node>
 
 <node name="$(arg method)" pkg="int_preservation" type="$(arg method).py">

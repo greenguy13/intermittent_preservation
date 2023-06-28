@@ -18,65 +18,69 @@ Thus:
 1. Action server for the robot, which asks to raise F-level
 2. Server to decision_making about current F-level
 """
+
+"""
+Upnext: Mar 24
+1. Make sure that the area node works. All the msg and srv.
+2. Make sure the relay of information works for the entire program.
+    > Make the grow tree work
+    > Make the decision making work
+    > Check out if everything is working
+    
+Upnext: Mar 30
+1. Draw/sketch the program and implementation based on discussion with Alberto
+"""
+
 import math
 import rospy
-import actionlib
-from int_preservation.msg import monitorAction, monitorFeedback, monitorResult
-from int_preservation.srv import flevel, flevelResponse
-from int_preservation.srv import assignment_notice, assignment_noticeResponse
 from std_msgs.msg import Float32, Int8
 import project_utils as pu
 
 
 # area, max_fmeasure, decay_rate, restoration, t_operation
 
-self.sub_fmeasure_dict[area] = rospy.Subscriber('/fmeasure_' + str(area), Float32, self.store_fmeasure_cb, area)
+# self.sub_fmeasure_dict[area] = rospy.Subscriber('/fmeasure_' + str(area), Float32, self.store_fmeasure_cb, area)
 
 class Area():
     IDLE = 10
     IN_MISSION = 12
     RESTORING_F = 41
     RESTORED_F = 42
-    def __init__(self, node_name, robot_operating):
-        rospy.init_node(node_name)
+    def __init__(self):
+        rospy.init_node('area', anonymous=True)
         self.area = rospy.get_param("~area_id")
-        self.decay_rate = rospy.get_param("/decay_rate")
-        self.t_operation = rospy.get_param("/t_operation") #total duration of the operation
-        self.max_fmeasure = rospy.get_param("/max_fmeasure")
+        self.robot_id = rospy.get_param("~robot_id")
+        #This can be given/written as a single parameter
+        self.decay_rate = float(rospy.get_param("~decay_rate"))
+
+        #We can write these params as general param
+        #Change/evolution in decay rate; po in the general parameter
+        self.t_operation = rospy.get_param("~t_operation") #total duration of the operation
+        self.max_fmeasure = rospy.get_param("~max_fmeasure")
         self.fmeasure = self.max_fmeasure #initialize at max fmeasure
-        self.restoration = rospy.get_param("/restoration")
+        self.restoration = rospy.get_param("~restoration")
         self.restore_delay = int(math.ceil(self.restoration * (self.max_fmeasure-self.fmeasure))) #delay in restoring the F-measure to max level
-        self.request_restore_status = None
-        self.global_decay_fmeasure = 0
+
+        pu.log_msg('area', self.area, 'Area {}. decay rate: {}. t_operation: {}. max_f: {}. restore: {}. robot id: {}'.format(self.area, self.decay_rate, self.t_operation, self.max_fmeasure, self.restoration, self.robot_id), 1)
 
         # Fmeasure publisher
-        self.fmeasure_pub = rospy.Publisher("/fmeasure_" + str(self.area), Float32, queue_size=1)
+        self.fmeasure_pub = rospy.Publisher("/area_{}/fmeasure".format(self.area), Float32, queue_size=1)
 
-        #Action server: Raise Fmeasure
-        self.restore_fmeasure_action_server = actionlib.SimpleActionServer("restore_fmeasure_action_server_" + str(self.area), monitorAction, execute_cb=self.raise_fmeasure_cb, auto_start=False)
-        self.restore_fmeasure_action_server.start()
-
-        #Service server: Fmeasure
-        self.fmeasure_server = rospy.Service("flevel_server_" + str(self.area), flevel, self.report_flevel_cb)
-
-        #Subscriber: Robot status
-        self.robot_status_sub = rospy.Subscriber("/robot_" + robot_operating + "/robot_status", Int8, self.robot_status_cb)
+        # Server for pausing/commencing simulation
+        rospy.Subscriber('/robot_{}/robot_status'.format(self.robot_id), Int8, self.robot_status_cb)
 
         self.status = self.IDLE
 
     def run_operation(self, freq_hz=1):
         t = 0
-        # PO (for finite?):for duration in range(self.t_operation): #We use this if we want t_operation to be finite
-        # Need to ensure that the decay is per second
 
         rate = rospy.Rate(freq_hz)
         while not rospy.is_shutdown():
             self.publish_fmeasure()
             print("\nArea status:")
-            print("Request restore status:", self.request_restore_status)
-            print("Assigned to bidder:", self.assigned_to_bidder)
 
             """
+            Previous version:
             Statuses:
             1. IDLE
                 > If accept info that robot is in mission: move to next state, start decaying.
@@ -85,16 +89,22 @@ class Area():
                 > STarts decaying and publishing F
             3. Restoring
                 > Action server to restore F back to max measure
+                
+            Updated new version:
+            1. See the int_monitoring version
+            
+            UPNEXT: Mar 25
+            1. Fix up the area node
             """
 
-            if self.area_status == self.IDLE:
-                pass
+            if self.status == self.IDLE:
+                self.status == self.IN_MISSION
 
-            elif self.area_status == self.IN_MISSION:
+            elif self.status == self.IN_MISSION:
                 self.decay(t)
                 t += 1
 
-            elif self.area_status == self.RESTORING:
+            elif self.status == self.RESTORING:
                 pass #not decaying because being restored
 
             elif self.request_restore_status == self.RESTORED:
@@ -103,62 +113,32 @@ class Area():
                 self.global_decay_fmeasure = 0
             rate.sleep()
 
-    def robot_status_cb(self, robot_status):
+    def robot_status_cb(self):
         """
-        Call for robot status
+        Callback for robot status. If robot status is thinking decisions, we pause decay simulation
         :return:
         """
-        if robot_status == self.IDLE:
-            self.area_status == self.IDLE
-        # elif robot_status == self.
-
+        pass
 
     def publish_fmeasure(self):
         """
-        Publishes F-measure as a topic
+        Publishes F-measure as a Float topic
         :return:
         """
         self.fmeasure_pub.publish(self.fmeasure)
 
-    def raise_fmeasure_cb(self, goal):
+    def restore_fmeasure(self):
         """
-        Callback as action server for restoring F-measure upon request of action client
-        :param goal:
-        :return:
+        Restore F-measure back to max level
         """
-        success = True
-        monitor_feedback = monitorFeedback()
-        monitor_result = monitorResult()
         rate = rospy.Rate(1)
-        self.area_status = self.RESTORING_F
+        self.status = self.RESTORING_F
 
         for i in range(self.restore_delay):
-            if self.restore_fmeasure_action_server.is_preempt_requested():
-                success = False
-                break
-            monitor_feedback.current_fmeasure = 'Restoring F-measure...'
-            self.restore_fmeasure_action_server.publish_feedback(monitor_feedback)
+            #PO: Give notice that we are restoring F
             rate.sleep()
 
-        self.fmeasure = goal.max_fmeasure
-        monitor_result.raised_max = True
-
-        if success:
-            self.area_status = self.RESTORED_F
-            self.restore_fmeasure_action_server.set_succeeded(monitor_result)
-
-    def report_flevel_cb(self, msg):
-        """
-        Callback as Service Server for F-measure
-        :param msg:
-        :return:
-        """
-        if (bool(msg.fmeasure_request) is True) and (self.assigned_to_bidder is False):
-            print("Reporting FMeasure", str(self.fmeasure))
-            return flevelResponse(str(self.fmeasure))
-        else:
-            print("No Fmeasure reported")
-            return 'None'
+        self.fmeasure = self.max_fmeasure
 
     def decay(self, t):
         """
@@ -167,5 +147,8 @@ class Area():
         :return:
         """
         decayed_f = self.max_fmeasure*(1 - self.decay_rate)**t
-        self.global_decay_fmeasure += self.fmeasure - decayed_f # Global decay F-measure
         self.fmeasure = decayed_f
+
+
+if __name__ == '__main__':
+    Area().run_operation()

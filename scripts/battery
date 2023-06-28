@@ -1,0 +1,69 @@
+#!/usr/bin/env python
+
+"""
+### Robot battery
+Battery node that depletes as the robot moves, and charges up when in charging station
+
+    Publisher:
+        battery level
+    Subscriber:
+        robot location
+        (PO: server) charge request
+"""
+
+import math
+import rospy
+from std_msgs.msg import Float32
+from int_preservation.msg import charge_batteryAction, charge_batteryFeedback, charge_batteryResult
+
+class Battery():
+    def __init__(self, node_name):
+        #Params
+        rospy.init_node(node_name)
+        self.robot_id = rospy.get_param('~robot_id')
+        self.max_battery = rospy.get_param("/max_battery")
+        self.restoration = rospy.get_param("/restoration")
+
+        #Publisher/subscriber
+        self.battery_pub = rospy.Publisher("/robot_{}/battery".format(self.robot_id), Float32, queue_size=1)
+
+        #Init values
+        self.battery = self.max_battery
+
+    def run_operation(self, freq_hz=1):
+        rate = rospy.Rate(freq_hz)
+        while not rospy.is_shutdown():
+            self.publish_battery()
+            rate.sleep()
+
+
+    def publish_battery(self):
+        """
+        Publishes battery level as a Float topic
+        :return:
+        """
+        self.battery_pub.publish(self.battery)
+
+    def charge_battery_cb(self, goal):
+        """
+        UPNEXT: Needs to be updated
+
+        Callback as action server to charge up battery. Simply sets a delay in charging the robot up
+        :param goal:
+        :return:
+        """
+
+        charge_feedback = charge_batteryFeedback()
+        charge_result = charge_batteryResult()
+        rate = rospy.Rate(1)
+        delay_charge = math.ceil(self.restoration * (self.max_battery - goal.curr_batt_level))
+        for i in range(delay_charge):
+            charge_feedback.charging_battery = "Charging battery..."
+            self.charge_battery_server.publish_feedback(charge_feedback)
+            rate.sleep()
+
+        charge_result.battery_charged = True
+        self.charge_battery_server.set_succeeded(charge_result)
+
+if __name__ == '__main__':
+    Battery('battery').run_operation()

@@ -2,12 +2,21 @@
     <arg name="world" default="office"/>
     <arg name="method" default="treebased_decision"/>
     <arg name="robot_count" default="2"/>
+    <arg name="area_count" default="3"/>
+    <arg name="run" default="1"/>
+
+    <arg name="model" default="$(env TURTLEBOT3_MODEL)" doc="model type [burger, waffle, waffle_pi]"/>
+    <arg name="cmd_vel_topic" default="/cmd_vel" />
+    <arg name="odom_topic" default="odom" />
+    <arg name="move_forward_only" default="false"/>
+
     <param name="/use_sim_time" value="true" />
     <rosparam command="load" file="$(find int_preservation)/param/mission.yaml" subst_value="true"/>
 
     <node name="Stage" pkg="stage_ros" type="stageros" args="$(find int_preservation)/world/$(arg world)$(arg robot_count).world">
         <param name="base_watchdog_timeout" value="0" />
     </node>
+
     <node name="map_server" pkg="map_server" type="map_server" args="$(find int_preservation)/param/$(arg world)_map.yaml">
         <param name="frame_id" value="map" />
     </node>
@@ -17,10 +26,12 @@
         <arg name="world" value="$(arg world)"/>
     </include>
 
-    <!--Area-->
-
-    <!--Charging station-->
+    <include file="$(find int_preservation)/launch/areas/area_sim$(arg area_count).launch">
+    </include>
 
     <!-- RVIZ to view the visualization -->
     <node name="RVIZ" pkg="rviz" type="rviz" args=" -d $(find int_preservation)/param/mission.rviz" output="screen" />
+
+    <node name="move_base" pkg="move_base" type="move_base" />
+
 </launch>

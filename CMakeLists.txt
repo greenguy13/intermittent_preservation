@@ -59,7 +59,6 @@ find_package(catkin REQUIRED COMPONENTS
 ## Generate services in the 'srv' folder
 add_service_files(
     FILES
-        flevel.srv
         location.srv
         battery_level.srv
         area_assignment.srv

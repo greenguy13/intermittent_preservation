@@ -13,25 +13,27 @@ import random as rd
 import numpy as np
 import rospy
 import actionlib
-# from int_preservation.msg import visitAction, visitGoal
-# from int_preservation.srv import flevel, flevelRequest
-# from int_preservation.srv import location, locationRequest
-# from int_preservation.srv import battery_level, battery_levelRequest
-from int_preservation.loss_fcns import *
-from int_preservation.cost_fcns import *
-from int_preservation.pruning import *
+from loss_fcns import *
+from cost_fcns import *
+from pruning import *
 import tf
 import project_utils as pu
-from nav_msgs.msg import Odometry, OccupancyGrid
-from geometry_msgs.msg import Point, Pose
-from std_msgs.msg import Int8
 from scipy.spatial import distance, Voronoi
 import igraph
 from grid import Grid
+
+from int_preservation.msg import visitAction, visitGoal
+from int_preservation.srv import flevel, flevelRequest
+from int_preservation.srv import location, locationRequest
+from int_preservation.srv import battery_level, battery_levelRequest
+from nav_msgs.srv import GetPlan #GetPlanRequest
+from nav_msgs.GetPlan.srv import make_plan make_planRequest
+from nav_msgs.msg import Odometry, OccupancyGrid
+from geometry_msgs.msg import Point, Pose, PoseStamped
+from std_msgs.msg import Int8
 from visualization_msgs.msg import Marker
+from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 
-
-#class TreeBasedDecision():
 
 INDEX_FOR_X = 0
 INDEX_FOR_Y = 1
@@ -77,12 +79,17 @@ class Robot:
         self.degree_criterion_node_selection = rospy.get_param("/degree_criterion_node_selection")
 
         #Publishers/Subscribers
-        self.point_pub = rospy.Publisher('/robot_{}/robot_nav/goal'.format(self.robot_id), Point, queue_size=1)
-        rospy.Subscriber('/robot_{}/robot_nav/feedback'.format(self.robot_id), Pose, self.robot_nav_callback)
+        self.move_base_client_pub = rospy.Publisher('/move_base/goal', PoseStamped, queue_size=1) #TODO: move_base action client
+        #self.point_pub = rospy.Publisher('/robot_{}/robot_nav/goal'.format(self.robot_id), Point, queue_size=1)
+        #rospy.Subscriber('/robot_{}/robot_nav/feedback'.format(self.robot_id), Pose, self.robot_nav_callback)
         rospy.Subscriber('/map', OccupancyGrid, self.static_map_callback)
         self.marker_pub = rospy.Publisher('voronoi', Marker, queue_size=0)
         self.robot_status = self.IDLE
         self.robot_status_pub = rospy.Publisher('/robot_{}/robot_status'.format(self.robot_id), Int8, queue_size=1)
+
+        #Service client to move_base: make_Plan
+        rospy.wait_for_service('/move_base/make_plan') #TODO: Is this make_plan indeed?
+        self.make_plan = rospy.ServiceProxy('/move_base/make_plan', GetPlan)
 
         global cast
         cast = type(self.areas[0])
@@ -93,50 +100,42 @@ class Robot:
         self.optimal_path = []
         self.graph, self.sampled_nodes, self.dist_matrix = None, None, None
 
-    # if self.robot_status == self.IN_MISSION:
-    #     #If charging station: charge up
-    #     if self.is_charging_station(self.target_pose):
-    #         self.update_robot_status(self.REQUEST2CHARGE)
-    #         #TO-INSERT: Request charging station (server): to charge batt to max
-    #         return
-    #
-    #     #Else: Restore F-measure
-    #     self.update_robot_status(self.RESTORING_F)
-    #     #TO-INSERT: Request area (server): to restore F-measure
-
     # RUN OPERATION methods
     def run_operation(self):
         """
-        Among the feasible areas, pick randomly the next area to monitor
         :return:
         """
         rate = rospy.Rate(1)
 
         while not rospy.is_shutdown():
             if self.robot_status == self.IDLE:
-                pu.log_msg(self.robot_id, 'Robot idle', self.debug_mode)
-                if self.dist_matrix is not None:
+                pu.log_msg('robot', self.robot_id, 'Robot idle', self.debug_mode)
+                if self.dist_matrix is not None: #Here, the distance matrix we have to supply the correct distance computations
+                    pu.log_msg('robot', self.robot_id, "Nodes to preserve: " + str(self.sampled_nodes_poses), self.debug_mode)
                     self.update_robot_status(self.READY)
 
             elif self.robot_status == self.READY:
-                pu.log_msg(self.robot_id, 'Robot ready', self.debug_mode)
+                pu.log_msg('robot', self.robot_id, 'Robot ready', self.debug_mode)
                 self.think_decisions()
+                pu.log_msg('robot', self.robot_id, 'Path: ' + str(self.optimal_path), self.debug_mode)
                 self.update_robot_status(self.IN_MISSION)
 
             elif self.robot_status == self.IN_MISSION:
-                pu.log_msg(self.robot_id, 'Robot in mission', self.debug_mode)
+                pu.log_msg('robot', self.robot_id, 'Robot in mission', self.debug_mode)
+                if len(self.optimal_path) == 0:
+                    self.update_robot_status(self.IDLE)
                 self.commence_mission()
 
             elif self.robot_status == self.REQUEST2CHARGE:
-                pu.log_msg(self.robot_id, 'Request battery charge', self.debug_mode)
+                pu.log_msg('robot', self.robot_id, 'Request battery charge', self.debug_mode)
                 #Request from charging station server
                 self.request_charge()
 
             elif self.robot_status == self.CHARGING:
-                pu.log_msg(self.robot_id, 'Waiting for battery to charge up', self.debug_mode)
+                pu.log_msg('robot', self.robot_id, 'Waiting for battery to charge up', self.debug_mode)
 
             elif self.robot_status == self.RESTORING_F:
-                pu.log_msg(self.robot_id, 'Restoring F-measure', self.debug_mode)
+                pu.log_msg('robot', self.robot_id, 'Restoring F-measure', self.debug_mode)
                 self.restore_f_request()
             rate.sleep()
 
@@ -153,7 +152,7 @@ class Robot:
 
     def commence_mission(self):
         """
-        Starts mission
+        Commences mission
         :return:
         """
         self.update_robot_status(self.IN_MISSION)
@@ -169,8 +168,9 @@ class Robot:
             # self.target_id = self.optimal_path.pop(0)
             # next_area = self.sampled_nodes_poses[self.target_id]
 
-            #TO-UNCOMMENT: For now, we just go through the sampled node poses
+            #TODO: For now, we just go through the sampled node poses
             next_area = self.optimal_path.pop(0)
+            pu.log_msg('robot', self.robot_id, 'Heading to: ' + str(next_area), self.debug_mode)
             self.go_to_target(next_area)
             return 1
         return 0
@@ -183,15 +183,54 @@ class Robot:
         """
         self.robot_status = status
 
-    def go_to_target(self, target):
+    def go_to_target(self, goal):
         """
-        Goes to cartesian (x, y) coordinate
-        :param target:
+        Action client to move_base to move to target goal
+        Goal is PoseStamped msg
+        TODO: Let's sanity check the go_to_target
         :return:
         """
-        self.target_pose = target
-        self.point_pub.publish(Point(x=self.target_pose[0], y=self.target_pose[1]))
-        self.update_robot_status(self.IN_MISSION)
+        client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
+        client.wait_for_server()
+        client.send_goal(goal)
+        wait = client.wait_for_result()
+        if not wait:
+            rospy.logerr("move_base action server not available!")
+            rospy.signal_shutdown("move_base action server not available!")
+        else:
+            if client.get_result():
+                rospy.loginfo("Goal action achieved!")
+                return client.get_result()
+
+
+    """
+    Applying the move_base in the program:
+    1. Build the distance matrix prior to execution: via service request from move_base/GetPlan (start, goal) PoseStamped for each of the areas
+    2. Build decision tree for a given forecast k
+    3. Send the robot to each area after decision making, using move_base actionlib client
+    4. Capture/store the data of F-measures
+    """
+
+
+
+    # def go_to_target(self, target):
+    #     """
+    #     Goes to cartesian (x, y) coordinate
+    #     :param target:
+    #     :return:
+    #     """
+    #     self.target_pose = target
+    #
+    #     #Create PoseStamped msg
+    #     goal = PoseStamped()
+    #     goal.header.stamp = rospy.Time.now()
+    #     goal.header.frame_id = 'map' #TODO: PO. Is this map or something else
+    #     goal.pose.position.x = target[0]
+    #     goal.pose.position.y = target[1]
+    #     self.move_base_client_pub.publish(goal)
+    #     # self.point_pub.publish(Point(x=self.target_pose[0], y=self.target_pose[1]))
+    #
+    #     self.update_robot_status(self.IN_MISSION)
 
     # MAP/NAVIGATION METHODS
     def compute_gvg(self):
@@ -201,14 +240,14 @@ class Robot:
         # Get only wall cells for the Voronoi.
         obstacles = self.latest_map.wall_cells()
         end_time_clock = rospy.Time.now().to_sec()
-        pu.log_msg(self.robot_id,"generate obstacles2 {}".format(end_time_clock - start_time_clock),self.debug_mode)
+        pu.log_msg('robot', self.robot_id,"generate obstacles2 {}".format(end_time_clock - start_time_clock),self.debug_mode)
 
         start_time_clock = rospy.Time.now().to_sec()
 
         # Get Voronoi diagram.
         vor = Voronoi(obstacles)
         end_time_clock = rospy.Time.now().to_sec()
-        pu.log_msg(self.robot_id,"voronoi {}".format(end_time_clock - start_time_clock),self.debug_mode)
+        pu.log_msg('robot', self.robot_id,"voronoi {}".format(end_time_clock - start_time_clock),self.debug_mode)
         start_time_clock = rospy.Time.now().to_sec()
 
         # Initializing the graph.
@@ -251,8 +290,7 @@ class Robot:
                     if ridge_vertex[point_id] not in voronoi_graph_correspondance:
                         # if not existing, add new vertex.
                         graph_vertex_ids[point_id] = self.graph.vcount()
-                        self.graph.add_vertex(
-                            coord=vertices[ridge_vertex[point_id]])
+                        self.graph.add_vertex(coord=vertices[ridge_vertex[point_id]])
                         voronoi_graph_correspondance[ridge_vertex[point_id]] = graph_vertex_ids[point_id]
                     else:
                         # Otherwise, already added before.
@@ -269,7 +307,7 @@ class Robot:
         self.graph = cl.giant()
         self.prune_leaves()
         end_time_clock = rospy.Time.now().to_sec()
-        pu.log_msg(self.robot_id,"ridge {}".format(end_time_clock - start_time_clock),self.debug_mode)
+        pu.log_msg('robot', self.robot_id,"ridge {}".format(end_time_clock - start_time_clock),self.debug_mode)
 
         # Publish GVG.
         self.publish_edges()
@@ -323,6 +361,7 @@ class Robot:
     def select_preservation_areas(self):
         """
         Selects areas to preserve from potential nodes
+        Called in static_map_callback
         :return:
         """
         rd.seed(self.seed+1)
@@ -339,11 +378,31 @@ class Robot:
             self.sampled_nodes_poses.append(p_ros)
 
         #TO-DELETE: Try navigating through the sampled nodes/areas
-        self.optimal_path = self.sampled_nodes_poses[:]
+        # self.optimal_path = self.sampled_nodes_poses[:]
+
+    def convert_coords_to_PoseStamped(self, coords, frame='map'):
+        """
+        Converts x,y coords to PoseStampled wrt frame
+        :param coord:
+        :return:
+        """
+        msg = PoseStamped()
+        msg.header.frame_id = frame
+        msg.header.stamp = rospy.Time(0)
+        msg.pose.position.x = coords[0]  # 2.6
+        msg.pose.position.y = coords[1]  # 1.3
+
+        return msg
 
     def build_dist_matrix(self):
         """
         Builds the distance matrix among selected areas for preservation
+
+        TODO: Build the dist_matrix by requesting from make_plan service to get path plan from one area to another
+        1. For each of the area, we get the path from one area to another
+        2. Measure the distance of the path
+        3. Filling out the entries of the dist_matrix
+
         :return:
         """
         n = len(self.sampled_nodes)
@@ -351,11 +410,21 @@ class Robot:
 
         for i in range(n):
             for j in range(n):
-                from_area, next_area = self.sampled_nodes_poses[i], self.sampled_nodes_poses[j]
-                dist = distance.cityblock(from_area, next_area)
-                pu.log_msg(self.robot_id, "From: {}. To: {}. distance: {}".format(from_area, next_area, dist), self.debug_mode)
+                from_area, next_area = self.convert_coords_to_PostStamped(self.sampled_nodes_poses[i]), self.convert_coords_to_PostStamped(self.sampled_nodes_poses[j])
+                #TODO: Ask from GetPlan the path from from_area to next_area
+                #Compute the total distance for each path, which is one cell in the dist_matrix
+                req = GetPlan()
+                req.start = from_area
+                req.goal = next_area
+                req.tolerance = .5
+                resp = self.make_plan(req.start, req.goal, req.tolerance)
+                print(resp)
+                dist = None
+
+                #dist = distance.cityblock(from_area, next_area)
+                # pu.log_msg('robot', self.robot_id, "From: {}. To: {}. distance: {}".format(from_area, next_area, dist), self.debug_mode)
                 self.dist_matrix[i, j] = dist
-        pu.log_msg(self.robot_id, "Distance matrix: {}".format(self.dist_matrix), self.debug_mode)
+        #pu.log_msg('robot', self.robot_id, "Distance matrix: {}".format(self.dist_matrix), self.debug_mode)
 
         # return dist_matrix
         # for i in range(n):
@@ -363,13 +432,13 @@ class Robot:
         #         from_area, next_area = self.sampled_nodes[i], self.sampled_nodes[j]
         #         sp = self.graph.get_shortest_paths(from_area, next_area)[0]
         #         print("From: {}. To: {}. SP: {}".format(from_area, next_area, sp))
-        #         pu.log_msg(self.robot_id, "From: {}. To: {}. SP: {}".format(from_area, next_area, sp), self.debug_mode)
+        #         pu.log_msg('robot', self.robot_id, "From: {}. To: {}. SP: {}".format(from_area, next_area, sp), self.debug_mode)
         #         distance = 0
         #         for h in range(len(sp) - 1):
         #             sp_from_area, sp_next_area = sp[h], sp[h + 1]
         #             weight = self.graph.es.select(_from=sp_from_area, _target=sp_next_area)['weight'] #[0]
         #             print("Edge: {}. Weight: {}".format((sp_from_area, sp_next_area), weight))
-        #             pu.log_msg(self.robot_id, "Distance: {}. Edge: {}. Weight: {}".format(distance, (sp_from_area, sp_next_area), weight), self.debug_mode)
+        #             pu.log_msg('robot', self.robot_id, "Distance: {}. Edge: {}. Weight: {}".format(distance, (sp_from_area, sp_next_area), weight), self.debug_mode)
         #             distance += weight
         #         print("Total distance:", distance)
         #         self.dist_matrix[i, j] = distance
@@ -391,8 +460,7 @@ class Robot:
         self.compute_gvg()
         if self.sampled_nodes is None:
             self.select_preservation_areas()
-            self.build_dist_matrix()
-
+            #self.build_dist_matrix() #TO-FIX: base the distance info using nav2d computation
 
     ## THIS PART HERE NEEDS FIXING UP/CLARIFICATION
     def is_charging_station(self, target_pose):
@@ -409,7 +477,7 @@ class Robot:
         """
         callback from navigator node informing the control of arrival to set goal
         if area charging station: It requests to charge up
-        if area is not charging_station: It requests to restore F-measure
+        if area is not battery: It requests to restore F-measure
         """
 
         #This rpose is the pose in the global tf frame
@@ -422,6 +490,8 @@ class Robot:
         Q: Where do we use the subscribed topic pose?
         Potential use: Get pose.point.x and pose.point.y, then check whether they are within the radius of target pose.
         If yes: If target pose is the charging station, request to charge; else, restore F-measure
+        
+        Above is a good solution to this one.
         """
 
         if self.robot_status == self.IN_MISSION:
@@ -434,12 +504,14 @@ class Robot:
     ## Charge battery
     def request_charge(self):
         """
-        Action request (to charging_station) to charge up battery
+        UPNEXT (Mar 30): Needs updating
+
+        Action request (to battery) to charge up battery
         :param max_charge:
         :return:
         """
         self.charge_battery_client.wait_for_server()
-        goal = charge_batteryGoal() #
+        goal = charge_batteryGoal() #TODO: Charge up battery
         goal.curr_batt_level = self.battery
         self.charge_battery_client.send_goal(goal, feedback_cb=self.charge_battery_feedback_cb)
         self.update_robot_status(self.CHARGING)
@@ -447,7 +519,7 @@ class Robot:
         result = bool(self.charge_battery_client.get_result())
         if result is True:
             self.battery = self.max_battery #Battery charged to max level
-            pu.log_msg(self.robot_id, 'Fully-charged battery', self.debug_mode)
+            pu.log_msg('robot', self.robot_id, 'Fully-charged battery', self.debug_mode)
             self.update_robot_status(self.READY)
 
     def charge_battery_feedback_cb(self, msg):
@@ -456,11 +528,11 @@ class Robot:
         :param msg:
         :return:
         """
-        if msg: pu.log_msg(self.robot_id, 'Charging battery', self.debug_mode)
+        if msg: pu.log_msg('robot', self.robot_id, 'Charging battery', self.debug_mode)
 
     ## Restore F-measure
     def restore_f_request_feedback_cb(self, msg):
-        if msg: pu.log_msg(self.robot_id, 'Restoring F...', self.debug_mode)
+        if msg: pu.log_msg('robot', self.robot_id, 'Restoring F...', self.debug_mode)
 
 
     def restore_f_request(self):
@@ -503,17 +575,17 @@ class Robot:
         branches = list() #container for final branches up to depth k
         to_grow = list()  #container for branches still being grown/expanded
         nodes = self.areas[:]
-        print("Nodes prior cast:", nodes)
+        pu.log_msg('robot', self.robot_id, "Nodes prior cast: {}".format(nodes), self.debug_mode)
         #cast = type(scripts[0])
         nodes.append(cast(self.charging_station)) #append the charging station
-        print("Nodes:", nodes)
+        pu.log_msg('robot', self.robot_id, "Nodes: {}".format(nodes), self.debug_mode)
 
         #Start at the current location as the root node.
         fmeasures = dict() #F-measures of areas
-        print("Areas:", self.areas)
+        pu.log_msg('robot', self.robot_id, "Areas: {}".format(self.areas), self.debug_mode)
         for area in self.areas:
             fmeasures[area] = float(self.request_fmeasure(area))
-        print("Fmeasures:", fmeasures)
+        pu.log_msg('robot', self.robot_id, "Fmeasures: {}".format(fmeasures), self.debug_mode)
         k = 0
 
         #We need current location index
@@ -532,11 +604,11 @@ class Robot:
 
         #Succeeding decision steps:
         while k < dec_steps:
-            print("\n Dec step:", k)
+            pu.log_msg('robot', self.robot_id, "\nDec step: {}".format(k), self.debug_mode)
             consider_branches = to_grow[:]
             to_grow = list() #At the end of the iterations, to-grow will be empty while branches must be complete
             for branch in consider_branches:
-                print("Branch to grow:", branch)
+                pu.log_msg('robot', self.robot_id, "Branch to grow: {}".format(branch), self.debug_mode)
                 considered_growing= 0 #Indicators whether the branch has been considered for growing
                 for i in range(len(nodes)):
                     # Hypothetical: What if we travel to this area, what will the consumed battery be and the updated F-fmeasures?
@@ -564,7 +636,7 @@ class Robot:
                     battery_consumption_backto_charging_station = self.consume_battery(start_area=next_area, next_area=self.charging_station, curr_measure=None, noise=noise)
                     feasible_battery_consumption = battery_consumption + battery_consumption_backto_charging_station
 
-                    print("Next area: {}, Batt level: {}, Duration: {}, Batt consumption: {}, Decayed fmeasure: {}, TLapse decay: {}".format(next_area, battery, duration, battery_consumption, decayed_fmeasure, tlapse_decay))
+                    pu.log_msg('robot', self.robot_id, "Next area: {}, Batt level: {}, Duration: {}, Batt consumption: {}, Decayed fmeasure: {}, TLapse decay: {}".format(next_area, battery, duration, battery_consumption, decayed_fmeasure, tlapse_decay), self.debug_mode)
                     # If branch is not to be pruned and length still less than dec_steps,
                     # then we continue to grow that branch
 
@@ -578,7 +650,8 @@ class Robot:
                         feasible_battery = battery - feasible_battery_consumption  # battery available after taking into account battery to go back to charging station from current location
                         updated_fmeasures = self.adjust_fmeasures(fmeasures, next_area, duration) #F-measure of areas adjusted accordingly
                         cost += self.compute_cost_path(updated_fmeasures)
-                        print("Branch to grow appended:", (path, battery, updated_fmeasures, cost, feasible_battery))
+                        pu.log_msg('robot', self.robot_id,
+                                   "Branch to grow appended: {}".format(path, battery, updated_fmeasures, cost, feasible_battery), self.debug_mode)
                         to_grow.append((path, battery, updated_fmeasures, cost, feasible_battery)) #Branch: (path, battery, updated_fmeasures, cost, feasible battery)
                         considered_growing += 1
 
@@ -588,7 +661,8 @@ class Robot:
                         #   we check whether remaining feasible battery >= 0. If not, then this path ends dead, thus we don't append it
                         # Furthermore: If after iterating through possible scripts branch not considered for growing, and not yet in branches
                         if (is_feasible(battery, feasible_battery_consumption) is True) and (i == len(nodes)-1 and considered_growing == 0) and (branch not in branches):
-                            print("Branch appended to tree:", branch)
+                            pu.log_msg('robot', self.robot_id,
+                                       "Branch appended to tree: {}".format(branch), self.debug_mode)
                             branches.append(branch)
 
                         #We need to check whether the branches are empty or not. We need to send the robot home.
@@ -604,7 +678,6 @@ class Robot:
     def compute_duration(self, start_area, next_area, curr_measure, restoration, noise):
         """
         Computes (time) duration of operation, which includes travelling distance plus restoration, if any
-        Furthermore, we include the battery consumed
         :param distance:
         :param restoration: restore a measure (if not None) back to full measure
         :param noise: expected noise in distance travelled
@@ -703,63 +776,21 @@ class Robot:
             > We resolve this in tree() where we decide whether to include in a branch
         """
 
-        #Sort the branches of length k: the cost is key while the value is branch
+        # Sort the branches of length k: the cost is key while the value is branch
         sorted_branches = sorted(tree, key = lambda x: (x[-2], -x[-1]))
-        print("Branches sorted by cost:")
+        pu.log_msg('robot', self.robot_id,
+                   "Branches sorted by cost:", self.debug_mode)
         for branch in sorted_branches:
-            print(branch)
-        print("Optimal branch (branch info + cost):", sorted_branches[0])
+            pu.log_msg('robot', self.robot_id,
+                       "Branch: {}".format(branch), self.debug_mode)
+        pu.log_msg('robot', self.robot_id,
+                   "Optimal branch (branch info + cost): {}".format(sorted_branches[0]), self.debug_mode)
         optimal_path = sorted_branches[0][0]
 
         return optimal_path
 
 if __name__ == '__main__':
-    # To-gather: motion. duration of travel. Yes. We indeed need a prior program that gathers the information on cost of operation.
-    # A matrix would be a better container for this one.
-    dist_matrix = np.array([[0, 10, 18, 15],
-                            [10, 0, 15, 18],
-                            [18, 15, 0, 10],
-                            [15, 18, 10, 0]])
-
-    batt_consumed_per_time = (0.10, 0.01) #Batt consumed: travel time, restoration time
-    f_thresh = (80, 50) #Thresholds: F-safe, F-crit
-    decay_rates = {'1': 0.020, '2': 0.010, '3': 0.005}
-    robot_no = 0
     rd.seed(1234)
+    #Robot('treebased_decision').run_operation()
 
-    #Dec steps = 1
-    # dec_steps = 1
-    # print("Tree-based decision making:", dec_steps)
-    # TreeBasedDecision('treebased_decision', decay_rates, dist_matrix, robot_no, robot_velocity=1.0, batt_consumed_per_time=0.25).run_operation(dec_steps=dec_steps, restoration=0.10, noise=0.25, safe_fmeasure=80)
-
-    # #Dec steps = 2
-    # dec_steps = 2
-    # print("Tree-based decision making:", dec_steps)
-    # TreeBasedDecision('treebased_decision', decay_rates, dist_matrix, robot_no, robot_velocity=1.0, batt_consumed_per_time=0.25).run_operation(dec_steps=dec_steps, restoration=0.10, noise=0.02, safe_fmeasure=80)
-    #
-    #Dec steps = 3
-    dec_steps = 3
-    print("Tree-based decision making:", dec_steps)
-    #TreeBasedDecision('treebased_decision', decay_rates, dist_matrix, robot_no, robot_velocity=1.0, batt_consumed_per_time=batt_consumed_per_time, f_thresh=f_thresh) #.run_operation(dec_steps=dec_steps, restoration=0.10, noise=0.02)
-    Robot('treebased_decision').run_operation()
-    #
-    #Dec steps = 4
-    # dec_steps = 4
-    # print("Tree-based decision making:", dec_steps)
-    # TreeBasedDecision('treebased_decision', decay_rates, dist_matrix, robot_no, robot_velocity=1.0, batt_consumed_per_time=0.25).run_operation(dec_steps=dec_steps, restoration=0.10, noise=0.02, safe_fmeasure=80)
-    #
-    #Dec steps = 6
-    # dec_steps = 6
-    # print("Tree-based decision making:", dec_steps)
-    # TreeBasedDecision('treebased_decision', decay_rates, dist_matrix, robot_no, robot_velocity=1.0, batt_consumed_per_time=0.25).run_operation(dec_steps=dec_steps, restoration=0.10, noise=0.02, safe_fmeasure=80)
-
-    # dec_steps = 10
-    # print("Tree-based decision making:", dec_steps)
-    # TreeBasedDecision('treebased_decision', decay_rates, dist_matrix, robot_no, robot_velocity=1.0,
-    #                   batt_consumed_per_time=0.25).run_operation(dec_steps=dec_steps, restoration=0.10, noise=0.02,
-    #                                                              safe_fmeasure=80)
-
-    # duration_matrix = np.array([[0, 13.978, 33.8757, 47.92],
-    #                                 [17.521, 0, 27.4774, 48.695],
-    #                                 [33.827, 22.955, 0, 49.973],
-    #                                 [57.22, 49.53, 56.535, 0]])
+    #TODO: Just make sure we can run the world and then communicate with the robot to move to one goal to other

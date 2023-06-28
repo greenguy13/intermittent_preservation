@@ -1,0 +1,6 @@
+image: ../world/bitmaps/toy.png
+resolution: 0.1
+origin: [-20.0, -12.6, 0.0]
+occupied_thresh: 0.196
+free_thresh: 0.65
+negate: 0

@@ -8,13 +8,13 @@ import time
 import numpy as np
 import rospy
 import actionlib
-from intermittent_monitoring.msg import visitAction, visitGoal
-from intermittent_monitoring.srv import flevel, flevelRequest
-from intermittent_monitoring.srv import location, locationRequest
-from intermittent_monitoring.srv import battery_level, battery_levelRequest
-from intermittent_monitoring.loss_fcns import *
-from intermittent_monitoring.cost_fcns import *
-from intermittent_monitoring.pruning import *
+from int_preservation.msg import visitAction, visitGoal
+from int_preservation.srv import flevel, flevelRequest
+from int_preservation.srv import location, locationRequest
+from int_preservation.srv import battery_level, battery_levelRequest
+from int_preservation.loss_fcns import *
+from int_preservation.cost_fcns import *
+from int_preservation.pruning import *
 import gurobipy as gp
 from gurobipy import *
 

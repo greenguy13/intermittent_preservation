@@ -909,13 +909,8 @@ class Graph:
         edgelist = self.create_edge_list(robot_pose)
         return FetchGraphResponse(edgelist=edgelist)
 
-
-
-
     def enough_delay(self):
         return rospy.Time.now().to_sec() - self.last_graph_update_time > 30  # updated last 20 secs
-
-
 
     def create_edge_list(self, robot_pose):
         alledges = list(self.edges)
@@ -975,19 +970,6 @@ class Graph:
             chosen_edge = linear_edge[min(linear_edge.keys())]
         return chosen_edge
 
-
-
-
-    # def round_point(self, p):
-    #     xc = round(p[INDEX_FOR_X], 2)
-    #     yc = round(p[INDEX_FOR_Y], 2)
-    #     new_p = [0.0] * 2
-    #     new_p[INDEX_FOR_X] = xc
-    #     new_p[INDEX_FOR_Y] = yc
-    #     new_p = tuple(new_p)
-    #     return new_p
-
-
     def distance_to_line(self, p1, p2, pose):
         p2_p1_vec = pu.get_vector(p1, p2)
         pose_p1_vec = pu.get_vector(p1, pose)
@@ -996,8 +978,6 @@ class Graph:
         else:
             d = INF
         return d
-
-
 
     def get_pairs_with_unknown_area(self, edge_pairs):
         edge_boxes = {}

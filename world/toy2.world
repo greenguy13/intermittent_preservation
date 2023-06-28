@@ -1,0 +1,16 @@
+include "toy.world"
+
+# load catabot
+pioneer3at
+(
+  name "robot1"
+  color "DarkGreen"
+  pose [0.0 -7.0 0.0 0.0]
+)
+
+pioneer3at
+(
+  name "robot2"
+  color "DarkBlue"
+  pose [0.0 -10.0 0.0 0.0]
+)

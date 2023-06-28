@@ -1,5 +1,9 @@
 #!/usr/bin/python
 
+"""
+Taken from
+"""
+
 import rospy
 from geometry_msgs.msg import Pose, PointStamped
 from tf import TransformListener
@@ -40,21 +44,10 @@ class Grid:
         # Array to check neighbors.
         self.cell_radius = int(10 / self.resolution)  # TODO parameter
         self.footprint = np.ones((self.cell_radius + 1, self.cell_radius + 1))
-        # self.plot()
-
-    # def plot(self):
-    #     fig1 = plt.gcf()
-    #     plt.imshow(self.grid)
-    #     plt.colorbar()
-    #     plt.gca().invert_yaxis()
-    #     plt.xlabel('xlabel', fontsize=18)
-    #     plt.ylabel('ylabel', fontsize=16)
-    #     fig1.savefig('map.png', dpi=100)
 
     def cell_at(self, x, y):
         """Return cell value at x (column), y (row)."""
         return self.grid[int(y), int(x)]
-        # return self.grid[x + y * self.width]
 
     def is_free(self, x, y):
         if self.within_boundaries(x, y):
@@ -124,18 +117,6 @@ class Grid:
             elif self.is_obstacle(*p):
                 return False
         return False
-    #
-    # def line_in_unknown(self, start_cell, end_cell):
-    #     x1, y1 = start_cell.astype(int)
-    #     x2, y2 = end_cell.astype(int)
-    #
-    #     unknown_cells_counter = 0
-    #     for p in list(bresenham(x1, y1, x2, y2)):
-    #         if self.is_unknown(*p):
-    #             unknown_cells_counter += 1
-    #         elif self.is_obstacle(*p):
-    #             return False
-    #     return unknown_cells_counter
 
     def unknown_area_approximate(self, cell):
         """Approximate unknown area with the robot at cell."""
