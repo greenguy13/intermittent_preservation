@@ -3,7 +3,7 @@ Author: Amel Docena
 
 ## Nodes
 ### Robot navigation
-Takes care of the navigation, which includes the navigator, operator, the cost map, and localizer
+Takes care of the navigation, which uses <code>move_base</code>
 
 ### Robot decision-making: Tree-based
 The mind of the robot:
