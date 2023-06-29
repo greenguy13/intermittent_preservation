@@ -26,17 +26,26 @@ from int_preservation.msg import visitAction, visitGoal
 from int_preservation.srv import flevel, flevelRequest
 from int_preservation.srv import location, locationRequest
 from int_preservation.srv import battery_level, battery_levelRequest
-from nav_msgs.srv import GetPlan #GetPlanRequest
-from nav_msgs.GetPlan.srv import make_plan make_planRequest
+from nav_msgs.srv import GetPlan
 from nav_msgs.msg import Odometry, OccupancyGrid
 from geometry_msgs.msg import Point, Pose, PoseStamped
 from std_msgs.msg import Int8
 from visualization_msgs.msg import Marker
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 
+"""
+Phases of progress toward completion:
+    P1: Compute distance matrix (Done. Review)
+    P2: Send the robot to each area (Done. Review)
+    P3: Restore F and battery (For review)
+    P4: Incorporate decision making via decision tree given forecast steps, k (For review)
+    P5: Gather and analyze baseline results
+"""
 
 INDEX_FOR_X = 0
 INDEX_FOR_Y = 1
+
+SUCCEEDED = 3 #GoalStatus ID for succeeded, http://docs.ros.org/en/api/actionlib_msgs/html/msg/GoalStatus.html
 
 class Robot:
     IDLE = 10
@@ -61,6 +70,7 @@ class Robot:
 
         #Parameters
         self.robot_id = rospy.get_param("~robot_id")
+        self.debug_mode = rospy.get_param("/debug_mode")  # 0 or 1
         self.robot_velocity = rospy.get_param("/robot_velocity") #Linear velocity of robot; we assume linear and angular are relatively equal
         self.max_fmeasure = rospy.get_param("/max_fmeasure")  # Max F-measure of an area
         self.max_battery = rospy.get_param("/max_battery") #Max battery
@@ -71,25 +81,27 @@ class Robot:
         self.dec_steps = rospy.get_param("/dec_steps")
         self.restoration = rospy.get_param("/restoration")
         self.noise = rospy.get_param("/noise")
-        self.debug_mode = rospy.get_param("/debug_mode") #0 or 1
-        self.charging_station_radius =rospy.get_param("/charging_station_radius")
-        self.robot_radius = rospy.get_param("/robot_radius")
-        self.nsample_nodes = rospy.get_param("/nsample_nodes")
+        self.robot_radius = rospy.get_param("/robot_radius") #for grid cell computation
+        self.nsample_nodes = rospy.get_param("/area_count") + 1 #Sample nodes from voronoi equal to area count plus 1 (for charging station)
         self.seed = 100 + 10*rospy.get_param("/run")
         self.degree_criterion_node_selection = rospy.get_param("/degree_criterion_node_selection")
+        self.charging_station_radius = rospy.get_param("/charging_station_radius")  # if we are within the radius of the charging station
+        self.tolerance = rospy.get_param("/move_base_tolerance")
 
         #Publishers/Subscribers
-        self.move_base_client_pub = rospy.Publisher('/move_base/goal', PoseStamped, queue_size=1) #TODO: move_base action client
-        #self.point_pub = rospy.Publisher('/robot_{}/robot_nav/goal'.format(self.robot_id), Point, queue_size=1)
-        #rospy.Subscriber('/robot_{}/robot_nav/feedback'.format(self.robot_id), Pose, self.robot_nav_callback)
         rospy.Subscriber('/map', OccupancyGrid, self.static_map_callback)
         self.marker_pub = rospy.Publisher('voronoi', Marker, queue_size=0)
         self.robot_status = self.IDLE
         self.robot_status_pub = rospy.Publisher('/robot_{}/robot_status'.format(self.robot_id), Int8, queue_size=1)
 
-        #Service client to move_base: make_Plan
-        rospy.wait_for_service('/move_base/make_plan') #TODO: Is this make_plan indeed?
-        self.make_plan = rospy.ServiceProxy('/move_base/make_plan', GetPlan)
+        #Service client to move_base to get plan : make_Plan
+        server = '/robot_' + str(self.robot_id) + '/move_base_node/make_plan'
+        rospy.wait_for_service(server)
+        self.get_plan_service = rospy.ServiceProxy(server, GetPlan)
+
+        #Action client to move_base
+        self.robot_goal_client = actionlib.SimpleActionClient('/robot_' + str(self.robot_id) + '/move_base', MoveBaseAction)
+        self.robot_goal_client.wait_for_server()
 
         global cast
         cast = type(self.areas[0])
@@ -98,7 +110,9 @@ class Robot:
         self.curr_pose, self.curr_loc = None, None #Current location pose and index
         self.battery = self.max_battery
         self.optimal_path = []
-        self.graph, self.sampled_nodes, self.dist_matrix = None, None, None
+        self.graph, self.dist_matrix = None, None
+        self.sampled_nodes_poses = list() #list of sampled nodes of type PoseStamped, which are the charging station and areas to preserve
+
 
     # RUN OPERATION methods
     def run_operation(self):
@@ -183,56 +197,21 @@ class Robot:
         """
         self.robot_status = status
 
-    def go_to_target(self, goal):
+    # MAP/NAVIGATION METHODS
+    def static_map_callback(self, data):
         """
-        Action client to move_base to move to target goal
-        Goal is PoseStamped msg
-        TODO: Let's sanity check the go_to_target
+        Callback for grid
+        :param data:
         :return:
         """
-        client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
-        client.wait_for_server()
-        client.send_goal(goal)
-        wait = client.wait_for_result()
-        if not wait:
-            rospy.logerr("move_base action server not available!")
-            rospy.signal_shutdown("move_base action server not available!")
-        else:
-            if client.get_result():
-                rospy.loginfo("Goal action achieved!")
-                return client.get_result()
+        self.latest_map = Grid(data)
 
-
-    """
-    Applying the move_base in the program:
-    1. Build the distance matrix prior to execution: via service request from move_base/GetPlan (start, goal) PoseStamped for each of the areas
-    2. Build decision tree for a given forecast k
-    3. Send the robot to each area after decision making, using move_base actionlib client
-    4. Capture/store the data of F-measures
-    """
-
-
-
-    # def go_to_target(self, target):
-    #     """
-    #     Goes to cartesian (x, y) coordinate
-    #     :param target:
-    #     :return:
-    #     """
-    #     self.target_pose = target
-    #
-    #     #Create PoseStamped msg
-    #     goal = PoseStamped()
-    #     goal.header.stamp = rospy.Time.now()
-    #     goal.header.frame_id = 'map' #TODO: PO. Is this map or something else
-    #     goal.pose.position.x = target[0]
-    #     goal.pose.position.y = target[1]
-    #     self.move_base_client_pub.publish(goal)
-    #     # self.point_pub.publish(Point(x=self.target_pose[0], y=self.target_pose[1]))
-    #
-    #     self.update_robot_status(self.IN_MISSION)
-
-    # MAP/NAVIGATION METHODS
+        self.min_range_radius = 8 / self.latest_map.resolution
+        self.min_edge_length = self.robot_radius / self.latest_map.resolution
+        self.compute_gvg()
+        if self.len(self.sampled_nodes_poses) == 0:
+            self.sample_nodes_from_voronoi()
+            #self.build_dist_matrix() #TODO P1: base the distance info using nav2d computation
     def compute_gvg(self):
         """Compute GVG for exploration."""
 
@@ -321,8 +300,7 @@ class Robot:
                 neighbor_id = self.graph.neighbors(current_vertex_id)[0]
                 neighbor = self.graph.vs["coord"][neighbor_id]
                 current_vertex = self.graph.vs["coord"][current_vertex_id]
-                if not self.latest_map.is_frontier(
-                    neighbor, current_vertex, self.min_range_radius): # TODO parameter.
+                if not self.latest_map.is_frontier(neighbor, current_vertex, self.min_range_radius):
                     self.graph.delete_vertices(current_vertex_id)
                 else:
                     self.leaves[current_vertex_id] = self.latest_map.unknown_area_approximate(current_vertex)
@@ -340,7 +318,6 @@ class Robot:
         m.id = 0
         m.header.frame_id = self.latest_map.header.frame_id
         m.type = Marker.LINE_LIST
-        # TODO constant values set at the top.
         m.color.a = 1.0
         m.color.r = 1.0
         m.scale.x = 0.1
@@ -358,24 +335,26 @@ class Robot:
         # Publish marker.
         self.marker_pub.publish(m)
 
-    def select_preservation_areas(self):
+    def sample_nodes_from_voronoi(self):
         """
-        Selects areas to preserve from potential nodes
+        Samples nodes from potential nodes generated by voronoi
+        Potential nodes are filtered from the entire tree by self.degree_criterion_node_selection
         Called in static_map_callback
         :return:
         """
         rd.seed(self.seed+1)
-        potential_areas = self.graph.vs.select(_degree=self.degree_criterion_node_selection)
-        self.sampled_nodes = rd.sample(potential_areas.indices, self.nsample_nodes)
-        print("Sampled nodes:", self.sampled_nodes)
+        potential_nodes = self.graph.vs.select(_degree=self.degree_criterion_node_selection)
+        sampled_nodes = rd.sample(potential_nodes.indices, self.nsample_nodes)
+        print("Sampled nodes:", sampled_nodes)
 
         #Establish the coordinate dictionary here
         self.sampled_nodes_poses = list()
-        for node in self.sampled_nodes:
+        for node in sampled_nodes:
             p = self.graph.vs[node]["coord"]
             p_t = self.latest_map.grid_to_pose(p)
-            p_ros = (p_t[0], p_t[1])
-            self.sampled_nodes_poses.append(p_ros)
+            p_ros = (p_t[0], p_t[1]) #TODO P1: Verify if indeed x,y coords
+            pose_stamped = self.convert_coords_to_PoseStamped(p_ros)
+            self.sampled_nodes_poses.append(pose_stamped)
 
         #TO-DELETE: Try navigating through the sampled nodes/areas
         # self.optimal_path = self.sampled_nodes_poses[:]
@@ -386,81 +365,147 @@ class Robot:
         :param coord:
         :return:
         """
-        msg = PoseStamped()
-        msg.header.frame_id = frame
-        msg.header.stamp = rospy.Time(0)
-        msg.pose.position.x = coords[0]  # 2.6
-        msg.pose.position.y = coords[1]  # 1.3
+        pose = PoseStamped()
+        pose.header.frame_id = frame
+        pose.header.stamp = rospy.Time.now()
+        pose.pose.position.x = coords[0]
+        pose.pose.position.y = coords[1]
+        pose.pose.orientation.w = 1.0
 
-        return msg
+        return pose
+
+
+    # METHODS: Build distance matrix
+    def get_plan_request(self, start_pose, goal_pose, tolerance):
+        """
+        Sends a request to GetPlan service to create a plan for path from start to goal without actually moving the robot
+        :param start_pose:
+        :param goal_pose:
+        :param tolerance:
+        :return:
+        """
+        req = GetPlan()
+        req.start = start_pose
+        req.goal = goal_pose
+        req.tolerance = tolerance
+        server = self.get_plan_services['robot' + str(self.robot_id)]
+        result = server(req.start, req.goal, req.tolerance)
+        path = result.plan.poses
+        return path
+
+    def decouple_path_poses(self, path):
+        """
+        Decouples a path of PoseStamped poses; returning a list of x,y poses
+        :param path: list of PoseStamped
+        :return:
+        """
+        list_poses = list()
+        for p in path:
+            x, y = p.pose.position.x, p.pose.position.y
+            list_poses.append((x, y))
+        return list_poses
+
+    def compute_path_total_dist(self, list_poses):
+        """
+        Computes the total path distance
+        :return:
+        """
+        total_dist = 0
+        for i in range(len(list_poses) - 1):
+            dist = math.dist(list_poses[i], list_poses[i + 1])
+            total_dist += dist
+        return total_dist
+
+    def compute_dist_bet_areas(self, area_i, area_j, tolerance):
+        """
+        Computes the distance between area_i and area_j:
+            1. Call the path planner between area_i and area_j
+            2. Decouple the elements of path planning
+            3. Compute the distance then total distance
+        :param area_i: PoseStamped
+        :param area_j: PoseStamped
+        :return:
+        """
+        path = self.get_plan_request(area_i, area_j, tolerance)
+        list_poses = self.decouple_path_poses(path)
+        total_dist = self.compute_path_total_dist(list_poses)
+        return total_dist
 
     def build_dist_matrix(self):
         """
-        Builds the distance matrix among selected areas for preservation
-
-        TODO: Build the dist_matrix by requesting from make_plan service to get path plan from one area to another
-        1. For each of the area, we get the path from one area to another
-        2. Measure the distance of the path
-        3. Filling out the entries of the dist_matrix
-
+        Builds the distance matrix among areas
         :return:
         """
-        n = len(self.sampled_nodes)
-        self.dist_matrix = np.empty((n, n))
+        self.dist_matrix = np.zeros((self.nsample_nodes, self.nsample_nodes))
 
-        for i in range(n):
-            for j in range(n):
-                from_area, next_area = self.convert_coords_to_PostStamped(self.sampled_nodes_poses[i]), self.convert_coords_to_PostStamped(self.sampled_nodes_poses[j])
-                #TODO: Ask from GetPlan the path from from_area to next_area
-                #Compute the total distance for each path, which is one cell in the dist_matrix
-                req = GetPlan()
-                req.start = from_area
-                req.goal = next_area
-                req.tolerance = .5
-                resp = self.make_plan(req.start, req.goal, req.tolerance)
-                print(resp)
-                dist = None
+        for i in range(self.nsample_nodes):
+            for j in range(self.nsample_nodes):
+                area_i, area_j = self.areas[i], self.areas[j]
+                if area_i != area_j:
+                    dist = self.compute_dist_bet_areas(area_i, area_j, self.tolerance)
+                    self.dist_matrix[i, j] = dist
 
-                #dist = distance.cityblock(from_area, next_area)
-                # pu.log_msg('robot', self.robot_id, "From: {}. To: {}. distance: {}".format(from_area, next_area, dist), self.debug_mode)
-                self.dist_matrix[i, j] = dist
-        #pu.log_msg('robot', self.robot_id, "Distance matrix: {}".format(self.dist_matrix), self.debug_mode)
+        print("Dist matrix:", self.dist_matrix)
 
-        # return dist_matrix
-        # for i in range(n):
-        #     for j in range(n):
-        #         from_area, next_area = self.sampled_nodes[i], self.sampled_nodes[j]
-        #         sp = self.graph.get_shortest_paths(from_area, next_area)[0]
-        #         print("From: {}. To: {}. SP: {}".format(from_area, next_area, sp))
-        #         pu.log_msg('robot', self.robot_id, "From: {}. To: {}. SP: {}".format(from_area, next_area, sp), self.debug_mode)
-        #         distance = 0
-        #         for h in range(len(sp) - 1):
-        #             sp_from_area, sp_next_area = sp[h], sp[h + 1]
-        #             weight = self.graph.es.select(_from=sp_from_area, _target=sp_next_area)['weight'] #[0]
-        #             print("Edge: {}. Weight: {}".format((sp_from_area, sp_next_area), weight))
-        #             pu.log_msg('robot', self.robot_id, "Distance: {}. Edge: {}. Weight: {}".format(distance, (sp_from_area, sp_next_area), weight), self.debug_mode)
-        #             distance += weight
-        #         print("Total distance:", distance)
-        #         self.dist_matrix[i, j] = distance
-        # print("Distance matrix:", self.dist_matrix)
-
-
-    #REQUESTS and CALLBACKS
-    ## Navigation
-    def static_map_callback(self, data):
+    # METHODS: Send robot to area
+    def go_to_target(self, goal):
         """
-        Callback for grid
-        :param data:
+        Action client to move_base to move to target goal
+        Goal is PoseStamped msg
+        TODO: Let's sanity check the go_to_target
         :return:
         """
-        self.latest_map = Grid(data)
+        client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
+        client.wait_for_server()
+        client.send_goal(goal)
+        wait = client.wait_for_result()
+        if not wait:
+            rospy.logerr("move_base action server not available!")
+            rospy.signal_shutdown("move_base action server not available!")
+        else:
+            if client.get_result():
+                rospy.loginfo("Goal action achieved!")
+                return client.get_result()
 
-        self.min_range_radius = 8 / self.latest_map.resolution
-        self.min_edge_length = self.robot_radius / self.latest_map.resolution
-        self.compute_gvg()
-        if self.sampled_nodes is None:
-            self.select_preservation_areas()
-            #self.build_dist_matrix() #TO-FIX: base the distance info using nav2d computation
+    def send_robot_goal(self, goal):
+        """
+        Sends robot to goal via action client
+        :param robot:
+        :param goal: PoseStamped object
+        :return:
+        """
+        movebase_goal = MoveBaseGoal()
+        movebase_goal.target_pose = goal
+        print("Movebase goal:", movebase_goal)
+        # self.on_mission = True TODO: Update correct status of robot
+        action_goal_cb = (lambda state, result: self.action_send_done_cb(state, result, self.robot_id))
+        self.robot_goal_client.send_goal(movebase_goal, done_cb=action_goal_cb, active_cb=self.action_send_active_cb)
+
+    def action_send_active_cb(self):
+        """
+        Sets robot as unavailable when pursuing goal
+        :return:
+        """
+        #TODO: Update correct status of robot
+        if self.on_mission:
+            self.available = False
+        print("Avail:", self.available)
+
+
+    def action_send_done_cb(self, state, result, robot_id):
+        """
+
+        :param msg:
+        :return:
+        """
+        # Note: Currently there is a tiny bug on the lambda
+        print("Robot id: {}. Succeeded: {}".format(robot_id, state == SUCCEEDED))
+        #TODO: Update correct status of robot
+        if state == SUCCEEDED:
+            self.on_mission = False
+            self.available = True
+        print("Avail:", self.available)
+
 
     ## THIS PART HERE NEEDS FIXING UP/CLARIFICATION
     def is_charging_station(self, target_pose):
@@ -473,39 +518,10 @@ class Robot:
             return True
         return False
 
-    def robot_nav_callback(self, pose):
-        """
-        callback from navigator node informing the control of arrival to set goal
-        if area charging station: It requests to charge up
-        if area is not battery: It requests to restore F-measure
-        """
-
-        #This rpose is the pose in the global tf frame
-        rpose = pu.get_robot_pose(self.listener, self.robot_id)
-        # self.total_traveled_distance += sp_distance.euclidean(self.prev_pose, rpose)
-        self.prev_pose = rpose
-
-
-        """
-        Q: Where do we use the subscribed topic pose?
-        Potential use: Get pose.point.x and pose.point.y, then check whether they are within the radius of target pose.
-        If yes: If target pose is the charging station, request to charge; else, restore F-measure
-        
-        Above is a good solution to this one.
-        """
-
-        if self.robot_status == self.IN_MISSION:
-            if self.is_charging_station(self.target_pose):
-                self.update_robot_status(self.REQUEST2CHARGE)
-                return
-            #This is wrong. Any where in the map beyond the charging station radius becomes an area to restore F
-            self.update_robot_status(self.RESTORING_F)
 
     ## Charge battery
     def request_charge(self):
         """
-        UPNEXT (Mar 30): Needs updating
-
         Action request (to battery) to charge up battery
         :param max_charge:
         :return:
@@ -558,6 +574,7 @@ class Robot:
         return result.current_fmeasure
 
     #DECISION-MAKING methods
+    #TODO: This can be a module of its own since we can have different decision making methods
     def grow_tree(self, dec_steps, restoration, noise):
         """
         We grow a decision tree of depth dec_steps starting from where the robot is.
@@ -724,7 +741,7 @@ class Robot:
 
     def adjust_fmeasures(self, fmeasures, visit_area, duration):
         """
-        Adjusts the F-measures of all areas. The visit area will be restored to max, while the other areas will decay for
+        Adjusts the F-measures of all areas in robot's mind. The visit area will be restored to max, while the other areas will decay for
         t duration. Note that the charging station is not part of the areas to monitor. And so, if the visit_area is the
         charging station, then all of the areas will decay as duration passes by.
         :param fmeasures:

@@ -2,9 +2,10 @@
 debug_mode: 1
 method: $(arg method) # method that is running
 robot_count: $(arg robot_count)    # number of robots on the team
+area_count: $(arg area_count) #number of areas to preserve
 run: $(arg run)
 discretization_resolution: 0.1 #0.2 #0.1
-robot_radius: 1.0
+robot_radius: 1.0 #for grid cell computation
 
 robot_velocity: 1.0 #Linear velocity of robot; we assume linear and angular are relatively equal
 max_fmeasure: 100  # Max F-measure of an area
@@ -15,6 +16,6 @@ decay_rates_dict: {'1': 0.05, '2': 0.10, '3': 0.05} #Decay rate of areas
 dec_steps: 3
 restoration: 0.10
 noise: 0.01
+move_base_tolerance: 0.5
 charging_station_radius: 1.0
-nsample_nodes: 2
 degree_criterion_node_selection: 3 #Criterion for area selection, number of degree = 2 suggests leaf areas
