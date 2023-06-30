@@ -6,7 +6,7 @@ laser_frame: base_laser_link
 robot_frame: base_link
 odometry_frame: odom
 
-map_frame: /map
+map_frame: map
 
 ### ROS topics ############################################
 map_topic: latched_map

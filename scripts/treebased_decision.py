@@ -22,10 +22,7 @@ from scipy.spatial import distance, Voronoi
 import igraph
 from grid import Grid
 
-from int_preservation.msg import visitAction, visitGoal
 from int_preservation.srv import flevel, flevelRequest
-from int_preservation.srv import location, locationRequest
-from int_preservation.srv import battery_level, battery_levelRequest
 from nav_msgs.srv import GetPlan
 from nav_msgs.msg import Odometry, OccupancyGrid
 from geometry_msgs.msg import Point, Pose, PoseStamped
@@ -88,13 +85,27 @@ class Robot:
         self.charging_station_radius = rospy.get_param("/charging_station_radius")  # if we are within the radius of the charging station
         self.tolerance = rospy.get_param("/move_base_tolerance")
 
+        #Initialize variables
+        global cast
+        cast = type(self.areas[0])
+        self.charging_station = cast(
+            0)  # NOTE: In my code, this should indexed as 0. charging station area, pose. Later, randomly pick from among the nodes in Voronoi
+        self.target_pose, self.target_id = None, None
+        self.curr_pose, self.curr_loc = None, None  # Current location pose and index
+        self.battery = self.max_battery
+        self.optimal_path = []
+        self.graph, self.dist_matrix = None, None
+        self.sampled_nodes_poses = list()  # list of sampled nodes of type PoseStamped, which are the charging station and areas to preserve
+        self.available = True
+        self.on_mission = False
+
         #Publishers/Subscribers
         rospy.Subscriber('/map', OccupancyGrid, self.static_map_callback)
         self.marker_pub = rospy.Publisher('voronoi', Marker, queue_size=0)
         self.robot_status = self.IDLE
         self.robot_status_pub = rospy.Publisher('/robot_{}/robot_status'.format(self.robot_id), Int8, queue_size=1)
 
-        #Service client to move_base to get plan : make_Plan
+        #Service request to move_base to get plan : make_Plan
         server = '/robot_' + str(self.robot_id) + '/move_base_node/make_plan'
         rospy.wait_for_service(server)
         self.get_plan_service = rospy.ServiceProxy(server, GetPlan)
@@ -103,55 +114,46 @@ class Robot:
         self.robot_goal_client = actionlib.SimpleActionClient('/robot_' + str(self.robot_id) + '/move_base', MoveBaseAction)
         self.robot_goal_client.wait_for_server()
 
-        global cast
-        cast = type(self.areas[0])
-        self.charging_station = cast(0)  # NOTE: In my code, this should indexed as 0. charging station area, pose. Later, randomly pick from among the nodes in Voronoi
-        self.target_pose, self.target_id = None, None
-        self.curr_pose, self.curr_loc = None, None #Current location pose and index
-        self.battery = self.max_battery
-        self.optimal_path = []
-        self.graph, self.dist_matrix = None, None
-        self.sampled_nodes_poses = list() #list of sampled nodes of type PoseStamped, which are the charging station and areas to preserve
 
 
     # RUN OPERATION methods
-    def run_operation(self):
-        """
-        :return:
-        """
-        rate = rospy.Rate(1)
-
-        while not rospy.is_shutdown():
-            if self.robot_status == self.IDLE:
-                pu.log_msg('robot', self.robot_id, 'Robot idle', self.debug_mode)
-                if self.dist_matrix is not None: #Here, the distance matrix we have to supply the correct distance computations
-                    pu.log_msg('robot', self.robot_id, "Nodes to preserve: " + str(self.sampled_nodes_poses), self.debug_mode)
-                    self.update_robot_status(self.READY)
-
-            elif self.robot_status == self.READY:
-                pu.log_msg('robot', self.robot_id, 'Robot ready', self.debug_mode)
-                self.think_decisions()
-                pu.log_msg('robot', self.robot_id, 'Path: ' + str(self.optimal_path), self.debug_mode)
-                self.update_robot_status(self.IN_MISSION)
-
-            elif self.robot_status == self.IN_MISSION:
-                pu.log_msg('robot', self.robot_id, 'Robot in mission', self.debug_mode)
-                if len(self.optimal_path) == 0:
-                    self.update_robot_status(self.IDLE)
-                self.commence_mission()
-
-            elif self.robot_status == self.REQUEST2CHARGE:
-                pu.log_msg('robot', self.robot_id, 'Request battery charge', self.debug_mode)
-                #Request from charging station server
-                self.request_charge()
-
-            elif self.robot_status == self.CHARGING:
-                pu.log_msg('robot', self.robot_id, 'Waiting for battery to charge up', self.debug_mode)
-
-            elif self.robot_status == self.RESTORING_F:
-                pu.log_msg('robot', self.robot_id, 'Restoring F-measure', self.debug_mode)
-                self.restore_f_request()
-            rate.sleep()
+    # def run_operation(self):
+    #     """
+    #     :return:
+    #     """
+    #     rate = rospy.Rate(1)
+    #
+    #     while not rospy.is_shutdown():
+    #         if self.robot_status == self.IDLE:
+    #             pu.log_msg('robot', self.robot_id, 'Robot idle', self.debug_mode)
+    #             if self.dist_matrix is not None: #Here, the distance matrix we have to supply the correct distance computations
+    #                 pu.log_msg('robot', self.robot_id, "Nodes to preserve: " + str(self.sampled_nodes_poses), self.debug_mode)
+    #                 self.update_robot_status(self.READY)
+    #
+    #         elif self.robot_status == self.READY:
+    #             pu.log_msg('robot', self.robot_id, 'Robot ready', self.debug_mode)
+    #             self.think_decisions()
+    #             pu.log_msg('robot', self.robot_id, 'Path: ' + str(self.optimal_path), self.debug_mode)
+    #             self.update_robot_status(self.IN_MISSION)
+    #
+    #         elif self.robot_status == self.IN_MISSION:
+    #             pu.log_msg('robot', self.robot_id, 'Robot in mission', self.debug_mode)
+    #             if len(self.optimal_path) == 0:
+    #                 self.update_robot_status(self.IDLE)
+    #             self.commence_mission()
+    #
+    #         elif self.robot_status == self.REQUEST2CHARGE:
+    #             pu.log_msg('robot', self.robot_id, 'Request battery charge', self.debug_mode)
+    #             #Request from charging station server
+    #             self.request_charge()
+    #
+    #         elif self.robot_status == self.CHARGING:
+    #             pu.log_msg('robot', self.robot_id, 'Waiting for battery to charge up', self.debug_mode)
+    #
+    #         elif self.robot_status == self.RESTORING_F:
+    #             pu.log_msg('robot', self.robot_id, 'Restoring F-measure', self.debug_mode)
+    #             self.restore_f_request()
+    #         rate.sleep()
 
     def think_decisions(self):
         """
@@ -209,7 +211,7 @@ class Robot:
         self.min_range_radius = 8 / self.latest_map.resolution
         self.min_edge_length = self.robot_radius / self.latest_map.resolution
         self.compute_gvg()
-        if self.len(self.sampled_nodes_poses) == 0:
+        if len(self.sampled_nodes_poses) == 0:
             self.sample_nodes_from_voronoi()
             #self.build_dist_matrix() #TODO P1: base the distance info using nav2d computation
     def compute_gvg(self):
@@ -356,6 +358,8 @@ class Robot:
             pose_stamped = self.convert_coords_to_PoseStamped(p_ros)
             self.sampled_nodes_poses.append(pose_stamped)
 
+        print("Sampled nodes poses")
+
         #TO-DELETE: Try navigating through the sampled nodes/areas
         # self.optimal_path = self.sampled_nodes_poses[:]
 
@@ -365,7 +369,9 @@ class Robot:
         :param coord:
         :return:
         """
+        print("Coords:", coords, type(coords), type(coords[0]), type(coords[1]))
         pose = PoseStamped()
+        pose.header.seq = 0
         pose.header.frame_id = frame
         pose.header.stamp = rospy.Time.now()
         pose.pose.position.x = coords[0]
@@ -388,7 +394,8 @@ class Robot:
         req.start = start_pose
         req.goal = goal_pose
         req.tolerance = tolerance
-        server = self.get_plan_services['robot' + str(self.robot_id)]
+        server = self.get_plan_service
+        #self.debug("start: {} {}. goal: {} {}. tol: {} {}.".format(type(req.start), req.start, type(req.goal), req.goal, type(req.tolerance), req.tolerance))
         result = server(req.start, req.goal, req.tolerance)
         path = result.plan.poses
         return path
@@ -440,12 +447,12 @@ class Robot:
 
         for i in range(self.nsample_nodes):
             for j in range(self.nsample_nodes):
-                area_i, area_j = self.areas[i], self.areas[j]
+                area_i, area_j = self.sampled_nodes_poses[i], self.sampled_nodes_poses[j]
                 if area_i != area_j:
                     dist = self.compute_dist_bet_areas(area_i, area_j, self.tolerance)
                     self.dist_matrix[i, j] = dist
 
-        print("Dist matrix:", self.dist_matrix)
+        self.debug("Dist matrix: {}".format(self.dist_matrix))
 
     # METHODS: Send robot to area
     def go_to_target(self, goal):
@@ -477,7 +484,7 @@ class Robot:
         movebase_goal = MoveBaseGoal()
         movebase_goal.target_pose = goal
         print("Movebase goal:", movebase_goal)
-        # self.on_mission = True TODO: Update correct status of robot
+        self.on_mission = True #TODO: Update correct status of robot
         action_goal_cb = (lambda state, result: self.action_send_done_cb(state, result, self.robot_id))
         self.robot_goal_client.send_goal(movebase_goal, done_cb=action_goal_cb, active_cb=self.action_send_active_cb)
 
@@ -806,8 +813,34 @@ class Robot:
 
         return optimal_path
 
+    def debug(self, msg):
+        pu.log_msg('robot', self.robot_id, msg, self.debug_mode)
+
+    def run_operation(self):
+        area = 0
+        # iter = 1
+        while not rospy.is_shutdown():
+            if self.robot_id == 0:
+                #Build the distance matrix
+                if self.dist_matrix is None and len(self.sampled_nodes_poses)>0:
+                    self.debug("Sampled nodes poses: {}. {}".format(len(self.sampled_nodes_poses), self.sampled_nodes_poses))
+                    #samp = self.sampled_nodes_poses[0]
+                    #self.debug("Sample: {}".format(samp))
+                    self.build_dist_matrix()
+
+                #Send the robot to all the areas
+                if self.available:
+                    goal = self.sampled_nodes_poses[area]
+                    self.debug("Goal: {}".format(goal))
+                    self.send_robot_goal(goal)
+                # iter -= 1
+                    area += 1
+                if area>=len(self.sampled_nodes_poses):
+                    area = 0
+            rospy.sleep(1)
+
 if __name__ == '__main__':
     rd.seed(1234)
-    #Robot('treebased_decision').run_operation()
+    Robot('treebased_decision').run_operation()
 
     #TODO: Just make sure we can run the world and then communicate with the robot to move to one goal to other
