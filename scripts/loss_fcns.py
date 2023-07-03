@@ -115,6 +115,8 @@ def compute_cost_fmeasures(fmeasures, fsafe, fcrit):
     :param fmeasures: dict of F-measures of areas
     :return:
     """
+    #TODO: We can use compute_loss instead to compute the losses
+
     cost = 0
     areas = fmeasures.keys()
     for area in areas:

@@ -88,8 +88,7 @@ class Robot:
         #Initialize variables
         global cast
         cast = type(self.areas[0])
-        self.charging_station = cast(
-            0)  # NOTE: In my code, this should indexed as 0. charging station area, pose. Later, randomly pick from among the nodes in Voronoi
+        self.charging_station = cast(0)  # NOTE: In my code, this should indexed as 0. charging station area, pose. Later, randomly pick from among the nodes in Voronoi
         self.target_pose, self.target_id = None, None
         self.curr_pose, self.curr_loc = None, None  # Current location pose and index
         self.battery = self.max_battery
@@ -104,6 +103,7 @@ class Robot:
         self.marker_pub = rospy.Publisher('voronoi', Marker, queue_size=0)
         self.robot_status = self.IDLE
         self.robot_status_pub = rospy.Publisher('/robot_{}/robot_status'.format(self.robot_id), Int8, queue_size=1)
+        #TODO: Robot status needs to be published
 
         #Service request to move_base to get plan : make_Plan
         server = '/robot_' + str(self.robot_id) + '/move_base_node/make_plan'
@@ -113,6 +113,12 @@ class Robot:
         #Action client to move_base
         self.robot_goal_client = actionlib.SimpleActionClient('/robot_' + str(self.robot_id) + '/move_base', MoveBaseAction)
         self.robot_goal_client.wait_for_server()
+
+        #Information for the battery level?
+
+        #Charging station
+
+        #F-measure for area to preserve
 
 
 
@@ -213,7 +219,7 @@ class Robot:
         self.compute_gvg()
         if len(self.sampled_nodes_poses) == 0:
             self.sample_nodes_from_voronoi()
-            #self.build_dist_matrix() #TODO P1: base the distance info using nav2d computation
+            self.build_dist_matrix()
     def compute_gvg(self):
         """Compute GVG for exploration."""
 
@@ -354,7 +360,7 @@ class Robot:
         for node in sampled_nodes:
             p = self.graph.vs[node]["coord"]
             p_t = self.latest_map.grid_to_pose(p)
-            p_ros = (p_t[0], p_t[1]) #TODO P1: Verify if indeed x,y coords
+            p_ros = (p_t[0], p_t[1])
             pose_stamped = self.convert_coords_to_PoseStamped(p_ros)
             self.sampled_nodes_poses.append(pose_stamped)
 
@@ -521,6 +527,7 @@ class Robot:
         PO2: optimal path itself.
         :return:
         """
+        #TODO: This idea of within radius can be true for charging station and areas to preserve
         if distance.euclidean(target_pose, self.charging_station) < self.charging_station_radius: #Or within the radius of the pose of charging station,
             return True
         return False
@@ -703,7 +710,7 @@ class Robot:
         """
         Computes (time) duration of operation, which includes travelling distance plus restoration, if any
         :param distance:
-        :param restoration: restore a measure (if not None) back to full measure
+        :param restoration: restore a measure (if not None) back to full measure per second
         :param noise: expected noise in distance travelled
         :return:
         """
@@ -737,7 +744,7 @@ class Robot:
 
         #Batt consumed in travel
         distance = self.dist_matrix[int(start_area), int(next_area)]
-        distance += noise * distance  # distance + noise
+        distance += noise * distance  # distance + noise #TODO: Is there really a need to incorporate noise in the thinking/planning process?
         travel_time = (distance / self.robot_velocity)
         battery_consumed = self.batt_consumed_per_travel_time * travel_time
 
@@ -837,7 +844,38 @@ class Robot:
                     area += 1
                 if area>=len(self.sampled_nodes_poses):
                     area = 0
+
+            """
+            Phase 3:
+                If robot arrives at area, restore F
+                    > Check: robot status
+                    > Measure current F
+                    > Action request status/feedback
+                    > Action result
+                    > Measure current F (should be restored back to max)
+                
+                If arrived area is charging station, charge batt
+                    > Check: robot status
+                    > Measure current battery
+                    > Verify battery status/feedback
+                    > Measure current battery
+            """
+
+
             rospy.sleep(1)
+
+        """
+        UPNEXT:
+        Phase 3:
+            Action client for restoring F. What is the process here?
+                > We arrived at the area
+                > We request for its level
+                > We request to restore F back to max measure
+            Charging battery
+                > Arrived at the charging station
+                > Restore battery
+        
+        """
 
 if __name__ == '__main__':
     rd.seed(1234)

@@ -8,34 +8,91 @@ Battery node that depletes as the robot moves, and charges up when in charging s
         battery level
     Subscriber:
         robot location
-        (PO: server) charge request
+
+    PO: If robot_status is charging, we charge up battery. Although, there should be delay in charging
+    How will we be able to capture the delay?
+    PO: Subscriber to robot status. If charging, then battery will be charged up though over some delay.
 """
 
+from enum import Enum
 import math
 import rospy
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, Int8
 from int_preservation.msg import charge_batteryAction, charge_batteryFeedback, charge_batteryResult
 
+
+class robotStatus(Enum):
+    IDLE = 10
+    READY = 11
+    THINKING = 12
+    IN_MISSION = 20
+    CHARGING = 30
+    RESTORING_F = 40
+
 class Battery():
+    IDLE = 0
+    DEPLETING = 1
+    CHARGING = 10
+    FULLY_CHARGED = 11
+
     def __init__(self, node_name):
         #Params
         rospy.init_node(node_name)
         self.robot_id = rospy.get_param('~robot_id')
         self.max_battery = rospy.get_param("/max_battery")
         self.restoration = rospy.get_param("/restoration")
+        self.batt_depletion, self.batt_restoration = rospy.get_param("/batt_consumed_per_time")
 
         #Publisher/subscriber
+        rospy.Subscriber("/robot_{}/robot_status".format(self.robot_id), Int8, self.robot_status_cb)
         self.battery_pub = rospy.Publisher("/robot_{}/battery".format(self.robot_id), Float32, queue_size=1)
 
         #Init values
         self.battery = self.max_battery
+        self.status = self.IDLE
+
+    def robot_status_cb(self, msg):
+        """
+        Callback to robot status. Here we update the battery status as either charging or depeting depending on the robot status
+        :return:
+        """
+        if msg == robotStatus.IDLE or msg == robotStatus.READY or msg == robotStatus.THINKING:
+            self.status = self.IDLE
+        elif msg == robotStatus.IN_MISSION or msg == robotStatus.RESTORING_F:
+            self.status = self.DEPLETING
+        elif msg == robotStatus.CHARGING:
+            self.status = self.CHARGING
+
+    def charge_delay(self):
+        """
+        Delay in restoring F-measure back to max level
+        :return:
+        """
+        delay = int(math.ceil(self.batt_restoration * (self.max_battery - self.battery)))
+        return delay
 
     def run_operation(self, freq_hz=1):
         rate = rospy.Rate(freq_hz)
         while not rospy.is_shutdown():
+            if self.status == self.IDLE:
+                pass
+
+            elif self.status == self.DEPLETING:
+                self.battery -= self.batt_depletion
+
+            elif self.status == self.CHARGING:
+                delay = self.charge_delay()
+                for i in range(delay):
+                    self.battery += self.batt_restoration
+                    rate.sleep()
+                self.battery = self.max_battery
+                self.status = self.FULLY_CHARGED
+
+            elif self.status == self.FULLY_CHARGED:
+                pass #PO: The robot updates itself to IDLE, which then battery updates itself as IDLE as callback
+
             self.publish_battery()
             rate.sleep()
-
 
     def publish_battery(self):
         """
@@ -43,27 +100,6 @@ class Battery():
         :return:
         """
         self.battery_pub.publish(self.battery)
-
-    def charge_battery_cb(self, goal):
-        """
-        UPNEXT: Needs to be updated
-
-        Callback as action server to charge up battery. Simply sets a delay in charging the robot up
-        :param goal:
-        :return:
-        """
-
-        charge_feedback = charge_batteryFeedback()
-        charge_result = charge_batteryResult()
-        rate = rospy.Rate(1)
-        delay_charge = math.ceil(self.restoration * (self.max_battery - goal.curr_batt_level))
-        for i in range(delay_charge):
-            charge_feedback.charging_battery = "Charging battery..."
-            self.charge_battery_server.publish_feedback(charge_feedback)
-            rate.sleep()
-
-        charge_result.battery_charged = True
-        self.charge_battery_server.set_succeeded(charge_result)
 
 if __name__ == '__main__':
     Battery('battery').run_operation()
