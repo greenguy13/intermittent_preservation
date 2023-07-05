@@ -18,7 +18,7 @@ from enum import Enum
 import math
 import rospy
 from std_msgs.msg import Float32, Int8
-from int_preservation.msg import charge_batteryAction, charge_batteryFeedback, charge_batteryResult
+import project_utils as pu
 
 
 class robotStatus(Enum):
@@ -46,6 +46,7 @@ class Battery():
         #Publisher/subscriber
         rospy.Subscriber("/robot_{}/robot_status".format(self.robot_id), Int8, self.robot_status_cb)
         self.battery_pub = rospy.Publisher("/robot_{}/battery".format(self.robot_id), Float32, queue_size=1)
+        self.battery_status_pub = rospy.Publisher("/robot_{}/battery_status".format(self.robot_id), Int8, queue_size=1)
 
         #Init values
         self.battery = self.max_battery
@@ -56,12 +57,14 @@ class Battery():
         Callback to robot status. Here we update the battery status as either charging or depeting depending on the robot status
         :return:
         """
-        if msg == robotStatus.IDLE or msg == robotStatus.READY or msg == robotStatus.THINKING:
+        robot_status = msg.data
+        if robot_status == robotStatus.IDLE.value or robot_status == robotStatus.READY.value or robot_status == robotStatus.THINKING.value:
             self.status = self.IDLE
-        elif msg == robotStatus.IN_MISSION or msg == robotStatus.RESTORING_F:
+        elif robot_status == robotStatus.IN_MISSION.value or robot_status == robotStatus.RESTORING_F.value:
             self.status = self.DEPLETING
-        elif msg == robotStatus.CHARGING:
+        elif (robot_status == robotStatus.CHARGING.value) and (self.battery < self.max_battery):
             self.status = self.CHARGING
+        pu.log_msg('robot', self.robot_id, 'robot status: {}. battery status: {}'.format(robot_status, self.status))
 
     def charge_delay(self):
         """
@@ -74,6 +77,7 @@ class Battery():
     def run_operation(self, freq_hz=1):
         rate = rospy.Rate(freq_hz)
         while not rospy.is_shutdown():
+            self.publish_battery()
             if self.status == self.IDLE:
                 pass
 
@@ -89,17 +93,17 @@ class Battery():
                 self.status = self.FULLY_CHARGED
 
             elif self.status == self.FULLY_CHARGED:
-                pass #PO: The robot updates itself to IDLE, which then battery updates itself as IDLE as callback
+                pass
 
-            self.publish_battery()
             rate.sleep()
 
     def publish_battery(self):
         """
-        Publishes battery level as a Float topic
+        Publishes battery level as a Float topic and status as Int topic
         :return:
         """
         self.battery_pub.publish(self.battery)
+        self.battery_status_pub.publish(self.status)
 
 if __name__ == '__main__':
-    Battery('battery').run_operation()
+    Battery('battery').run_operation(1)

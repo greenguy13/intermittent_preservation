@@ -9,6 +9,7 @@ Tree-based decision making
         2. Compute cost
         3. Pick the least cost
 """
+from enum import Enum
 import random as rd
 import numpy as np
 import rospy
@@ -21,7 +22,6 @@ import project_utils as pu
 from scipy.spatial import distance, Voronoi
 import igraph
 from grid import Grid
-
 from int_preservation.srv import flevel, flevelRequest
 from nav_msgs.srv import GetPlan
 from nav_msgs.msg import Odometry, OccupancyGrid
@@ -32,8 +32,8 @@ from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 
 """
 Phases of progress toward completion:
-    P1: Compute distance matrix (Done. Review)
-    P2: Send the robot to each area (Done. Review)
+    P1: Compute distance matrix (Done)
+    P2: Send the robot to each area (Done)
     P3: Restore F and battery (For review)
     P4: Incorporate decision making via decision tree given forecast steps, k (For review)
     P5: Gather and analyze baseline results
@@ -41,17 +41,32 @@ Phases of progress toward completion:
 
 INDEX_FOR_X = 0
 INDEX_FOR_Y = 1
-
 SUCCEEDED = 3 #GoalStatus ID for succeeded, http://docs.ros.org/en/api/actionlib_msgs/html/msg/GoalStatus.html
 
+
+"""
+TODO: A better way for the class enums is to have them outside the constructors and then just import them if we wish to use them.
+"""
+
+class batteryStatus(Enum):
+    IDLE = 0
+    DEPLETING = 1
+    CHARGING = 10
+    FULLY_CHARGED = 11
+
+class areaStatus(Enum):
+    IDLE = 0
+    DECAYING = 1
+    RESTORING_F = 10
+    RESTORED_F = 11
+
 class Robot:
-    IDLE = 10
+    IDLE = 0
     READY = 11
-    IN_MISSION = 12
-    REQUEST2CHARGE = 30
-    CHARGING = 31
-    REQUEST2RESTORE_F = 40
-    RESTORING_F = 41
+    THINKING = 12
+    IN_MISSION = 20
+    CHARGING = 30
+    RESTORING_F = 40
 
     def __init__(self, node_name):
         """
@@ -75,6 +90,7 @@ class Robot:
         self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = rospy.get_param("/batt_consumed_per_time") #(travel, restoration)
         self.decay_rates_dict = rospy.get_param("/decay_rates_dict") #Decay rate of areas
         self.areas = list(self.decay_rates_dict.keys())
+        self.areas = [int(i) for i in self.areas] #list of int IDs
         self.dec_steps = rospy.get_param("/dec_steps")
         self.restoration = rospy.get_param("/restoration")
         self.noise = rospy.get_param("/noise")
@@ -86,41 +102,53 @@ class Robot:
         self.tolerance = rospy.get_param("/move_base_tolerance")
 
         #Initialize variables
-        global cast
-        cast = type(self.areas[0])
-        self.charging_station = cast(0)  # NOTE: In my code, this should indexed as 0. charging station area, pose. Later, randomly pick from among the nodes in Voronoi
-        self.target_pose, self.target_id = None, None
+        self.charging_station = 0  # NOTE: In my code, this should indexed as 0. charging station area, pose. Later, randomly pick from among the nodes in Voronoi
+        self.target_pose, self.target_id = None, None #TO-DELETE
         self.curr_pose, self.curr_loc = None, None  # Current location pose and index
         self.battery = self.max_battery
         self.optimal_path = []
         self.graph, self.dist_matrix = None, None
         self.sampled_nodes_poses = list()  # list of sampled nodes of type PoseStamped, which are the charging station and areas to preserve
+        self.mission_area = None
+        self.robot_status = self.IDLE
         self.available = True
-        self.on_mission = False
 
         #Publishers/Subscribers
-        rospy.Subscriber('/map', OccupancyGrid, self.static_map_callback)
-        self.marker_pub = rospy.Publisher('voronoi', Marker, queue_size=0)
-        self.robot_status = self.IDLE
-        self.robot_status_pub = rospy.Publisher('/robot_{}/robot_status'.format(self.robot_id), Int8, queue_size=1)
-        #TODO: Robot status needs to be published
-
-        #Service request to move_base to get plan : make_Plan
+        # Service request to move_base to get plan : make_Plan
         server = '/robot_' + str(self.robot_id) + '/move_base_node/make_plan'
         rospy.wait_for_service(server)
         self.get_plan_service = rospy.ServiceProxy(server, GetPlan)
+        self.debug("Getplan service: {}".format(self.get_plan_service))
+
+        rospy.Subscriber('/map', OccupancyGrid, self.static_map_callback)
+        rospy.Subscriber('/robot_{}/battery_status'.format(self.robot_id), Int8, self.battery_status_cb)
+        for area in self.areas:
+            rospy.Subscriber('/area_{}/status'.format(area), Int8, self.area_status_cb)
+
+        self.marker_pub = rospy.Publisher('voronoi', Marker, queue_size=0)
+        self.robot_status_pub = rospy.Publisher('/robot_{}/robot_status'.format(self.robot_id), Int8, queue_size=1)
+        self.mission_area_pub = rospy.Publisher('/robot_{}/mission_area'.format(self.robot_id), Int8, queue_size=1)
+
 
         #Action client to move_base
         self.robot_goal_client = actionlib.SimpleActionClient('/robot_' + str(self.robot_id) + '/move_base', MoveBaseAction)
         self.robot_goal_client.wait_for_server()
 
-        #Information for the battery level?
+        """
+        On charging:
+        Robot's mission area is 0. It then changes its status to CHARGING once it reaches the charging station.
+        The charging station, which subscribes to robot's status, charges up the battery.
+        Here, we assume there is only one charging station.
+        
+        If the robot_status is other than CHARGING, the battery status is DEPLETING.
+        """
 
-        #Charging station
-
-        #F-measure for area to preserve
-
-
+        """
+        On area restoration:
+        Robot's mission area is a specific area. If reaches the area, it changes its status to RESTORING_F.
+        Now, the current mission area, which subscribes to both robot_status and robot_mission_area topics, will restore F; while,
+            those other areas not the mission area will have their F continually decay 
+        """
 
     # RUN OPERATION methods
     # def run_operation(self):
@@ -220,6 +248,7 @@ class Robot:
         if len(self.sampled_nodes_poses) == 0:
             self.sample_nodes_from_voronoi()
             self.build_dist_matrix()
+
     def compute_gvg(self):
         """Compute GVG for exploration."""
 
@@ -364,11 +393,6 @@ class Robot:
             pose_stamped = self.convert_coords_to_PoseStamped(p_ros)
             self.sampled_nodes_poses.append(pose_stamped)
 
-        print("Sampled nodes poses")
-
-        #TO-DELETE: Try navigating through the sampled nodes/areas
-        # self.optimal_path = self.sampled_nodes_poses[:]
-
     def convert_coords_to_PoseStamped(self, coords, frame='map'):
         """
         Converts x,y coords to PoseStampled wrt frame
@@ -465,7 +489,6 @@ class Robot:
         """
         Action client to move_base to move to target goal
         Goal is PoseStamped msg
-        TODO: Let's sanity check the go_to_target
         :return:
         """
         client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
@@ -490,7 +513,7 @@ class Robot:
         movebase_goal = MoveBaseGoal()
         movebase_goal.target_pose = goal
         print("Movebase goal:", movebase_goal)
-        self.on_mission = True #TODO: Update correct status of robot
+        self.available = False
         action_goal_cb = (lambda state, result: self.action_send_done_cb(state, result, self.robot_id))
         self.robot_goal_client.send_goal(movebase_goal, done_cb=action_goal_cb, active_cb=self.action_send_active_cb)
 
@@ -499,11 +522,8 @@ class Robot:
         Sets robot as unavailable when pursuing goal
         :return:
         """
-        #TODO: Update correct status of robot
-        if self.on_mission:
-            self.available = False
-        print("Avail:", self.available)
-
+        self.available = False
+        self.robot_status = self.IN_MISSION
 
     def action_send_done_cb(self, state, result, robot_id):
         """
@@ -513,66 +533,11 @@ class Robot:
         """
         # Note: Currently there is a tiny bug on the lambda
         print("Robot id: {}. Succeeded: {}".format(robot_id, state == SUCCEEDED))
-        #TODO: Update correct status of robot
         if state == SUCCEEDED:
-            self.on_mission = False
+            self.robot_status = self.RESTORING_F
+            if self.mission_area == self.charging_station:
+                self.robot_status = self.CHARGING
             self.available = True
-        print("Avail:", self.available)
-
-
-    ## THIS PART HERE NEEDS FIXING UP/CLARIFICATION
-    def is_charging_station(self, target_pose):
-        """
-        PO1: pose, radius
-        PO2: optimal path itself.
-        :return:
-        """
-        #TODO: This idea of within radius can be true for charging station and areas to preserve
-        if distance.euclidean(target_pose, self.charging_station) < self.charging_station_radius: #Or within the radius of the pose of charging station,
-            return True
-        return False
-
-
-    ## Charge battery
-    def request_charge(self):
-        """
-        Action request (to battery) to charge up battery
-        :param max_charge:
-        :return:
-        """
-        self.charge_battery_client.wait_for_server()
-        goal = charge_batteryGoal() #TODO: Charge up battery
-        goal.curr_batt_level = self.battery
-        self.charge_battery_client.send_goal(goal, feedback_cb=self.charge_battery_feedback_cb)
-        self.update_robot_status(self.CHARGING)
-        self.charge_battery_client.wait_for_result()
-        result = bool(self.charge_battery_client.get_result())
-        if result is True:
-            self.battery = self.max_battery #Battery charged to max level
-            pu.log_msg('robot', self.robot_id, 'Fully-charged battery', self.debug_mode)
-            self.update_robot_status(self.READY)
-
-    def charge_battery_feedback_cb(self, msg):
-        """
-        Feedback for action request to charge up battery
-        :param msg:
-        :return:
-        """
-        if msg: pu.log_msg('robot', self.robot_id, 'Charging battery', self.debug_mode)
-
-    ## Restore F-measure
-    def restore_f_request_feedback_cb(self, msg):
-        if msg: pu.log_msg('robot', self.robot_id, 'Restoring F...', self.debug_mode)
-
-
-    def restore_f_request(self):
-        """
-        If result is True:
-            self.update_robot_status(self.READY)
-        :return:
-        """
-
-        pass
 
     def request_fmeasure(self, area, msg=True):
         """
@@ -608,7 +573,7 @@ class Robot:
         nodes = self.areas[:]
         pu.log_msg('robot', self.robot_id, "Nodes prior cast: {}".format(nodes), self.debug_mode)
         #cast = type(scripts[0])
-        nodes.append(cast(self.charging_station)) #append the charging station
+        nodes.append(self.charging_station) #append the charging station
         pu.log_msg('robot', self.robot_id, "Nodes: {}".format(nodes), self.debug_mode)
 
         #Start at the current location as the root node.
@@ -823,59 +788,57 @@ class Robot:
     def debug(self, msg):
         pu.log_msg('robot', self.robot_id, msg, self.debug_mode)
 
+    def battery_status_cb(self, msg):
+        """
+
+        :param msg:
+        :return:
+        """
+        if msg.data == batteryStatus.FULLY_CHARGED.value:
+            pu.log_msg('robot', self.robot_id, "Fully charged!")
+            self.robot_status = self.READY
+
+    def area_status_cb(self, msg):
+        """
+
+        :param msg:
+        :return:
+        """
+        if msg.data == areaStatus.RESTORED_F.value:
+            pu.log_msg('robot', self.robot_id, "Area fully restored!")
+            self.robot_status = self.READY
+
     def run_operation(self):
         area = 0
-        # iter = 1
+        rospy.sleep(5)
         while not rospy.is_shutdown():
             if self.robot_id == 0:
+                self.robot_status_pub.publish(self.robot_status)
                 #Build the distance matrix
-                if self.dist_matrix is None and len(self.sampled_nodes_poses)>0:
-                    self.debug("Sampled nodes poses: {}. {}".format(len(self.sampled_nodes_poses), self.sampled_nodes_poses))
-                    #samp = self.sampled_nodes_poses[0]
-                    #self.debug("Sample: {}".format(samp))
-                    self.build_dist_matrix()
+                if self.robot_status is self.IDLE:
+                    if self.dist_matrix is not None:
+                        self.robot_status = self.READY
 
-                #Send the robot to all the areas
-                if self.available:
-                    goal = self.sampled_nodes_poses[area]
-                    self.debug("Goal: {}".format(goal))
-                    self.send_robot_goal(goal)
-                # iter -= 1
-                    area += 1
-                if area>=len(self.sampled_nodes_poses):
-                    area = 0
+                elif self.robot_status is self.READY:
+                    self.mission_area = None
+                    self.robot_status = self.IN_MISSION
 
-            """
-            Phase 3:
-                If robot arrives at area, restore F
-                    > Check: robot status
-                    > Measure current F
-                    > Action request status/feedback
-                    > Action result
-                    > Measure current F (should be restored back to max)
-                
-                If arrived area is charging station, charge batt
-                    > Check: robot status
-                    > Measure current battery
-                    > Verify battery status/feedback
-                    > Measure current battery
-            """
-
-
+                elif self.robot_status is self.IN_MISSION:
+                    if self.available:
+                        self.mission_area = area
+                        self.mission_area_pub.publish(area)
+                        goal = self.sampled_nodes_poses[area]  # Select (think about) the mission area
+                        self.debug("Goal: {} {}".format(self.mission_area, goal))
+                        self.send_robot_goal(goal)
+                        area += 1
+                        if area>=len(self.sampled_nodes_poses):
+                            area = 0
             rospy.sleep(1)
 
-        """
-        UPNEXT:
-        Phase 3:
-            Action client for restoring F. What is the process here?
-                > We arrived at the area
-                > We request for its level
-                > We request to restore F back to max measure
-            Charging battery
-                > Arrived at the charging station
-                > Restore battery
-        
-        """
+            """
+            UPNEXT: Phase 4
+            """
+
 
 if __name__ == '__main__':
     rd.seed(1234)

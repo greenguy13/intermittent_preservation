@@ -28,9 +28,7 @@ UPNEXT:
 from enum import Enum
 import math
 import rospy
-import actionlib
 from std_msgs.msg import Float32, Int8
-from intermittent_monitoring.msg import monitorAction, monitorFeedback, monitorResult
 import project_utils as pu
 
 
@@ -49,8 +47,8 @@ class robotStatus(Enum):
 class Area():
     IDLE = 0
     DECAYING = 1
-    RESTORING_F = 11
-    RESTORED_F = 12
+    RESTORING_F = 10
+    RESTORED_F = 11
 
     def __init__(self):
         rospy.init_node('area', anonymous=True)
@@ -67,22 +65,16 @@ class Area():
 
         pu.log_msg('area', self.area, 'Area {}. decay rate: {}. t_operation: {}. max_f: {}. restore: {}. robot id: {}'.format(self.area, self.decay_rate, self.t_operation, self.max_fmeasure, self.restoration, self.robot_id), 1)
 
-        # Fmeasure publisher
+        # Published topics
         self.fmeasure_pub = rospy.Publisher("/area_{}/fmeasure".format(self.area), Float32, queue_size=1)
+        self.status_pub = rospy.Publisher("/area_{}/status".format(self.area), Int8, queue_size=1)
 
-        # Server for pausing/commencing simulation
-        # TODO P5: Make sure that the topic is robot_status
+        # Subscribed topics
         rospy.Subscriber('/robot_{}/robot_status'.format(self.robot_id), Int8, self.robot_status_cb)
-
-        # TODO P5: Continue operation subscriber: shuts down node if received message is True
-        # rospy.Subscriber("/continue_operation", Bool, self.continue_operation_cb)
-
-        # Action server: Raise Fmeasure
-        self.restore_fmeasure_action_server = actionlib.SimpleActionServer("/restore_fmeasure_action_server_" + str(self.area), monitorAction, execute_cb=self.raise_fmeasure_cb, auto_start=False)
-        self.restore_fmeasure_action_server.start()
+        rospy.Subscriber('/robot_{}/mission_area'.format(self.robot_id), Int8, self.mission_area_cb)
 
         self.status = self.IDLE
-        self.restore_request = False
+        self.robot_mission_area = None
 
     def restore_delay(self):
         """
@@ -97,49 +89,31 @@ class Area():
         TODO P5: Callback for robot status. If robot status is thinking decisions, we pause decay simulation
         :return:
         """
-
-        if (msg == robotStatus.IDLE) or (msg == robotStatus.READY) or (msg == robotStatus.THINKING):
+        robot_status = msg.data
+        if (robot_status == robotStatus.IDLE.value) or (robot_status == robotStatus.READY.value) or (robot_status == robotStatus.THINKING.value):
             self.status = self.IDLE
-        elif msg == robotStatus.IN_MISSION or (msg == robotStatus.RESTORING_F and self.restore_request is False) \
-                or msg == robotStatus.CHARGING:
+        elif robot_status == robotStatus.IN_MISSION.value or (robot_status == robotStatus.RESTORING_F.value and self.robot_mission_area != self.area) \
+                or robot_status == robotStatus.CHARGING.value:
             self.status = self.DECAYING
+        elif (robot_status == robotStatus.RESTORING_F.value and self.robot_mission_area == self.area) and (self.fmeasure < self.max_fmeasure):
+            self.status = self.RESTORING_F
+        pu.log_msg('robot', self.robot_id, 'robot status: {}. area {} status: {}'.format(robot_status, self.area, self.status))
 
-    def raise_fmeasure_cb(self, goal):
+    def mission_area_cb(self, msg):
         """
-        Callback as action server for restoring F-measure upon request of action client, (which is the robot)
-        :param goal:
+
+        :param msg:
         :return:
         """
-        success = True
-        monitor_feedback = monitorFeedback()
-        monitor_result = monitorResult()
-        rate = rospy.Rate(1)
-
-        self.restore_request = True
-        self.status = self.RESTORING_F
-        delay = self.restore_delay()
-        for i in range(delay):
-            if self.restore_fmeasure_action_server.is_preempt_requested():
-                success = False
-                break
-            monitor_feedback.current_fmeasure = 'Restoring F-measure...' + str(self.fmeasure)
-            self.restore_fmeasure_action_server.publish_feedback(monitor_feedback)
-            rate.sleep()
-
-        self.fmeasure = goal.max_fmeasure #F-measure restored back to max_fmeasure
-        monitor_result.raised_max = True
-
-        if success:
-            self.restore_fmeasure_action_server.set_succeeded(monitor_result)
-            self.status = self.RESTORED_F
-            self.restore_request = False
+        self.robot_mission_area = msg.data
 
     def publish_fmeasure(self):
         """
-        Publishes F-measure as a Float topic
+        Publishes F-measure as a Float topic and status as Int topic
         :return:
         """
-        self.fmeasure_pub.publish(self.fmeasure)
+        self.fmeasure_pub.publish(self.fmeasure)  # publish F-measure
+        self.status_pub.publish(self.status)  # publish area status
 
     def decay(self, t):
         """
@@ -175,12 +149,15 @@ class Area():
                 t += 1
 
             elif self.status == self.RESTORING_F:
-                pass
+                delay = self.restore_delay()
+                for i in range(delay):
+                    rate.sleep()
+                self.fmeasure = self.max_fmeasure  # F-measure restored back to max_fmeasure
+                self.status = self.RESTORED_F
 
             elif self.status == self.RESTORED_F:
                 # Restore parameters
                 t = 0
-                self.global_decay_fmeasure = 0
                 self.status = self.IDLE
 
             rate.sleep()

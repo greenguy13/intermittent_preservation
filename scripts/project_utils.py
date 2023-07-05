@@ -311,7 +311,7 @@ def reject_outliers(data):
     return raw_x, raw_y
 
 
-def log_msg(type, id, msg, debug):
+def log_msg(type, id, msg, debug=True):
     if debug:
         if type == 'robot':
             rospy.logwarn("Robot {}: {}".format(id, msg))
