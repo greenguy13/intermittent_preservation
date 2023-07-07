@@ -13,7 +13,7 @@ max_battery: 100 #Max battery
 f_thresh: [80, 50] #(safe, crit)
 batt_consumed_per_time: [0.10, 0.10] #(travel, restoration)
 decay_rates_dict: {'1': 0.05, '2': 0.10, '3': 0.05} #Decay rate of areas
-dec_steps: 3
+dec_steps: 2
 restoration: 0.10
 noise: 0.01
 move_base_tolerance: 0.5

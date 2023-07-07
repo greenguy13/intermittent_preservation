@@ -39,7 +39,6 @@ import project_utils as pu
 class robotStatus(Enum):
     IDLE = 10
     READY = 11
-    THINKING = 12
     IN_MISSION = 20
     CHARGING = 30
     RESTORING_F = 40
@@ -86,11 +85,11 @@ class Area():
 
     def robot_status_cb(self, msg):
         """
-        TODO P5: Callback for robot status. If robot status is thinking decisions, we pause decay simulation
+        TODO P5: Callback for robot status. If robot is not in mission, we pause decay simulation
         :return:
         """
         robot_status = msg.data
-        if (robot_status == robotStatus.IDLE.value) or (robot_status == robotStatus.READY.value) or (robot_status == robotStatus.THINKING.value):
+        if (robot_status == robotStatus.IDLE.value) or (robot_status == robotStatus.READY.value):
             self.status = self.IDLE
         elif robot_status == robotStatus.IN_MISSION.value or (robot_status == robotStatus.RESTORING_F.value and self.robot_mission_area != self.area) \
                 or robot_status == robotStatus.CHARGING.value:
