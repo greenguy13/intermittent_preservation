@@ -19,22 +19,11 @@ Relay of information:
 2. Server to decision_making about current F-level
 """
 
-"""
-UPNEXT:
-1. Robot goes to area's location
-2. Measures F
-3. Asks to restore F
-"""
 from enum import Enum
 import math
 import rospy
 from std_msgs.msg import Float32, Int8
 import project_utils as pu
-
-
-# area, max_fmeasure, decay_rate, restoration, t_operation
-
-# self.sub_fmeasure_dict[area] = rospy.Subscriber('/fmeasure_' + str(area), Float32, self.store_fmeasure_cb, area)
 
 class robotStatus(Enum):
     IDLE = 10
@@ -75,27 +64,19 @@ class Area():
         self.status = self.IDLE
         self.robot_mission_area = None
 
-    def restore_delay(self):
-        """
-        Delay in restoring F-measure back to max level
-        :return:
-        """
-        delay = int(math.ceil(self.restoration * (self.max_fmeasure-self.fmeasure)))
-        return delay
-
     def robot_status_cb(self, msg):
         """
-        TODO P5: Callback for robot status. If robot is not in mission, we pause decay simulation
+        Callback for robot status. If robot is not on mission, we pause decay simulation
         :return:
         """
         robot_status = msg.data
         if (robot_status == robotStatus.IDLE.value) or (robot_status == robotStatus.READY.value):
-            self.status = self.IDLE
+            self.update_status(self.IDLE)
         elif robot_status == robotStatus.IN_MISSION.value or (robot_status == robotStatus.RESTORING_F.value and self.robot_mission_area != self.area) \
                 or robot_status == robotStatus.CHARGING.value:
-            self.status = self.DECAYING
+            self.update_status(self.DECAYING)
         elif (robot_status == robotStatus.RESTORING_F.value and self.robot_mission_area == self.area) and (self.fmeasure < self.max_fmeasure):
-            self.status = self.RESTORING_F
+            self.update_status(self.RESTORING_F)
         pu.log_msg('robot', self.robot_id, 'robot status: {}. area {} status: {}'.format(robot_status, self.area, self.status))
 
     def mission_area_cb(self, msg):
@@ -105,6 +86,14 @@ class Area():
         :return:
         """
         self.robot_mission_area = msg.data
+
+    def restore_delay(self):
+        """
+        Delay in restoring F-measure back to max level
+        :return:
+        """
+        delay = int(math.ceil(self.restoration * (self.max_fmeasure-self.fmeasure)))
+        return delay
 
     def publish_fmeasure(self):
         """
@@ -122,6 +111,14 @@ class Area():
         """
         decayed_f = self.max_fmeasure*(1 - self.decay_rate)**t
         self.fmeasure = decayed_f
+
+    def update_status(self, status):
+        """
+        Updates area status
+        :param status:
+        :return:
+        """
+        self.status = status
 
     def run_operation(self, freq_hz=1):
         """
@@ -152,12 +149,12 @@ class Area():
                 for i in range(delay):
                     rate.sleep()
                 self.fmeasure = self.max_fmeasure  # F-measure restored back to max_fmeasure
-                self.status = self.RESTORED_F
+                self.update_status(self.RESTORED_F)
 
             elif self.status == self.RESTORED_F:
                 # Restore parameters
                 t = 0
-                self.status = self.IDLE
+                self.update_status(self.IDLE)
 
             rate.sleep()
 

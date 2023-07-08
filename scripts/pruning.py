@@ -22,8 +22,7 @@ def prune(battery, battery_consumption, decayed_fmeasure, safe_fmeasure):
     Prunes a branch growing from a node if it is infeasible or if in the next decision step it is still in safe.
     Equivalently: If feasible and F-measure is below safe, do not prune. Else, prune.
 
-    Note: If decayed_fmeasure is None, then the criteria for pruning is feasibility
-    :return:
+    :return: bool
     """
     if (is_feasible(battery, battery_consumption) is False) or (decayed_fmeasure is not None and decayed_fmeasure >= safe_fmeasure):
         return True

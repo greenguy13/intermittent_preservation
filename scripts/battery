@@ -58,12 +58,21 @@ class Battery():
         """
         robot_status = msg.data
         if robot_status == robotStatus.IDLE.value or robot_status == robotStatus.READY.value:
-            self.status = self.IDLE
+            self.update_status(self.IDLE)
         elif robot_status == robotStatus.IN_MISSION.value or robot_status == robotStatus.RESTORING_F.value:
-            self.status = self.DEPLETING
+            self.update_status(self.DEPLETING)
         elif (robot_status == robotStatus.CHARGING.value) and (self.battery < self.max_battery):
-            self.status = self.CHARGING
+            self.update_status(self.CHARGING)
         pu.log_msg('robot', self.robot_id, 'robot status: {}. battery status: {}'.format(robot_status, self.status))
+
+    def update_status(self, status):
+        """
+        Updates battery status
+        :param status:
+        :return:
+        """
+        self.status = status
+
 
     def charge_delay(self):
         """
@@ -89,7 +98,7 @@ class Battery():
                     self.battery += self.batt_restoration
                     rate.sleep()
                 self.battery = self.max_battery
-                self.status = self.FULLY_CHARGED
+                self.update_status(self.FULLY_CHARGED)
 
             elif self.status == self.FULLY_CHARGED:
                 pass

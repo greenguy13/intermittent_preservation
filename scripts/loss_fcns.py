@@ -121,7 +121,7 @@ def compute_cost_fmeasures(fmeasures, fsafe, fcrit):
     areas = fmeasures.keys()
     for area in areas:
         if fmeasures[area] >= fsafe:
-            loss = fsafe - fmeasures[area] #0
+            loss = fsafe - fmeasures[area]
         elif fcrit <= fmeasures[area] and fmeasures[area] < fsafe:
             loss = 2*(fsafe - fmeasures[area]) #fsafe - fmeasures[area]
         elif fmeasures[area] < fcrit:
