@@ -506,7 +506,7 @@ class Robot:
                     battery = branch[1]  # battery level at depth k
                     fmeasures = branch[2].copy()  # current fmeasures at depth k
                     cost = branch[3] # cost of path at depth k
-                    start_area = path[-1]  # TODO: This is where the bug is! The path is assumed from the previous loop. Need to restart
+                    start_area = path[-1]
                     next_area = nodes[i]  # We are considering travelling to all nodes
 
                     if next_area != self.charging_station:
