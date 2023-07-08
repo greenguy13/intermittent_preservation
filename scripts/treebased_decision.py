@@ -38,14 +38,7 @@ Phases of progress toward completion:
     P4: Incorporate decision making via decision tree given forecast steps, k (For review)
     P5: Gather and analyze baseline results
     
-Currently in P4. Sub-phases:
-    S1: Ensure the run_operation cycles of robot, battery, and area work. [Works!]
-    S2: Ensure the initialized location is the charging station
-        > For now, we go to the charging station DONE
-        > Moreover, the first element of the path, which is the current location should not be visited anymore when it is already taken cared of in the previous operation [DONE!]
-    S3: Verify the thinking decisions: grow_tree, pruning, appending of branches, optimal branch (UPNEXT)
-        > Bug: Encountered math domain error in compute_time_given_decay: add a miniscule amount (UPNEXT)
-    S4: Verify the robot parameters are the same with battery and area for the noise, restoration, and batt consumed per unit time DONE
+UPNEXT: Phase 5. See sticky notes for some remarks in this phase
 """
 
 INDEX_FOR_X = 0
@@ -145,12 +138,6 @@ class Robot:
         #Action client to move_base
         self.robot_goal_client = actionlib.SimpleActionClient('/robot_' + str(self.robot_id) + '/move_base', MoveBaseAction)
         self.robot_goal_client.wait_for_server()
-
-        """
-        Goal: 
-        1. Set the initial location of the robot as the charging station. We can set this as an input to the constructor. DONE
-        2. The number of nodes we sample from Voronoi will just be the area count. But we prefix the charging node among the sampled_nodes_poses. DONE
-        """
 
         """
         On charging:
