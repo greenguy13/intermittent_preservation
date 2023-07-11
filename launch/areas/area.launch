@@ -10,4 +10,7 @@
         <param name="robot_id" value="$(arg robot_id)" />
         <rosparam command="load" file="$(find int_preservation)/param/area.yaml" subst_value="true" />
     </node>
+
+    <!-- Set up the listener here -->
+
 </launch>

@@ -24,6 +24,7 @@ import math
 import rospy
 from std_msgs.msg import Float32, Int8
 import project_utils as pu
+import pickle
 
 class robotStatus(Enum):
     IDLE = 10
@@ -46,7 +47,7 @@ class Area():
 
         #We can write these params as general param
         #Change/evolution in decay rate; po in the general parameter
-        self.t_operation = rospy.get_param("~t_operation") #total duration of the operation
+        self.t_operation = rospy.get_param("/t_operation") #total duration of the operation
         self.max_fmeasure = rospy.get_param("~max_fmeasure")
         self.fmeasure = self.max_fmeasure #initialize at max fmeasure
         self.restoration = rospy.get_param("~restoration")
@@ -92,7 +93,7 @@ class Area():
         Delay in restoring F-measure back to max level
         :return:
         """
-        delay = int(math.ceil(self.restoration * (self.max_fmeasure-self.fmeasure)))
+        delay = int(math.ceil((self.max_fmeasure-self.fmeasure) / self.restoration))
         return delay
 
     def publish_fmeasure(self):
@@ -120,6 +121,17 @@ class Area():
         """
         self.status = status
 
+    def dump_data(self, recorded_data):
+        """
+        Pickle dumps recorded F-measure data
+        :return:
+        """
+        with open('area_{}_fmeasure.pkl'.format(self.area), 'wb') as f:
+            pickle.dump(recorded_data, f)
+
+    def shutdown(self):
+        pu.log_msg('robot', self.robot_id, "Reached {} time operation. Shutting down...".format(self.t_operation), self.debug_mode)
+
     def run_operation(self, freq_hz=1):
         """
         Statuses:
@@ -132,11 +144,10 @@ class Area():
         4. Restored F
             > F is fully restored
         """
-
-        t = 0
         rate = rospy.Rate(freq_hz)
-        while not rospy.is_shutdown():
-            self.publish_fmeasure()
+        f_record = list()
+        t = 0
+        while not rospy.is_shutdown() and len(f_record)<self.t_operation:
             if self.status == self.IDLE:
                 pass
 
@@ -147,8 +158,10 @@ class Area():
             elif self.status == self.RESTORING_F:
                 delay = self.restore_delay()
                 for i in range(delay):
+                    self.fmeasure = min(self.fmeasure+self.restoration, self.max_fmeasure)
+                    f_record.append(self.fmeasure)
+                    self.publish_fmeasure()
                     rate.sleep()
-                self.fmeasure = self.max_fmeasure  # F-measure restored back to max_fmeasure
                 self.update_status(self.RESTORED_F)
 
             elif self.status == self.RESTORED_F:
@@ -156,7 +169,16 @@ class Area():
                 t = 0
                 self.update_status(self.IDLE)
 
+            # Save F-measure here
+            f_record.append(self.fmeasure)
+            self.publish_fmeasure()
+
             rate.sleep()
+
+        #Pickle dump
+        self.dump_data(f_record)
+
+        rospy.on_shutdown(self.shutdown)
 
 if __name__ == '__main__':
     Area().run_operation()

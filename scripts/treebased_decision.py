@@ -39,6 +39,9 @@ Phases of progress toward completion:
     P5: Gather and analyze baseline results
     
 UPNEXT: Phase 5. See sticky notes for some remarks in this phase
+1. Generate results. Make preliminary analysis
+2. Make remarks to improve the experiment
+3. Make the results reproducible (random seeds) and statistically robuts (multiple experiments)
 """
 
 INDEX_FOR_X = 0
@@ -100,6 +103,7 @@ class Robot:
         self.degree_criterion_node_selection = rospy.get_param("/degree_criterion_node_selection")
         self.charging_station_radius = rospy.get_param("/charging_station_radius")  # if we are within the radius of the charging station
         self.tolerance = rospy.get_param("/move_base_tolerance")
+        self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
 
         #Initialize variables
         charging_station_coords = rospy.get_param("/charging_station_coords")
@@ -659,14 +663,17 @@ class Robot:
         optimal_path.pop(0) #we pop out the first element of the path, which is the current location, which is not needed in current mission
         return optimal_path
 
+    def shutdown(self):
+        pu.log_msg('robot', self.robot_id, "Reached {} time operation. Shutting down...".format(self.t_operation), self.debug_mode)
+
     #Methods: Run operation
     def run_operation(self):
         """
         :return:
         """
         rate = rospy.Rate(1)
-
-        while not rospy.is_shutdown():
+        t = 0
+        while not rospy.is_shutdown() and t<self.t_operation:
             if self.robot_id == 0:
                 self.robot_status_pub.publish(self.robot_status)
                 if self.robot_status == self.IDLE:
@@ -692,6 +699,9 @@ class Robot:
                     pu.log_msg('robot', self.robot_id, 'Restoring F-measure', self.debug_mode)
 
             rate.sleep()
+            t += 1
+        rospy.on_shutdown(self.shutdown)
+
 
     def think_decisions(self):
         """

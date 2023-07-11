@@ -1,5 +1,4 @@
 #Add all the general params
-t_operation: 1000 #total duration of the operation
 max_fmeasure: 100
-restoration: 0.10
+restoration: 0.10 #units per second restored
 #PO: Include the evolution of the decay rate across time
