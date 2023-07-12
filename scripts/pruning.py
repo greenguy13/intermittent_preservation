@@ -19,12 +19,14 @@ def is_feasible(battery, battery_consumption):
 
 def prune(battery, battery_consumption, decayed_fmeasure, safe_fmeasure):
     """
-    Prunes a branch growing from a node if it is infeasible or if in the next decision step it is still in safe.
+    Prunes a branch growing from a node if it is infeasible (REMOVED: or if in the next decision step it is still in safe.)
     Equivalently: If feasible and F-measure is below safe, do not prune. Else, prune.
+
+    #PO: Mabunay ha base. We prune staying in charging station when there is an area that is decaying/will be decaying
 
     :return: bool
     """
-    if (is_feasible(battery, battery_consumption) is False) or (decayed_fmeasure is not None and decayed_fmeasure >= safe_fmeasure):
+    if (is_feasible(battery, battery_consumption) is False): # or (decayed_fmeasure is not None and decayed_fmeasure >= safe_fmeasure):
         return True
 
     return False

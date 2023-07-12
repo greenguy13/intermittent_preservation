@@ -9,6 +9,8 @@ Tree-based decision making
         2. Compute cost
         3. Pick the least cost
 """
+import os
+import pickle
 from enum import Enum
 import random as rd
 import numpy as np
@@ -30,6 +32,7 @@ from std_msgs.msg import Int8, Float32
 from visualization_msgs.msg import Marker
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 
+
 """
 Phases of progress toward completion:
     P1: Compute distance matrix (Done)
@@ -47,8 +50,6 @@ UPNEXT: Phase 5. See sticky notes for some remarks in this phase
 INDEX_FOR_X = 0
 INDEX_FOR_Y = 1
 SUCCEEDED = 3 #GoalStatus ID for succeeded, http://docs.ros.org/en/api/actionlib_msgs/html/msg/GoalStatus.html
-
-
 
 #TODO: A better way for the class enums is to have them outside the constructors and then just import them if we wish to use them.
 
@@ -101,7 +102,6 @@ class Robot:
         self.nsample_areas = rospy.get_param("/area_count") #Sample nodes from voronoi equal to area count
         self.seed = 100 + 10*rospy.get_param("/run")
         self.degree_criterion_node_selection = rospy.get_param("/degree_criterion_node_selection")
-        self.charging_station_radius = rospy.get_param("/charging_station_radius")  # if we are within the radius of the charging station
         self.tolerance = rospy.get_param("/move_base_tolerance")
         self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
 
@@ -118,6 +118,7 @@ class Robot:
         self.robot_status = self.IDLE
         self.available = True
         self.curr_fmeasures = dict() #container of current F-measure of areas
+        self.decision_results = []
 
         #Publishers/Subscribers
         # Service request to move_base to get plan : make_Plan
@@ -532,7 +533,10 @@ class Robot:
                     # If branch is not to be pruned and length still less than dec_steps, then we continue to grow that branch
                     cond1 = prune(battery, feasible_battery_consumption, decayed_fmeasure, self.fsafe)
                     pu.log_msg('robot', self.robot_id, "Condition: {}".format(cond1), self.debug_mode)
-                    if (cond1 is False and (k < dec_steps)) or next_area == self.charging_station:
+                    if (cond1 is False and (k < dec_steps)) and start_area != next_area:
+                        #PO condition: If next node is charging station + one of the areas is decaying if we travel to that area + battery is safe or 100 (given when in charging station?)
+
+
                         path.append(next_area) #append next area as part of the path at depth k+1. #This is where the additional or overwriting happens. We need to make dummy list/container
                         if next_area != self.charging_station:
                             battery -= battery_consumption #actual battery depleted at depth k+1
@@ -585,7 +589,7 @@ class Robot:
 
         #Restoration time: If there is need for restoration
         if (curr_measure is not None) and (restoration is not None):
-            restore_time = restoration * (max_restore - curr_measure)
+            restore_time = (max_restore - curr_measure)/restoration
             time += restore_time
 
         return time
@@ -667,7 +671,7 @@ class Robot:
         pu.log_msg('robot', self.robot_id, "Reached {} time operation. Shutting down...".format(self.t_operation), self.debug_mode)
 
     #Methods: Run operation
-    def run_operation(self):
+    def run_operation(self, filepath=''):
         """
         :return:
         """
@@ -698,10 +702,13 @@ class Robot:
                 elif self.robot_status == self.RESTORING_F:
                     pu.log_msg('robot', self.robot_id, 'Restoring F-measure', self.debug_mode)
 
-            rate.sleep()
             t += 1
-        rospy.on_shutdown(self.shutdown)
+            rate.sleep()
 
+        #Store results
+        if self.robot_id==0: self.dump_data(self.decision_results, filepath)
+        #TODO: Differentiate between decisions made and nodes visited
+        rospy.on_shutdown(self.shutdown)
 
     def think_decisions(self):
         """
@@ -726,6 +733,7 @@ class Robot:
         """
         if len(self.optimal_path):
             self.mission_area = self.optimal_path.pop(0)
+            self.decision_results.append(self.mission_area) #store decision
             self.mission_area_pub.publish(self.mission_area)
             pu.log_msg('robot', self.robot_id, 'Heading to: {}. {}'.format(self.mission_area, self.sampled_nodes_poses[self.mission_area]), self.debug_mode)
             self.go_to_target(self.mission_area)
@@ -779,9 +787,18 @@ class Robot:
         """
         self.curr_fmeasures[area_id] = msg.data
 
+    def dump_data(self, recorded_data, filepath):
+        """
+        Pickle dumps recorded chosen optimal decisions
+        :return:
+        """
+        with open(filepath+'robot_{}_decisions.pkl'.format(self.robot_id), 'wb') as f:
+            pickle.dump(recorded_data, f)
+
     def debug(self, msg):
         pu.log_msg('robot', self.robot_id, msg, self.debug_mode)
 
 if __name__ == '__main__':
-    rd.seed(1234)
+    rd.seed(1)
+    os.chdir('/root/catkin_ws/src/int_preservation/results')
     Robot('treebased_decision').run_operation()

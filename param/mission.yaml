@@ -12,11 +12,11 @@ max_fmeasure: 100  # Max F-measure of an area
 max_battery: 100 #Max battery
 f_thresh: [80, 50] #(safe, crit)
 batt_consumed_per_time: [0.10, 0.10] #(travel, restoration)
+restoration: 25 #F-measure/battery units per second restored
 decay_rates_dict: {'1': 0.05, '2': 0.10, '3': 0.05} #Decay rate of areas
 dec_steps: 3
-restoration: 0.10 #units per second restored
 noise: 0.01
 move_base_tolerance: 0.5
 degree_criterion_node_selection: 3 #Criterion for area selection, number of degree = 2 suggests leaf areas
 charging_station_coords: [0.0, -7.0]
-t_operation: 1000 #total duration of the operation
+t_operation: 500 #total duration of the operation

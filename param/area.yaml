@@ -1,4 +1,4 @@
 #Add all the general params
 max_fmeasure: 100
-restoration: 0.10 #units per second restored
+restoration: 25 #F-measure units per second restored
 #PO: Include the evolution of the decay rate across time

@@ -25,7 +25,7 @@ def get_time_given_decay(max_fmeasure, decayed_fmeasure, rate):
     :param rate:
     :return:
     """
-    t = math.log((decayed_fmeasure/max_fmeasure), 1.0-rate)
+    t = math.log(decayed_fmeasure/max_fmeasure) / math.log(1.0-rate)
 
     return t
 
@@ -99,7 +99,7 @@ def compute_loss(max_fmeasure, decayed_fmeasure, fsafe, fcrit, rate, est_duratio
 
     # Safe zone
     if est_decayed_fmeasure >= fsafe:
-        loss = fsafe - est_decayed_fmeasure #0
+        loss = 0 #fsafe - est_decayed_fmeasure
     # Caution zone
     elif fcrit <= est_decayed_fmeasure and est_decayed_fmeasure < fsafe:
         loss = 2*(fsafe - est_decayed_fmeasure) #fsafe - est_decayed_fmeasure
@@ -121,7 +121,7 @@ def compute_cost_fmeasures(fmeasures, fsafe, fcrit):
     areas = fmeasures.keys()
     for area in areas:
         if fmeasures[area] >= fsafe:
-            loss = fsafe - fmeasures[area]
+            loss = 0 #fsafe - fmeasures[area]
         elif fcrit <= fmeasures[area] and fmeasures[area] < fsafe:
             loss = 2*(fsafe - fmeasures[area]) #fsafe - fmeasures[area]
         elif fmeasures[area] < fcrit:

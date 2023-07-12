@@ -18,7 +18,7 @@ Relay of information:
 1. Action server for the robot, which asks to raise F-level
 2. Server to decision_making about current F-level
 """
-
+import os
 from enum import Enum
 import math
 import rospy
@@ -121,18 +121,19 @@ class Area():
         """
         self.status = status
 
-    def dump_data(self, recorded_data):
+    def dump_data(self, recorded_data, filepath):
         """
         Pickle dumps recorded F-measure data
         :return:
         """
-        with open('area_{}_fmeasure.pkl'.format(self.area), 'wb') as f:
+        with open(filepath+'area_{}_fmeasure.pkl'.format(self.area), 'wb') as f:
             pickle.dump(recorded_data, f)
 
     def shutdown(self):
-        pu.log_msg('robot', self.robot_id, "Reached {} time operation. Shutting down...".format(self.t_operation), self.debug_mode)
+        pu.log_msg('robot', self.robot_id, "path: {}".format(os.getcwd()))
+        pu.log_msg('robot', self.robot_id, "Reached {} time operation. Shutting down...".format(self.t_operation))
 
-    def run_operation(self, freq_hz=1):
+    def run_operation(self, filepath='', freq_hz=1):
         """
         Statuses:
         1. Idle
@@ -176,9 +177,10 @@ class Area():
             rate.sleep()
 
         #Pickle dump
-        self.dump_data(f_record)
+        self.dump_data(f_record, filepath)
 
         rospy.on_shutdown(self.shutdown)
 
 if __name__ == '__main__':
+    os.chdir('/root/catkin_ws/src/int_preservation/results')
     Area().run_operation()

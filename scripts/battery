@@ -13,13 +13,15 @@ Battery node that depletes as the robot moves, and charges up when in charging s
     How will we be able to capture the delay?
     PO: Subscriber to robot status. If charging, then battery will be charged up though over some delay.
 """
-
+import os
 from enum import Enum
 import math
 import rospy
 from std_msgs.msg import Float32, Int8
 import project_utils as pu
 import pickle
+import os
+
 
 class robotStatus(Enum):
     IDLE = 10
@@ -82,12 +84,12 @@ class Battery():
         delay = int(math.ceil((self.max_battery - self.battery) / self.batt_restoration))
         return delay
 
-    def dump_data(self, recorded_data):
+    def dump_data(self, recorded_data, filepath):
         """
         Pickle dumps recorded battery data
         :return:
         """
-        with open('robot_{}_battery.pkl'.format(self.robot_id), 'wb') as f:
+        with open(filepath+'robot_{}_battery.pkl'.format(self.robot_id), 'wb') as f:
             pickle.dump(recorded_data, f)
 
     def publish_battery(self):
@@ -99,9 +101,9 @@ class Battery():
         self.battery_status_pub.publish(self.status)
 
     def shutdown(self):
-        pu.log_msg('robot', self.robot_id, "Reached {} time operation. Shutting down...".format(self.t_operation), self.debug_mode)
+        pu.log_msg('robot', self.robot_id, "Reached {} time operation. Shutting down...".format(self.t_operation))
 
-    def run_operation(self, freq_hz=1):
+    def run_operation(self, filepath='', freq_hz=1):
         rate = rospy.Rate(freq_hz)
         battery_record = list()
         while not rospy.is_shutdown() and len(battery_record)<self.t_operation:
@@ -131,10 +133,11 @@ class Battery():
             rate.sleep()
 
         #Save array of recorded battery
-        self.dump_data(battery_record)
+        self.dump_data(battery_record, filepath)
 
         rospy.on_shutdown(self.shutdown)
 
 
 if __name__ == '__main__':
-    Battery('battery').run_operation(1)
+    os.chdir('/root/catkin_ws/src/int_preservation/results')
+    Battery('battery').run_operation()
