@@ -17,10 +17,10 @@ TrajectoryPlannerROS:
   escape_vel: -0.1
   
   #For this example, we'll use a holonomic robot
-  holonomic_robot: true
+  holonomic_robot: false
 
   #Since we're using a holonomic robot, we'll set the set of y velocities it will sample
-  y_vels: [-0.3, -0.1, 0.1, -0.3]
+  #y_vels: [-0.3, -0.1, 0.1, -0.3]
 
   #Set the tolerance on achieving a goal
   xy_goal_tolerance: 0.1

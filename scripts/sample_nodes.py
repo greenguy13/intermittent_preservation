@@ -127,7 +127,6 @@ class Robot:
         """
 
     # MAP/NAVIGATION METHODS
-    # TODO: Can be modular
     def static_map_callback(self, data):
         """
         Callback for grid

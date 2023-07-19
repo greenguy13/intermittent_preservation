@@ -2,29 +2,42 @@
 <launch>
 <arg name="robot"/>
 <arg name="method"/>
+<arg name="initial_pose_x"/>
+<arg name="initial_pose_y" />
 <arg name="robot_id" value="$(eval arg('robot') - 1)"/>
 <arg name="robot_prefix" value="robot_$(arg robot_id)"/>
 
 <param name="tf_prefix" type="string" value="robot_$(arg robot_id)"/>
 
-<rosparam command="load" file="$(find int_preservation)/param/ros.yaml" subst_value="true"/>
-
-<!-- <node name="map_align" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 map odom 100"/> -->
+<!-- <rosparam command="load" file="$(find int_preservation)/param/ros.yaml" subst_value="true"/> -->
 
 <node pkg="move_base" type="move_base" respawn="false" name="move_base_node" output="screen">
     <remap from="map" to="/map" />
     <param name="controller_frequency" value="10.0" />
-    <rosparam file="$(find sample_nav)/move_base_config/costmap_common_params.yaml" command="load" ns="global_costmap" />
-    <rosparam file="$(find sample_nav)/move_base_config/costmap_common_params.yaml" command="load" ns="local_costmap" />
-    <rosparam file="$(find sample_nav)/move_base_config/local_costmap_params.yaml" command="load" subst_value="true"/>
-    <rosparam file="$(find sample_nav)/move_base_config/global_costmap_params.yaml" command="load" subst_value="true"/>
-    <rosparam file="$(find sample_nav)/move_base_config/base_local_planner_params.yaml" command="load" />
+    <rosparam file="$(find int_preservation)/move_base_config/costmap_common_params.yaml" command="load" ns="global_costmap" />
+    <rosparam file="$(find int_preservation)/move_base_config/costmap_common_params.yaml" command="load" ns="local_costmap" />
+    <rosparam file="$(find int_preservation)/move_base_config/local_costmap_params.yaml" command="load" subst_value="true"/>
+    <rosparam file="$(find int_preservation)/move_base_config/global_costmap_params.yaml" command="load" subst_value="true"/>
+    <rosparam file="$(find int_preservation)/move_base_config/base_local_planner_params.yaml" command="load" />
 </node>
 
+<!-- node name="map_align" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 map robot_$(arg robot_id)/odom 100"/ -->
+<!--
 <node pkg="fake_localization" type="fake_localization" name="fake_localization" respawn="false">
     <param name="odom_frame_id" value="robot_$(arg robot_id)/odom" />
     <param name="base_frame_id" value="robot_$(arg robot_id)/base_link" />
 </node>
+-->
+
+<include file="$(find int_preservation)/launch/robots/amcl.launch">
+    <arg name="scan_topic" value="base_scan"/>
+    <arg name="initial_pose_x" value="$(arg initial_pose_x)"/>
+    <arg name="initial_pose_y" value="$(arg initial_pose_y)"/>
+    <arg name="odom_frame_id" value="robot_$(arg robot_id)/odom" />
+    <arg name="base_frame_id" value="robot_$(arg robot_id)/base_link" />
+</include>
+
+
 
 <node name="battery" pkg="int_preservation" type="battery.py">
     <param name="robot_id" value="$(arg robot_id)"/>
@@ -33,4 +46,5 @@
 <node name="$(arg method)" pkg="int_preservation" type="$(arg method).py">
     <param name="robot_id" value="$(arg robot_id)"/>
 </node>
+
 </launch>

@@ -5,8 +5,6 @@
     <arg name="area_count" default="3"/>
     <arg name="run" default="1"/>
 
-    <!--arg name="model" default="$(env TURTLEBOT3_MODEL)" doc="model type [burger, waffle, waffle_pi]"/ -->
-    <arg name="model" default="waffle_pi"/>
     <arg name="cmd_vel_topic" default="/cmd_vel" />
     <arg name="odom_topic" default="odom" />
     <arg name="move_forward_only" default="false"/>
@@ -32,7 +30,5 @@
 
     <!-- RVIZ to view the visualization -->
     <node name="RVIZ" pkg="rviz" type="rviz" args=" -d $(find int_preservation)/param/mission.rviz" output="screen" />
-
-    <node name="move_base" pkg="move_base" type="move_base" />
 
 </launch>
