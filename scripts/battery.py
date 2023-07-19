@@ -2,18 +2,14 @@
 
 """
 ### Robot battery
-Battery node that depletes as the robot moves, and charges up when in charging station
+Battery node that depletes when the robot is in mission, charges up when in charging station, and idle when robot is idle/thinking.
 
     Publisher:
         battery level
     Subscriber:
-        robot location
+        robot status
 
-    PO: If robot_status is charging, we charge up battery. Although, there should be delay in charging
-    How will we be able to capture the delay?
-    PO: Subscriber to robot status. If charging, then battery will be charged up though over some delay.
 """
-import os
 from enum import Enum
 import math
 import rospy
@@ -21,27 +17,16 @@ from std_msgs.msg import Float32, Int8
 import project_utils as pu
 import pickle
 import os
-
-
-class robotStatus(Enum):
-    IDLE = 10
-    READY = 11
-    IN_MISSION = 20
-    CHARGING = 30
-    RESTORING_F = 40
+from status import battStatus, robotStatus
 
 class Battery():
-    IDLE = 0
-    DEPLETING = 1
-    CHARGING = 10
-    FULLY_CHARGED = 11
-
     def __init__(self, node_name):
         #Params
         rospy.init_node(node_name)
         self.robot_id = rospy.get_param('~robot_id')
         self.max_battery = rospy.get_param("/max_battery")
-        self.batt_depletion, self.batt_restoration = rospy.get_param("/batt_consumed_per_time")
+        self.batt_depletion_travel, self.batt_depletion_restoring_f = rospy.get_param("/batt_consumed_per_time") #two types of batt depletion rate: while travelling and restoring F
+        self.batt_restoration = rospy.get_param("/restoration")
         self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
 
         #Publisher/subscriber
@@ -51,7 +36,8 @@ class Battery():
 
         #Init values
         self.battery = self.max_battery
-        self.status = self.IDLE
+        self.status = battStatus.IDLE.value
+        self.batt_depletion_rate = self.batt_depletion_travel
 
     def robot_status_cb(self, msg):
         """
@@ -60,12 +46,16 @@ class Battery():
         """
         robot_status = msg.data
         if robot_status == robotStatus.IDLE.value or robot_status == robotStatus.READY.value:
-            self.update_status(self.IDLE)
+            self.update_status(battStatus.IDLE)
         elif robot_status == robotStatus.IN_MISSION.value or robot_status == robotStatus.RESTORING_F.value:
-            self.update_status(self.DEPLETING)
+            #Differentiate the rate of battery depletion between travelling and restoring F
+            self.batt_depletion_rate = self.batt_depletion_travel
+            if robot_status == robotStatus.RESTORING_F.value:
+                self.batt_depletion_rate = self.batt_depletion_restoring_f
+            self.update_status(battStatus.DEPLETING)
         elif (robot_status == robotStatus.CHARGING.value) and (self.battery < self.max_battery):
-            self.update_status(self.CHARGING)
-        pu.log_msg('robot', self.robot_id, 'robot status: {}. battery status: {}'.format(robot_status, self.status))
+            self.update_status(battStatus.CHARGING)
+        pu.log_msg('robot', self.robot_id, 'robot status: {}. battery status: {} level: {}'.format(robot_status, self.status, self.battery))
 
     def update_status(self, status):
         """
@@ -73,7 +63,7 @@ class Battery():
         :param status:
         :return:
         """
-        self.status = status
+        self.status = status.value
 
 
     def charge_delay(self):
@@ -84,12 +74,12 @@ class Battery():
         delay = int(math.ceil((self.max_battery - self.battery) / self.batt_restoration))
         return delay
 
-    def dump_data(self, recorded_data, filepath):
+    def dump_data(self, recorded_data, filepath, exp):
         """
         Pickle dumps recorded battery data
         :return:
         """
-        with open(filepath+'robot_{}_battery.pkl'.format(self.robot_id), 'wb') as f:
+        with open(filepath+'robot_{}_battery_{}.pkl'.format(self.robot_id, exp), 'wb') as f:
             pickle.dump(recorded_data, f)
 
     def publish_battery(self):
@@ -103,41 +93,42 @@ class Battery():
     def shutdown(self):
         pu.log_msg('robot', self.robot_id, "Reached {} time operation. Shutting down...".format(self.t_operation))
 
-    def run_operation(self, filepath='', freq_hz=1):
+    def run_operation(self, exp, filepath='', freq_hz=1):
         rate = rospy.Rate(freq_hz)
         battery_record = list()
         while not rospy.is_shutdown() and len(battery_record)<self.t_operation:
             if self.robot_id == 0:
-                if self.status == self.IDLE:
+                if self.status == battStatus.IDLE.value:
                     pass
 
-                elif self.status == self.DEPLETING:
-                    self.battery -= self.batt_depletion
+                elif self.status == battStatus.DEPLETING.value:
+                    self.battery -= self.batt_depletion_rate
 
-                elif self.status == self.CHARGING:
+                elif self.status == battStatus.CHARGING.value:
                     delay = self.charge_delay()
                     for i in range(delay):
                         self.battery = min(self.battery+self.batt_restoration, self.max_battery)
                         battery_record.append(self.battery)
                         self.publish_battery()
                         rate.sleep()
-                    self.update_status(self.FULLY_CHARGED)
+                    self.update_status(battStatus.FULLY_CHARGED)
 
-                elif self.status == self.FULLY_CHARGED:
-                    pass
+                elif self.status == battStatus.FULLY_CHARGED.value:
+                    self.update_status(battStatus.IDLE)
 
                 #Store battery here
-                battery_record.append(self.battery)
+                if self.status != battStatus.IDLE.value:
+                    battery_record.append(self.battery)
                 self.publish_battery()
 
             rate.sleep()
 
         #Save array of recorded battery
-        self.dump_data(battery_record, filepath)
+        self.dump_data(battery_record, filepath, exp)
 
         rospy.on_shutdown(self.shutdown)
 
 
 if __name__ == '__main__':
     os.chdir('/root/catkin_ws/src/int_preservation/results')
-    Battery('battery').run_operation()
+    Battery('battery').run_operation(exp=1)

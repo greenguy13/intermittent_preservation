@@ -2,11 +2,6 @@
 
 import math
 
-#Perhaps we remove these global variables and insert them as parameters to the functions instead
-# global max_fmeasure
-# global fsafe
-# max_fmeasure = 100
-# fsafe = 80
 
 def decay(rate, t, starting_value):
     """
@@ -39,50 +34,17 @@ def beta_rate(rate, rates):
     beta = rate / sum(rates)
     return beta
 
-# def compute_loss(max_fmeasure, decayed_fmeasure, fsafe, rate, rates, est_duration):
-#     """
-#     Computes loss by estimating the decayed fmeasure given the decay rate after a set duration
-#     :param decayed_fmeasure:
-#     :param rate:
-#     :param duration:
-#     :return:
-#     """
-#     t0 = get_time_given_decay(max_fmeasure, decayed_fmeasure, rate)
-#     t = t0 + est_duration
-#     est_decayed_fmeasure = decay(rate, t, max_fmeasure)
-#     print("Current measure: {}. Estimated decayed measure: {}".format(decayed_fmeasure, est_decayed_fmeasure))
-#
-#     # This part here needs fixing
-#     if est_decayed_fmeasure < fsafe:
-#         diff = fsafe - est_decayed_fmeasure
-#     else:
-#         diff = 0
-#
-#     beta = beta_rate(rate, rates)
-#
-#     loss = beta*diff**2
-#
-#     return float(loss)
-
-# def compute_cost_fmeasures(fmeasures, decay_rates, fsafe):
-#     """
-#     Computes the cost, (i.e., the sum of losses), given the F-measures
-#     :param fmeasures: dict of F-measures of areas
-#     :param decay_rates: dict of decay rates of areas
-#     :return:
-#     """
-#     cost = 0
-#     areas = fmeasures.keys()
-#     for area in areas:
-#         if fmeasures[area] < fsafe:
-#             diff = fsafe - fmeasures[area]
-#         else:
-#             diff = 0
-#
-#         beta = beta_rate(decay_rates[area], list(decay_rates.values()))
-#         loss = beta*diff**2
-#         cost += loss
-#     return cost
+"""
+TODO: Refinements
+> compute_loss
+    + the loss function
+> forecast_loss
+    + forecast the loss given estimated duration
+    + uses compute_loss 
+> compute_cost_fmeasures
+    + compute the loss for each F-measure
+    + sum up all the losses
+"""
 
 def compute_loss(max_fmeasure, decayed_fmeasure, fsafe, fcrit, rate, est_duration):
     """
@@ -115,17 +77,15 @@ def compute_cost_fmeasures(fmeasures, fsafe, fcrit):
     :param fmeasures: dict of F-measures of areas
     :return:
     """
-    #TODO: We can use compute_loss instead to compute the losses
-
     cost = 0
     areas = fmeasures.keys()
     for area in areas:
         if fmeasures[area] >= fsafe:
-            loss = 0 #fsafe - fmeasures[area]
+            loss = 100 - fmeasures[area]
         elif fcrit <= fmeasures[area] and fmeasures[area] < fsafe:
-            loss = 2*(fsafe - fmeasures[area]) #fsafe - fmeasures[area]
+            loss = 2*(100 - fmeasures[area]) #fsafe - fmeasures[area]
         elif fmeasures[area] < fcrit:
-            loss = (fsafe - fmeasures[area])**2
+            loss = (100 - fmeasures[area])**2
         cost += loss
     return cost
 

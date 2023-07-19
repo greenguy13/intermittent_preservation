@@ -9,12 +9,12 @@ robot_radius: 1.0 #for grid cell computation
 
 robot_velocity: 1.0 #Linear velocity of robot; we assume linear and angular are relatively equal
 max_fmeasure: 100  # Max F-measure of an area
-max_battery: 100 #Max battery
+max_battery: 100 #Max battery.py
 f_thresh: [80, 50] #(safe, crit)
 batt_consumed_per_time: [0.10, 0.10] #(travel, restoration)
-restoration: 25 #F-measure/battery units per second restored
-decay_rates_dict: {'1': 0.05, '2': 0.10, '3': 0.05} #Decay rate of areas
-dec_steps: 3
+restoration: 25 #F-measure/battery.py units per second restored
+decay_rates_dict: {'1': 0.005, '2': 0.010, '3': 0.005} #Decay rate of areas
+dec_steps: 7
 noise: 0.01
 move_base_tolerance: 0.5
 degree_criterion_node_selection: 3 #Criterion for area selection, number of degree = 2 suggests leaf areas

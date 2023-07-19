@@ -66,6 +66,7 @@ class Environment:
         #start_time_clock = rospy.Time.now().to_sec()
 
         # Get Voronoi diagram.
+        # Get Voronoi diagram.
         vor = Voronoi(obstacles)
         #end_time_clock = rospy.Time.now().to_sec()
         #pu.log_msg(self.robot_id,"voronoi {}".format(#end_time_clock - #start_time_clock),self.debug_mode)

@@ -57,24 +57,16 @@ find_package(catkin REQUIRED COMPONENTS
 # )
 
 ## Generate services in the 'srv' folder
-add_service_files(
-    FILES
-        location.srv
-        battery_level.srv
-        area_assignment.srv
-        assignment_notice.srv
-        bid_area.srv
-        robot_availability.srv
-)
+# add_service_files(
+#    FILES
+#
+# )
 
 
 ## Generate actions in the 'action' folder
-add_action_files(
-    FILES
-        visit.action
-        monitor.action
-        charge_battery.action
-)
+# add_action_files(
+#    FILES
+# )
 
 ## Generate added messages and services with any dependencies listed here
  generate_messages(

@@ -26,7 +26,7 @@
     <param name="base_frame_id" value="robot_$(arg robot_id)/base_link" />
 </node>
 
-<node name="battery" pkg="int_preservation" type="battery">
+<node name="battery" pkg="int_preservation" type="battery.py">
     <param name="robot_id" value="$(arg robot_id)"/>
 </node>
 

@@ -12,7 +12,7 @@ map_frame: map
 map_topic: latched_map
 laser_topic: base_scan
 
-scan_subscriber_status: scan_status  # @kizito
+scan_subscriber_status: scan_status
 
 ### ROS services ##########################################
 map_service: /static_map

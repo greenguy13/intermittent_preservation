@@ -25,20 +25,10 @@ import rospy
 from std_msgs.msg import Float32, Int8
 import project_utils as pu
 import pickle
+from status import areaStatus, robotStatus
 
-class robotStatus(Enum):
-    IDLE = 10
-    READY = 11
-    IN_MISSION = 20
-    CHARGING = 30
-    RESTORING_F = 40
 
 class Area():
-    IDLE = 0
-    DECAYING = 1
-    RESTORING_F = 10
-    RESTORED_F = 11
-
     def __init__(self):
         rospy.init_node('area', anonymous=True)
         self.area = rospy.get_param("~area_id")
@@ -59,11 +49,13 @@ class Area():
         self.status_pub = rospy.Publisher("/area_{}/status".format(self.area), Int8, queue_size=1)
 
         # Subscribed topics
+        ## Suggestion: General/multi-robots
         rospy.Subscriber('/robot_{}/robot_status'.format(self.robot_id), Int8, self.robot_status_cb)
         rospy.Subscriber('/robot_{}/mission_area'.format(self.robot_id), Int8, self.mission_area_cb)
 
-        self.status = self.IDLE
+        self.status = areaStatus.IDLE.value
         self.robot_mission_area = None
+        self.tlapse = 0
 
     def robot_status_cb(self, msg):
         """
@@ -72,13 +64,13 @@ class Area():
         """
         robot_status = msg.data
         if (robot_status == robotStatus.IDLE.value) or (robot_status == robotStatus.READY.value):
-            self.update_status(self.IDLE)
+            self.update_status(areaStatus.IDLE)
         elif robot_status == robotStatus.IN_MISSION.value or (robot_status == robotStatus.RESTORING_F.value and self.robot_mission_area != self.area) \
                 or robot_status == robotStatus.CHARGING.value:
-            self.update_status(self.DECAYING)
+            self.update_status(areaStatus.DECAYING)
         elif (robot_status == robotStatus.RESTORING_F.value and self.robot_mission_area == self.area) and (self.fmeasure < self.max_fmeasure):
-            self.update_status(self.RESTORING_F)
-        pu.log_msg('robot', self.robot_id, 'robot status: {}. area {} status: {}'.format(robot_status, self.area, self.status))
+            self.update_status(areaStatus.RESTORING_F)
+        pu.log_msg('robot', self.robot_id, 'robot status: {}. area {} status: {} fmeasure: {} tlapse: {}'.format(robot_status, self.area, self.status, self.fmeasure, self.tlapse))
 
     def mission_area_cb(self, msg):
         """
@@ -119,21 +111,21 @@ class Area():
         :param status:
         :return:
         """
-        self.status = status
+        self.status = status.value
 
-    def dump_data(self, recorded_data, filepath):
+    def dump_data(self, recorded_data, filepath, exp):
         """
         Pickle dumps recorded F-measure data
         :return:
         """
-        with open(filepath+'area_{}_fmeasure.pkl'.format(self.area), 'wb') as f:
+        with open(filepath+'area_{}_fmeasure_{}.pkl'.format(self.area, exp), 'wb') as f:
             pickle.dump(recorded_data, f)
 
     def shutdown(self):
         pu.log_msg('robot', self.robot_id, "path: {}".format(os.getcwd()))
         pu.log_msg('robot', self.robot_id, "Reached {} time operation. Shutting down...".format(self.t_operation))
 
-    def run_operation(self, filepath='', freq_hz=1):
+    def run_operation(self, exp, filepath='', freq_hz=1):
         """
         Statuses:
         1. Idle
@@ -147,40 +139,40 @@ class Area():
         """
         rate = rospy.Rate(freq_hz)
         f_record = list()
-        t = 0
         while not rospy.is_shutdown() and len(f_record)<self.t_operation:
-            if self.status == self.IDLE:
+            if self.status == areaStatus.IDLE.value:
                 pass
 
-            elif self.status == self.DECAYING:
-                self.decay(t)
-                t += 1
+            elif self.status == areaStatus.DECAYING.value:
+                self.decay(self.tlapse)
+                self.tlapse += 1
 
-            elif self.status == self.RESTORING_F:
+            elif self.status == areaStatus.RESTORING_F.value:
                 delay = self.restore_delay()
                 for i in range(delay):
                     self.fmeasure = min(self.fmeasure+self.restoration, self.max_fmeasure)
                     f_record.append(self.fmeasure)
                     self.publish_fmeasure()
                     rate.sleep()
-                self.update_status(self.RESTORED_F)
-
-            elif self.status == self.RESTORED_F:
                 # Restore parameters
-                t = 0
-                self.update_status(self.IDLE)
+                self.tlapse = 0
+                self.update_status(areaStatus.RESTORED_F)
+
+            elif self.status == areaStatus.RESTORED_F.value:
+                self.update_status(areaStatus.IDLE)
 
             # Save F-measure here
-            f_record.append(self.fmeasure)
+            if self.status != areaStatus.IDLE.value:
+                f_record.append(self.fmeasure)
             self.publish_fmeasure()
 
             rate.sleep()
 
         #Pickle dump
-        self.dump_data(f_record, filepath)
+        self.dump_data(f_record, filepath, exp)
 
         rospy.on_shutdown(self.shutdown)
 
 if __name__ == '__main__':
     os.chdir('/root/catkin_ws/src/int_preservation/results')
-    Area().run_operation()
+    Area().run_operation(exp=1)

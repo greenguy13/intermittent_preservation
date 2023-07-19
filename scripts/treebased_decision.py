@@ -17,61 +17,34 @@ import numpy as np
 import rospy
 import actionlib
 from loss_fcns import *
-from cost_fcns import *
 from pruning import *
 import tf
 import project_utils as pu
 from scipy.spatial import distance, Voronoi
 import igraph
 from grid import Grid
-from int_preservation.srv import flevel, flevelRequest
 from nav_msgs.srv import GetPlan
 from nav_msgs.msg import Odometry, OccupancyGrid
 from geometry_msgs.msg import Point, Pose, PoseStamped
 from std_msgs.msg import Int8, Float32
 from visualization_msgs.msg import Marker
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
-
+from status import areaStatus, battStatus, robotStatus
 
 """
-Phases of progress toward completion:
-    P1: Compute distance matrix (Done)
-    P2: Send the robot to each area (Done)
-    P3: Restore F and battery (For review)
-    P4: Incorporate decision making via decision tree given forecast steps, k (For review)
-    P5: Gather and analyze baseline results
-    
-UPNEXT: Phase 5. See sticky notes for some remarks in this phase
-1. Generate results. Make preliminary analysis
-2. Make remarks to improve the experiment
-3. Make the results reproducible (random seeds) and statistically robuts (multiple experiments)
+Tasks
+    T1: Fine tune move_base params to effectively maneuver obstacles
+    T2: Modularize some aspects of the scripts, particularly the sampling of nodes from decision methods
+    T3: Save data by rosbag: Identify info/data for summary
+    T4: Replicate the experiments (multiple experiments with diff seeds)
+    T5: Visualize real-time changes in F-measure in areas
 """
 
 INDEX_FOR_X = 0
 INDEX_FOR_Y = 1
 SUCCEEDED = 3 #GoalStatus ID for succeeded, http://docs.ros.org/en/api/actionlib_msgs/html/msg/GoalStatus.html
 
-#TODO: A better way for the class enums is to have them outside the constructors and then just import them if we wish to use them.
-
-class batteryStatus(Enum):
-    IDLE = 0
-    DEPLETING = 1
-    CHARGING = 10
-    FULLY_CHARGED = 11
-
-class areaStatus(Enum):
-    IDLE = 0
-    DECAYING = 1
-    RESTORING_F = 10
-    RESTORED_F = 11
-
 class Robot:
-    IDLE = 0
-    READY = 11
-    IN_MISSION = 20
-    CHARGING = 30
-    RESTORING_F = 40
-
     def __init__(self, node_name):
         """
 
@@ -115,7 +88,7 @@ class Robot:
         self.optimal_path = []
         self.graph, self.dist_matrix = None, None
         self.mission_area = None
-        self.robot_status = self.IDLE
+        self.robot_status = robotStatus.IDLE.value
         self.available = True
         self.curr_fmeasures = dict() #container of current F-measure of areas
         self.decision_results = []
@@ -151,9 +124,7 @@ class Robot:
             Here, we assume there is only one charging station.
             
             If the robot_status is other than CHARGING, the battery status is DEPLETING.
-        """
-
-        """
+        
         On area restoration:
             Robot's mission area is a specific area. If reaches the area, it changes its status to RESTORING_F.
             Now, the current mission area, which subscribes to both robot_status and robot_mission_area topics, will restore F; while,
@@ -161,6 +132,7 @@ class Robot:
         """
 
     # MAP/NAVIGATION METHODS
+    #TODO: Can be modular
     def static_map_callback(self, data):
         """
         Callback for grid
@@ -438,7 +410,7 @@ class Robot:
         :return:
         """
         self.available = False
-        self.update_robot_status(self.IN_MISSION)
+        self.update_robot_status(robotStatus.IN_MISSION)
 
     def action_send_done_cb(self, state, result, robot_id):
         """
@@ -448,9 +420,9 @@ class Robot:
         """
         if state == SUCCEEDED:
             self.curr_loc = self.mission_area
-            self.update_robot_status(self.RESTORING_F)
+            self.update_robot_status(robotStatus.RESTORING_F)
             if self.mission_area == self.charging_station:
-                self.update_robot_status(self.CHARGING)
+                self.update_robot_status(robotStatus.CHARGING)
 
 
     #DECISION-MAKING methods
@@ -671,7 +643,7 @@ class Robot:
         pu.log_msg('robot', self.robot_id, "Reached {} time operation. Shutting down...".format(self.t_operation), self.debug_mode)
 
     #Methods: Run operation
-    def run_operation(self, filepath=''):
+    def run_operation(self, exp, filepath=''):
         """
         :return:
         """
@@ -680,33 +652,33 @@ class Robot:
         while not rospy.is_shutdown() and t<self.t_operation:
             if self.robot_id == 0:
                 self.robot_status_pub.publish(self.robot_status)
-                if self.robot_status == self.IDLE:
+                if self.robot_status == robotStatus.IDLE.value:
                     pu.log_msg('robot', self.robot_id, 'Robot idle', self.debug_mode)
                     if self.dist_matrix is not None:  # Here, the distance matrix we have to supply the correct distance computations
-                        self.update_robot_status(self.READY)
+                        self.update_robot_status(robotStatus.READY)
 
-                elif self.robot_status == self.READY:
+                elif self.robot_status == robotStatus.READY.value:
                     pu.log_msg('robot', self.robot_id, 'Robot ready', self.debug_mode)
                     self.think_decisions()
                     pu.log_msg('robot', self.robot_id, 'Path: ' + str(self.optimal_path), self.debug_mode)
-                    self.update_robot_status(self.IN_MISSION)
+                    self.update_robot_status(robotStatus.IN_MISSION)
 
-                elif self.robot_status == self.IN_MISSION:
+                elif self.robot_status == robotStatus.IN_MISSION.value:
                     pu.log_msg('robot', self.robot_id, 'Robot in mission', self.debug_mode)
                     if self.available:
                         self.commence_mission()
 
-                elif self.robot_status == self.CHARGING:
+                elif self.robot_status == robotStatus.CHARGING.value:
                     pu.log_msg('robot', self.robot_id, 'Waiting for battery to charge up', self.debug_mode)
 
-                elif self.robot_status == self.RESTORING_F:
+                elif self.robot_status == robotStatus.RESTORING_F.value:
                     pu.log_msg('robot', self.robot_id, 'Restoring F-measure', self.debug_mode)
 
             t += 1
             rate.sleep()
 
         #Store results
-        if self.robot_id==0: self.dump_data(self.decision_results, filepath)
+        if self.robot_id==0: self.dump_data(self.decision_results, filepath, exp)
         #TODO: Differentiate between decisions made and nodes visited
         rospy.on_shutdown(self.shutdown)
 
@@ -724,7 +696,7 @@ class Robot:
         :return:
         """
         if self.send2_next_area() == 0:
-            self.update_robot_status(self.IDLE)
+            self.update_robot_status(robotStatus.IDLE)
 
     def send2_next_area(self):
         """
@@ -746,7 +718,7 @@ class Robot:
         :param status:
         :return:
         """
-        self.robot_status = status
+        self.robot_status = status.value
 
     def battery_level_cb(self, msg):
         """
@@ -762,10 +734,10 @@ class Robot:
         :param msg:
         :return:
         """
-        if msg.data == batteryStatus.FULLY_CHARGED.value:
+        if msg.data == battStatus.FULLY_CHARGED.value:
             if self.robot_id == 0: pu.log_msg('robot', self.robot_id, "Fully charged!")
             self.available = True
-            self.update_robot_status(self.IN_MISSION)
+            self.update_robot_status(robotStatus.IN_MISSION)
 
     def area_status_cb(self, msg):
         """
@@ -776,7 +748,7 @@ class Robot:
         if msg.data == areaStatus.RESTORED_F.value:
             if self.robot_id == 0: pu.log_msg('robot', self.robot_id, "Area fully restored!")
             self.available = True
-            self.update_robot_status(self.IN_MISSION)
+            self.update_robot_status(robotStatus.IN_MISSION)
 
     def area_fmeasure_cb(self, msg, area_id):
         """
@@ -787,12 +759,12 @@ class Robot:
         """
         self.curr_fmeasures[area_id] = msg.data
 
-    def dump_data(self, recorded_data, filepath):
+    def dump_data(self, recorded_data, filepath, exp):
         """
         Pickle dumps recorded chosen optimal decisions
         :return:
         """
-        with open(filepath+'robot_{}_decisions.pkl'.format(self.robot_id), 'wb') as f:
+        with open(filepath+'robot_{}_decisions_{}.pkl'.format(self.robot_id, exp), 'wb') as f:
             pickle.dump(recorded_data, f)
 
     def debug(self, msg):
@@ -801,4 +773,4 @@ class Robot:
 if __name__ == '__main__':
     rd.seed(1)
     os.chdir('/root/catkin_ws/src/int_preservation/results')
-    Robot('treebased_decision').run_operation()
+    Robot('treebased_decision').run_operation(exp=1)
