@@ -45,6 +45,7 @@ class Area():
         pu.log_msg('area', self.area, 'Area {}. decay rate: {}. t_operation: {}. max_f: {}. restore: {}. robot id: {}'.format(self.area, self.decay_rate, self.t_operation, self.max_fmeasure, self.restoration, self.robot_id), 1)
 
         # Published topics
+        self.decay_rate_pub = rospy.Publisher("/area_{}/decay_rate".format(self.area), Float32, queue_size=1)
         self.fmeasure_pub = rospy.Publisher("/area_{}/fmeasure".format(self.area), Float32, queue_size=1)
         self.status_pub = rospy.Publisher("/area_{}/status".format(self.area), Int8, queue_size=1)
 
@@ -93,6 +94,7 @@ class Area():
         Publishes F-measure as a Float topic and status as Int topic
         :return:
         """
+        self.decay_rate_pub.publish(self.decay_rate) # publish decay rate
         self.fmeasure_pub.publish(self.fmeasure)  # publish F-measure
         self.status_pub.publish(self.status)  # publish area status
 

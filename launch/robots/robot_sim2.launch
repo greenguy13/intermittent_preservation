@@ -1,13 +1,33 @@
 <launch>
-    <arg name="world" default="office"/>
+    <arg name="world"/>
     <arg name="method"/>
     <group ns="robot_0">
-        <include file="$(find int_preservation)/launch/robots/nodes.launch">
-            <arg name="robot" value="1"/>
-            <arg name="method" value="$(arg method)"/>
-            <arg name="initial_pose_x" value="-19"/> <!-- TODO for each environment should be different, perhaps loading in yaml file -->
-            <arg name="initial_pose_y" value="-17.5"/>
-        </include>
+        <group if="$(eval world == 'office')">
+            <include file="$(find int_preservation)/launch/robots/nodes.launch">
+                <arg name="robot" value="1"/>
+                <arg name="method" value="$(arg method)"/>
+                <arg name="initial_pose_x" value="-19.0"/>
+                <arg name="initial_pose_y" value="-17.5"/>
+            </include>
+        </group>
+
+        <group if="$(eval world == 'open')">
+            <include file="$(find int_preservation)/launch/robots/nodes.launch">
+                <arg name="robot" value="1"/>
+                <arg name="method" value="$(arg method)"/>
+                <arg name="initial_pose_x" value="-1.0"/>
+                <arg name="initial_pose_y" value="8.0"/>
+            </include>
+        </group>
+
+        <group if="$(eval world == 'cluttered')">
+            <include file="$(find int_preservation)/launch/robots/nodes.launch">
+                <arg name="robot" value="1"/>
+                <arg name="method" value="$(arg method)"/>
+                <arg name="initial_pose_x" value="2.0"/>
+                <arg name="initial_pose_y" value="0.0"/>
+            </include>
+        </group>
     </group>
 
     <group ns="robot_1">

@@ -5,12 +5,12 @@ pioneer3at
 (
   name "robot1"
   color "DarkGreen"
-  pose [-18.10 -17.50 0.0 0.0]
+  pose [-1.0 8.0 0.0 0.0]
 )
 
 pioneer3at
 (
   name "robot2"
   color "DarkBlue"
-  pose [-17.99 -15.53 0.0 0.0]
+  pose [-50.0 -50.0 0.0 0.0]
 )

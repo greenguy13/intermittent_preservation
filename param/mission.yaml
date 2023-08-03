@@ -1,10 +1,12 @@
 
 debug_mode: 1
 method: $(arg method) # method that is running
-robot_count: $(arg robot_count)    # number of robots on the team
-area_count: $(arg area_count) #number of areas to preserve
+nrobots: $(arg nrobots)    # number of robots on the team
+nareas: $(arg nareas) #number of areas to preserve
+dec_steps: $(arg dsteps) #number of decision steps
+t_operation: $(arg tframe) #total duration of the operation
 run: $(arg run)
-discretization_resolution: 0.1 #0.2 #0.1
+discretization_resolution: 0.1 #0.2
 robot_radius: 1.0 #for grid cell computation
 
 robot_velocity: 1.0 #Linear velocity of robot; we assume linear and angular are relatively equal
@@ -13,10 +15,6 @@ max_battery: 100 #Max battery.py
 f_thresh: [80, 50] #(safe, crit)
 batt_consumed_per_time: [0.10, 0.10] #(travel, restoration)
 restoration: 25 #F-measure/battery.py units per second restored
-decay_rates_dict: {'1': 0.005, '2': 0.010, '3': 0.005} #Decay rate of areas
-dec_steps: 1
 noise: 0.01
 move_base_tolerance: 0.5
 degree_criterion_node_selection: 3 #Criterion for area selection, number of degree = 2 suggests leaf areas
-charging_station_coords: [-19.0, -17.50]
-t_operation: 500 #total duration of the operation

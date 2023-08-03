@@ -65,21 +65,19 @@ class Robot:
         self.max_battery = rospy.get_param("/max_battery") #Max battery
         self.fsafe, self.fcrit = rospy.get_param("/f_thresh") #(safe, crit)
         self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = rospy.get_param("/batt_consumed_per_time") #(travel, restoration)
-        self.decay_rates_dict = rospy.get_param("/decay_rates_dict") #Decay rate of areas
-        self.areas = list(self.decay_rates_dict.keys())
-        self.areas = [int(i) for i in self.areas] #list of int area IDs
-        self.dec_steps = rospy.get_param("/dec_steps")
+        self.dec_steps = rospy.get_param("/dec_steps") #STAR
         self.restoration = rospy.get_param("/restoration")
         self.noise = rospy.get_param("/noise")
         self.robot_radius = rospy.get_param("/robot_radius") #for grid cell computation
-        self.nsample_areas = rospy.get_param("/area_count") #Sample nodes from voronoi equal to area count
-        self.seed = 100 + 10*rospy.get_param("/run")
+        self.nareas = rospy.get_param("/nareas") #Sample nodes from voronoi equal to area count #STAR
+        self.areas = [int(i+1) for i in range(self.nareas)]  # list of int area IDs
+        self.seed = 100 + 10*rospy.get_param("/run") #STAR
         self.degree_criterion_node_selection = rospy.get_param("/degree_criterion_node_selection")
         self.tolerance = rospy.get_param("/move_base_tolerance")
         self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
 
         #Initialize variables
-        charging_station_coords = rospy.get_param("/charging_station_coords")
+        charging_station_coords = rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y") #rospy.get_param("/charging_station_coords")
         charging_pose_stamped = self.convert_coords_to_PoseStamped(charging_station_coords)
         self.sampled_nodes_poses = [charging_pose_stamped] #list container for sampled nodes of type PoseStamped
         self.charging_station = 0
@@ -91,6 +89,10 @@ class Robot:
         self.robot_status = robotStatus.IDLE.value
         self.available = True
         self.curr_fmeasures = dict() #container of current F-measure of areas
+        self.decay_rates_dict = dict() #dictionary for decay rates
+        for area in self.areas:
+            self.decay_rates_dict[str(area)] = None
+        self.decay_rates_counter = 0 #counter for stored decay rates; should be equal to number of areas
         self.decision_results = []
 
         #Publishers/Subscribers
@@ -105,6 +107,7 @@ class Robot:
         rospy.Subscriber('/robot_{}/battery'.format(self.robot_id), Float32, self.battery_level_cb)
 
         for area in self.areas:
+            rospy.Subscriber('/area_{}/decay_rate'.format(area), Float32, self.decay_rate_cb, area)
             rospy.Subscriber('/area_{}/fmeasure'.format(area), Float32, self.area_fmeasure_cb, area) #REMARK: Here we assume that we have live measurements of the F-measures
             rospy.Subscriber('/area_{}/status'.format(area), Int8, self.area_status_cb)
 
@@ -144,10 +147,11 @@ class Robot:
         self.min_range_radius = 8 / self.latest_map.resolution
         self.min_edge_length = self.robot_radius / self.latest_map.resolution
         self.compute_gvg()
-        if len(self.sampled_nodes_poses) < self.nsample_areas+1:
+        if len(self.sampled_nodes_poses) < self.nareas+1:
             self.sample_nodes_from_voronoi()
             self.build_dist_matrix()
-            pu.log_msg('robot', self.robot_id, "Nodes to preserve: " + str(self.sampled_nodes_poses), self.debug_mode)
+            if self.robot_id == 0:
+                pu.log_msg('robot', self.robot_id, "Nodes to preserve: " + str(self.sampled_nodes_poses), self.debug_mode)
 
     def compute_gvg(self):
         """Compute GVG for exploration."""
@@ -281,7 +285,7 @@ class Robot:
         """
         rd.seed(self.seed+1)
         potential_nodes = self.graph.vs.select(_degree=self.degree_criterion_node_selection)
-        sampled_nodes = rd.sample(potential_nodes.indices, self.nsample_areas)
+        sampled_nodes = rd.sample(potential_nodes.indices, self.nareas)
 
         #Establish the coordinate dictionary here
         for node in sampled_nodes:
@@ -647,7 +651,11 @@ class Robot:
         """
         :return:
         """
+
         rate = rospy.Rate(1)
+        while self.decay_rates_counter != self.nareas:
+            rate.sleep() #Data for decay rates haven't registered yet
+
         t = 0
         while not rospy.is_shutdown() and t<self.t_operation:
             if self.robot_id == 0:
@@ -749,6 +757,18 @@ class Robot:
             if self.robot_id == 0: pu.log_msg('robot', self.robot_id, "Area fully restored!")
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
+
+    def decay_rate_cb(self, msg, area_id):
+        """
+        Store decay rate
+        :param msg:
+        :param area_id:
+        :return:
+        """
+        if self.decay_rates_dict[str(area_id)] == None:
+            if self.robot_id == 0: pu.log_msg('robot', self.robot_id, "Area {} decay rate: {}".format(area_id, msg.data))
+            self.decay_rates_dict[str(area_id)] = msg.data
+            self.decay_rates_counter += 1
 
     def area_fmeasure_cb(self, msg, area_id):
         """

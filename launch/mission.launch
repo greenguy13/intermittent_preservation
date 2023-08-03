@@ -1,18 +1,24 @@
 <launch>
     <arg name="world" default="toy"/>
     <arg name="method" default="treebased_decision"/>
-    <arg name="robot_count" default="2"/>
-    <arg name="area_count" default="3"/>
-    <arg name="run" default="1"/>
+    <arg name="nrobots" default="2"/>
+    <arg name="nareas" default="3"/>
+    <arg name="decay" default="non_uniform"/>
+    <arg name="dsteps" default="3"/>
+    <arg name="tframe" default="500"/>
 
-    <arg name="cmd_vel_topic" default="/cmd_vel" />
-    <arg name="odom_topic" default="odom" />
-    <arg name="move_forward_only" default="false"/>
+<!---
+    PO: method TODO: Random decision making
+    PO: number of different placement of the areas. TODO: Loop script, use seed
+    PO: trials TODO: Loop script, use trial as experiment ID for result storage
+-->
+
+    <arg name="run" default="1"/>
 
     <param name="/use_sim_time" value="true" />
     <rosparam command="load" file="$(find int_preservation)/param/mission.yaml" subst_value="true"/>
 
-    <node name="Stage" pkg="stage_ros" type="stageros" args="$(find int_preservation)/world/$(arg world)$(arg robot_count).world">
+    <node name="Stage" pkg="stage_ros" type="stageros" args="$(find int_preservation)/world/$(arg world)$(arg nrobots).world">
         <param name="base_watchdog_timeout" value="0" />
     </node>
 
@@ -20,12 +26,13 @@
         <param name="frame_id" value="map" />
     </node>
 
-    <include file="$(find int_preservation)/launch/robots/robot_sim$(arg robot_count).launch">
+    <include file="$(find int_preservation)/launch/robots/robot_sim$(arg nrobots).launch">
         <arg name="method" value="$(arg method)"/>
         <arg name="world" value="$(arg world)"/>
     </include>
 
-    <include file="$(find int_preservation)/launch/areas/area_sim$(arg area_count).launch">
+    <include file="$(find int_preservation)/launch/areas/area_sim$(arg nareas).launch">
+        <arg name="decay" value="$(arg decay)"/>
     </include>
 
     <!-- RVIZ to view the visualization -->
