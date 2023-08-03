@@ -71,7 +71,8 @@ class Robot:
         self.robot_radius = rospy.get_param("/robot_radius") #for grid cell computation
         self.nareas = rospy.get_param("/nareas") #Sample nodes from voronoi equal to area count #STAR
         self.areas = [int(i+1) for i in range(self.nareas)]  # list of int area IDs
-        self.seed = 100 + 10*rospy.get_param("/run") #STAR
+        #self.seed = 1000*self.nareas + 100*self.dec_steps + trial #STAR
+        self.seed = rospy.get_param("/seed") #random seed
         self.degree_criterion_node_selection = rospy.get_param("/degree_criterion_node_selection")
         self.tolerance = rospy.get_param("/move_base_tolerance")
         self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
@@ -688,6 +689,7 @@ class Robot:
         #Store results
         if self.robot_id==0: self.dump_data(self.decision_results, filepath, exp)
         #TODO: Differentiate between decisions made and nodes visited
+        #TODO: Store in rosbag, use rospy.get_param("/trial") to set the filename
         rospy.on_shutdown(self.shutdown)
 
     def think_decisions(self):
@@ -791,6 +793,5 @@ class Robot:
         pu.log_msg('robot', self.robot_id, msg, self.debug_mode)
 
 if __name__ == '__main__':
-    rd.seed(1)
     os.chdir('/root/catkin_ws/src/int_preservation/results')
     Robot('treebased_decision').run_operation(exp=1)

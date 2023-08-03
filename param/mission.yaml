@@ -5,7 +5,7 @@ nrobots: $(arg nrobots)    # number of robots on the team
 nareas: $(arg nareas) #number of areas to preserve
 dec_steps: $(arg dsteps) #number of decision steps
 t_operation: $(arg tframe) #total duration of the operation
-run: $(arg run)
+seed: $(arg seed) #random seed
 discretization_resolution: 0.1 #0.2
 robot_radius: 1.0 #for grid cell computation
 

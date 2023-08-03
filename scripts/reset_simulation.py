@@ -41,16 +41,14 @@ def kill_nodes(nodes_to_kill, sleep):
                 print("No process")
             time.sleep(sleep)
 
-def launch_nodes(package, launch_file, sleep):
+def launch_nodes(package, launch_file, params, sleep):
     """
-    Runs the world file and list of python scripts
-    Args:
-        world: world file name
-        python_scripts: list of python scripts
-
+    Runs the launch file with params
     Returns:
 
     """
+    inp = ['roslaunch', package, launch_file]
+    inp.extend(params)
     subprocess.Popen(['roslaunch', package, launch_file])
     time.sleep(sleep)
 

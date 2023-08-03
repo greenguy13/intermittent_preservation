@@ -6,6 +6,8 @@
     <arg name="decay" default="non_uniform"/>
     <arg name="dsteps" default="3"/>
     <arg name="tframe" default="500"/>
+    <arg name="seed" default="1"/>
+    <arg name="trial" default="1"/>
 
 <!---
     PO: method TODO: Random decision making

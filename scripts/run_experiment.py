@@ -27,3 +27,24 @@ for each world:
                         run trial: roslaunch with the correct parameters
                             > world, nareas, uniform/non-uniform, decision steps?
 """
+
+from reset_simulation import *
+
+worlds = ['office', 'open', 'cluttered']
+nareas = [3, 6, 9]
+decay_category = ['uniform', 'non_uniform']
+dec_steps = [1, 3]
+nplacements = 3
+ntrials = 5
+
+for w in worlds:
+    for n in nareas:
+        for p in range(nplacements):
+            seed = n*1000 + (p+1)*10
+            for d in decay_category:
+                for k in dec_steps:
+                        for t in range(ntrials):
+                            params = [] #params: world:=w, nareas:=n, decay:=d, dsteps:=k, seed:=seed, trial:=t
+                            launch_nodes(seed)
+                            #Ensure we reached the end and saved the desired length of rosbag. perhaps t_operation?
+                            reset_simulation()
