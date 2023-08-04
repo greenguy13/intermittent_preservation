@@ -126,9 +126,10 @@ class Battery():
         #Save array of recorded battery
         self.dump_data(battery_record, filepath, exp)
 
-        rospy.on_shutdown(self.shutdown)
+        # rospy.on_shutdown(self.shutdown)
 
 
 if __name__ == '__main__':
     os.chdir('/root/catkin_ws/src/int_preservation/results')
-    Battery('battery').run_operation(exp=1)
+    trial = rospy.get_param('/trial')
+    Battery('battery').run_operation(exp=trial)

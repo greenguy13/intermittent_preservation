@@ -30,6 +30,7 @@ from std_msgs.msg import Int8, Float32
 from visualization_msgs.msg import Marker
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from status import areaStatus, battStatus, robotStatus
+from reset_simulation import *
 
 """
 Tasks
@@ -644,8 +645,9 @@ class Robot:
         optimal_path.pop(0) #we pop out the first element of the path, which is the current location, which is not needed in current mission
         return optimal_path
 
-    def shutdown(self):
+    def shutdown(self, sleep):
         pu.log_msg('robot', self.robot_id, "Reached {} time operation. Shutting down...".format(self.t_operation), self.debug_mode)
+        kill_nodes(sleep)
 
     #Methods: Run operation
     def run_operation(self, exp, filepath=''):
@@ -689,8 +691,9 @@ class Robot:
         #Store results
         if self.robot_id==0: self.dump_data(self.decision_results, filepath, exp)
         #TODO: Differentiate between decisions made and nodes visited
-        #TODO: Store in rosbag, use rospy.get_param("/trial") to set the filename
-        rospy.on_shutdown(self.shutdown)
+        # rospy.on_shutdown(self.shutdown)
+        # kill_nodes(sleep=5)
+        self.shutdown(sleep=10)
 
     def think_decisions(self):
         """
@@ -794,4 +797,5 @@ class Robot:
 
 if __name__ == '__main__':
     os.chdir('/root/catkin_ws/src/int_preservation/results')
-    Robot('treebased_decision').run_operation(exp=1)
+    trial = rospy.get_param('/trial')
+    Robot('treebased_decision').run_operation(exp=trial)

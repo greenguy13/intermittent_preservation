@@ -6,6 +6,7 @@ nareas: $(arg nareas) #number of areas to preserve
 dec_steps: $(arg dsteps) #number of decision steps
 t_operation: $(arg tframe) #total duration of the operation
 seed: $(arg seed) #random seed
+trial: $(arg trial) #trial
 discretization_resolution: 0.1 #0.2
 robot_radius: 1.0 #for grid cell computation
 

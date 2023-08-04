@@ -30,21 +30,32 @@ for each world:
 
 from reset_simulation import *
 
-worlds = ['office', 'open', 'cluttered']
-nareas = [3, 6, 9]
+worlds = ['office', 'open']
+nareas = [3, 6]
 decay_category = ['uniform', 'non_uniform']
 dec_steps = [1, 3]
-nplacements = 3
-ntrials = 5
+nplacements = 2
+ntrials = 2
+tframe = 10
+
 
 for w in worlds:
     for n in nareas:
+        trial = 0
         for p in range(nplacements):
-            seed = n*1000 + (p+1)*10
+            seed = n*1000 + (p+1)*100 + p*10
+            #Select nodes from Voronoi graph as areas to preserve, then store using a unique code/filename
+            #So if this is the case, then the script will merely be subscribing, sample nodes, then store the nodes
+            #Makes sense: After all there's really no need to show the Voronoi graph
             for d in decay_category:
                 for k in dec_steps:
-                        for t in range(ntrials):
-                            params = [] #params: world:=w, nareas:=n, decay:=d, dsteps:=k, seed:=seed, trial:=t
-                            launch_nodes(seed)
-                            #Ensure we reached the end and saved the desired length of rosbag. perhaps t_operation?
-                            reset_simulation()
+                    for i in range(ntrials):
+                        trial += 1
+                        params = ['world:={}'.format(w), 'nareas:={}'.format(n),
+                                  'decay:={}'.format(d), 'dsteps:={}'.format(k),
+                                  'tframe:={}'.format(tframe), 'seed:={}'.format(seed),
+                                  'trial:={}'.format(trial)] #TODO: Insert the filename for the sampled nodes
+                        print("Launching...world: {}, nareas: {}, decay: {}, dsteps: {}, tframe: {}, seed: {}, trial:{}".format(w, n, d, k, tframe, seed, trial))
+                        launch_nodes('int_preservation', 'mission.launch', params)
+                        #Ensure we reached the end and saved the desired length of rosbag. perhaps t_operation?
+                        # kill_nodes(sleep=5)

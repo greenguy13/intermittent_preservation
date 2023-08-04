@@ -171,10 +171,13 @@ class Area():
             rate.sleep()
 
         #Pickle dump
+        #TODO: Proper storing of data
+        #TODO: Proper/synchronized shutting down of nodes. We will be using rosnode kill -a
         self.dump_data(f_record, filepath, exp)
 
-        rospy.on_shutdown(self.shutdown)
+        # rospy.on_shutdown(self.shutdown)
 
 if __name__ == '__main__':
     os.chdir('/root/catkin_ws/src/int_preservation/results')
-    Area().run_operation(exp=1)
+    trial = rospy.get_param("/trial")
+    Area().run_operation(exp=trial)

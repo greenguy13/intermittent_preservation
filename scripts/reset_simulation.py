@@ -20,9 +20,9 @@ Killing nodes
 Reset the simulation
 """
 
-def kill_nodes(nodes_to_kill, sleep):
+def kill_nodes(sleep):
     """
-    Kills nodes on the nodes_to_kill list
+    Kills all nodes. Note rosout restarts after being killed
     Args:
         nodes_to_kill:
         sleep:
@@ -30,18 +30,11 @@ def kill_nodes(nodes_to_kill, sleep):
     Returns:
 
     """
-    for node in nodes_to_kill:
-        for line in os.popen("ps ax | grep " + node + " | grep -v grep"):
-            fields = line.split()
-            pid = fields[0]
-            try:
-                print(line)
-                os.kill(int(pid), signal.SIGKILL)
-            except OSError:
-                print("No process")
-            time.sleep(sleep)
+    os.popen('rosnode kill -a')
+    os.popen('rosnode cleanup purge')
+    time.sleep(sleep)
 
-def launch_nodes(package, launch_file, params, sleep):
+def launch_nodes(package, launch_file, params, sleep=None):
     """
     Runs the launch file with params
     Returns:
@@ -49,8 +42,9 @@ def launch_nodes(package, launch_file, params, sleep):
     """
     inp = ['roslaunch', package, launch_file]
     inp.extend(params)
-    subprocess.Popen(['roslaunch', package, launch_file])
-    time.sleep(sleep)
+    main_process = subprocess.Popen(inp)
+    main_process.wait()
+    if sleep: time.sleep(sleep)
 
 def reset_simulation(launch_file, nodes_to_kill, sleep):
     """
