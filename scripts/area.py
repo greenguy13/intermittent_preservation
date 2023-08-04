@@ -115,19 +115,11 @@ class Area():
         """
         self.status = status.value
 
-    def dump_data(self, recorded_data, filepath, exp):
-        """
-        Pickle dumps recorded F-measure data
-        :return:
-        """
-        with open(filepath+'area_{}_fmeasure_{}.pkl'.format(self.area, exp), 'wb') as f:
-            pickle.dump(recorded_data, f)
-
     def shutdown(self):
         pu.log_msg('robot', self.robot_id, "path: {}".format(os.getcwd()))
         pu.log_msg('robot', self.robot_id, "Reached {} time operation. Shutting down...".format(self.t_operation))
 
-    def run_operation(self, exp, filepath='', freq_hz=1):
+    def run_operation(self, filename, freq_hz=1):
         """
         Statuses:
         1. Idle
@@ -140,8 +132,9 @@ class Area():
             > F is fully restored
         """
         rate = rospy.Rate(freq_hz)
-        f_record = list()
+        f_record, status_record = [], []
         while not rospy.is_shutdown() and len(f_record)<self.t_operation:
+            status_record.append(self.status)
             if self.status == areaStatus.IDLE.value:
                 pass
 
@@ -171,13 +164,13 @@ class Area():
             rate.sleep()
 
         #Pickle dump
-        #TODO: Proper storing of data
-        #TODO: Proper/synchronized shutting down of nodes. We will be using rosnode kill -a
-        self.dump_data(f_record, filepath, exp)
+        pu.dump_data(f_record, '{}_area{}_fmeasure.pkl'.format(filename, self.area))
+        pu.dump_data(status_record, '{}_area{}_status.pkl'.format(filename, self.area))
 
-        # rospy.on_shutdown(self.shutdown)
+        self.status_pub.publish(areaStatus.SHUTDOWN.value)
+
 
 if __name__ == '__main__':
     os.chdir('/root/catkin_ws/src/int_preservation/results')
-    trial = rospy.get_param("/trial")
-    Area().run_operation(exp=trial)
+    filename = rospy.get_param('/file_data_dump')
+    Area().run_operation(filename)

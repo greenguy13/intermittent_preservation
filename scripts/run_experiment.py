@@ -27,9 +27,11 @@ for each world:
                         run trial: roslaunch with the correct parameters
                             > world, nareas, uniform/non-uniform, decision steps?
 """
-
+import pickle
+import os
 from reset_simulation import *
 
+os.chdir('/root/catkin_ws/src/int_preservation/results')
 worlds = ['office', 'open']
 nareas = [3, 6]
 decay_category = ['uniform', 'non_uniform']
@@ -38,24 +40,58 @@ nplacements = 2
 ntrials = 2
 tframe = 10
 
+#Different placement of areas
+# for w in worlds:
+#     for n in nareas:
+#         for p in range(nplacements):
+#             seed = n*1000 + (p+1)*100 + p*10
+#             fileareas = '{}_n{}_p{}'.format(w, n, p)
+#             params = ['world:={}'.format(w), 'nareas:={}'.format(n),
+#                       'fileareas:={}'.format(fileareas), 'seed:={}'.format(seed)]
+#             print("Sampling areas...world: {}, nareas: {}, filename: {}, seed: {}".format(w, n, fileareas, seed))
+#             launch_nodes('int_preservation', 'sample_areas.launch', params)
+#             kill_nodes(sleep=10)
 
+def sample_nodes_poses(worlds, nareas, nplacements):
+    for w in worlds:
+        for n in nareas:
+            params = ['world:={}'.format(w), 'nareas:={}'.format(n), 'nplacements:={}'.format(nplacements)]
+            launch_nodes('int_preservation', 'sample_areas.launch', params)
+            kill_nodes(sleep=10)
+
+def open_data(filename):
+    with open(filename, 'rb') as f:
+        data = pickle.load(f)
+        f.close()
+
+    return data
+"""
+TODO: Refinement of sampling of nodes
+For each world: We launch each world once, then sample a number of areas for each narea, taking different placements for p times
+"""
+
+#
 for w in worlds:
     for n in nareas:
-        trial = 0
+        # Open sampled nodes poses in the world if it exists, otherwise we sample
+        filename = '{}_n{}_p{}_sampled_nodes_poses_dict'.format(w, n, nplacements)
+        if os.path.exists(filename) is False:
+            sample_nodes_poses(w, n, nplacements)
+
+        sampled_nodes_poses_dict = open_data(filename)
+
         for p in range(nplacements):
-            seed = n*1000 + (p+1)*100 + p*10
-            #Select nodes from Voronoi graph as areas to preserve, then store using a unique code/filename
-            #So if this is the case, then the script will merely be subscribing, sample nodes, then store the nodes
-            #Makes sense: After all there's really no need to show the Voronoi graph
+            sampled_nodes_poses = sampled_nodes_poses_dict['n{}_p{}'.format(n, p+1)]
             for d in decay_category:
                 for k in dec_steps:
                     for i in range(ntrials):
-                        trial += 1
+                        filedata = '{}_n{}_p{}_{}_k{}_{}'.format(w, n, p+1, d, k, i+1)
+                        #TODO: Update the way we access the sampled nodes poses
                         params = ['world:={}'.format(w), 'nareas:={}'.format(n),
                                   'decay:={}'.format(d), 'dsteps:={}'.format(k),
-                                  'tframe:={}'.format(tframe), 'seed:={}'.format(seed),
-                                  'trial:={}'.format(trial)] #TODO: Insert the filename for the sampled nodes
-                        print("Launching...world: {}, nareas: {}, decay: {}, dsteps: {}, tframe: {}, seed: {}, trial:{}".format(w, n, d, k, tframe, seed, trial))
+                                  'tframe:={}'.format(tframe),
+                                  'fileareas:={}'.format(fileareas), 'filedata:={}'.format(filedata)]
+                        print("Launching...world: {}, nareas: {}, decay: {}, dsteps: {}, tframe: {}, placement: {}".format(w, n, d, k, tframe, fileareas))
                         launch_nodes('int_preservation', 'mission.launch', params)
                         #Ensure we reached the end and saved the desired length of rosbag. perhaps t_operation?
                         # kill_nodes(sleep=5)

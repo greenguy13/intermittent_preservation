@@ -74,14 +74,6 @@ class Battery():
         delay = int(math.ceil((self.max_battery - self.battery) / self.batt_restoration))
         return delay
 
-    def dump_data(self, recorded_data, filepath, exp):
-        """
-        Pickle dumps recorded battery data
-        :return:
-        """
-        with open(filepath+'robot_{}_battery_{}.pkl'.format(self.robot_id, exp), 'wb') as f:
-            pickle.dump(recorded_data, f)
-
     def publish_battery(self):
         """
         Publishes battery level as a Float topic and status as Int topic
@@ -95,9 +87,10 @@ class Battery():
 
     def run_operation(self, exp, filepath='', freq_hz=1):
         rate = rospy.Rate(freq_hz)
-        battery_record = list()
+        battery_record, battery_status_record = [], []
         while not rospy.is_shutdown() and len(battery_record)<self.t_operation:
             if self.robot_id == 0:
+                battery_status_record.append(self.status)
                 if self.status == battStatus.IDLE.value:
                     pass
 
@@ -124,12 +117,13 @@ class Battery():
             rate.sleep()
 
         #Save array of recorded battery
-        self.dump_data(battery_record, filepath, exp)
+        pu.dump_data(battery_record, '{}_robot{}_battery.pkl'.format(filename, self.robot_id))
+        pu.dump_data(battery_status_record, '{}_robot{}_batt_status.pkl'.format(filename, self.robot_id))
 
-        # rospy.on_shutdown(self.shutdown)
+        self.battery_status_pub.publish(battStatus.SHUTDOWN.value)
 
 
 if __name__ == '__main__':
     os.chdir('/root/catkin_ws/src/int_preservation/results')
-    trial = rospy.get_param('/trial')
-    Battery('battery').run_operation(exp=trial)
+    filename = rospy.get_param('/file_data_dump')
+    Battery('battery').run_operation(filename)

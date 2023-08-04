@@ -1,0 +1,29 @@
+<launch>
+    <arg name="world" default="office"/>
+    <arg name="nrobots" default="2"/>
+    <arg name="nareas" default="3"/>
+    <arg name="nplacements" default="3"/>
+
+<!---
+    Task: Randomly place 'nareas' in the 'world' for 'nplacements' times
+-->
+    <param name="/use_sim_time" value="true" />
+    <rosparam command="load" file="$(find int_preservation)/param/sample_areas.yaml" subst_value="true"/>
+
+    <node name="Stage" pkg="stage_ros" type="stageros" args="$(find int_preservation)/world/$(arg world)$(arg nrobots).world">
+        <param name="base_watchdog_timeout" value="0" />
+    </node>
+
+    <node name="sample_areas" pkg="int_preservation" type="sample_area_poses.py">
+        <param name="world" value="$(arg world)"/>
+        <param name="nareas" value="$(arg nareas)"/>
+        <param name="nplacements" value="$(arg nplacements)"/>
+    </node>
+
+    <node name="map_server" pkg="map_server" type="map_server" args="$(find int_preservation)/param/$(arg world)_map.yaml">
+        <param name="frame_id" value="map" />
+    </node>
+
+    <node name="RVIZ" pkg="rviz" type="rviz" args=" -d $(find int_preservation)/param/mission.rviz" output="screen" />
+
+</launch>

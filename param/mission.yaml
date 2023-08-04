@@ -5,10 +5,8 @@ nrobots: $(arg nrobots)    # number of robots on the team
 nareas: $(arg nareas) #number of areas to preserve
 dec_steps: $(arg dsteps) #number of decision steps
 t_operation: $(arg tframe) #total duration of the operation
-seed: $(arg seed) #random seed
-trial: $(arg trial) #trial
-discretization_resolution: 0.1 #0.2
-robot_radius: 1.0 #for grid cell computation
+file_sampled_areas: $(arg fileareas) #file name of sampled areas
+file_data_dump: $(arg filedata) #file name for data dump
 
 robot_velocity: 1.0 #Linear velocity of robot; we assume linear and angular are relatively equal
 max_fmeasure: 100  # Max F-measure of an area
@@ -18,4 +16,3 @@ batt_consumed_per_time: [0.10, 0.10] #(travel, restoration)
 restoration: 25 #F-measure/battery.py units per second restored
 noise: 0.01
 move_base_tolerance: 0.5
-degree_criterion_node_selection: 3 #Criterion for area selection, number of degree = 2 suggests leaf areas

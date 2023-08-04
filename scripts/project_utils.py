@@ -44,6 +44,14 @@ def save_data(data, file_name):
         pickle.dump(data, fp, protocol=pickle.HIGHEST_PROTOCOL)
         fp.close()
 
+def dump_data(recorded_data, filename):
+    """
+    Pickle dumps recorded chosen optimal decisions
+    :return:
+    """
+    with open(filename, 'wb') as f:
+        pickle.dump(recorded_data, f)
+        f.close()
 
 def load_data_from_file(file_name):
     data_dict = []

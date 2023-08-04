@@ -1,21 +1,19 @@
 <launch>
-    <arg name="world" default="toy"/>
+    <arg name="world" default="office"/>
     <arg name="method" default="treebased_decision"/>
     <arg name="nrobots" default="2"/>
     <arg name="nareas" default="3"/>
     <arg name="decay" default="non_uniform"/>
     <arg name="dsteps" default="1"/>
     <arg name="tframe" default="50"/>
-    <arg name="seed" default="1"/>
-    <arg name="trial" default="1"/>
+    <arg name="fileareas" default="1"/>
+    <arg name="filedata" default="1"/>
 
 <!---
     PO: method TODO: Random decision making
     PO: number of different placement of the areas. TODO: Loop script, use seed
     PO: trials TODO: Loop script, use trial as experiment ID for result storage
 -->
-
-    <arg name="run" default="1"/>
 
     <param name="/use_sim_time" value="true" />
     <rosparam command="load" file="$(find int_preservation)/param/mission.yaml" subst_value="true"/>
