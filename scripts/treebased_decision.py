@@ -75,7 +75,7 @@ class Robot:
         #TODO: Update how to access the sampled nodes poses
         with open(rospy.get_param("/file_sampled_areas")+'.pkl', 'rb') as f:
             sampled_areas_coords = pickle.load(f)
-        for area_coords in sampled_areas_coords:
+        for area_coords in sampled_areas_coords['n{}_p{}'.format(self.nareas, rospy.get_param("/placement"))]:
             pose_stamped = self.convert_coords_to_PoseStamped(area_coords)
             self.sampled_nodes_poses.append(pose_stamped)
 
@@ -539,9 +539,9 @@ class Robot:
                 pu.log_msg('robot', self.robot_id, "Waiting for other nodes to dump their data...", self.debug_mode)
                 rate.sleep()
 
-            pu.dump_data(self.decisions_made, '{}_robot{}_decisions.pkl'.format(filename, self.robot_id))
-            pu.dump_data(self.decisions_accomplished, '{}_robot{}_decisions_acc.pkl'.format(filename, self.robot_id))
-            pu.dump_data(self.status_history, '{}_robot{}_status_history.pkl'.format(filename, self.robot_id))
+            pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
+            pu.dump_data(self.decisions_accomplished, '{}_robot{}_decisions_acc'.format(filename, self.robot_id))
+            pu.dump_data(self.status_history, '{}_robot{}_status_history'.format(filename, self.robot_id))
             self.shutdown(sleep=10)
 
     def think_decisions(self):
@@ -639,6 +639,7 @@ class Robot:
         pu.log_msg('robot', self.robot_id, msg, self.debug_mode)
 
 if __name__ == '__main__':
-    os.chdir('/root/catkin_ws/src/int_preservation/results')
+    #TODO: We may have to change results directory outside of the package to avoid overloading Github
+    os.chdir('/root/catkin_ws/src/results/int_preservation')
     filename = rospy.get_param('/file_data_dump')
     Robot('treebased_decision').run_operation(filename)

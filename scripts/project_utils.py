@@ -49,7 +49,7 @@ def dump_data(recorded_data, filename):
     Pickle dumps recorded chosen optimal decisions
     :return:
     """
-    with open(filename, 'wb') as f:
+    with open('{}.pkl'.format(filename), 'wb') as f:
         pickle.dump(recorded_data, f)
         f.close()
 

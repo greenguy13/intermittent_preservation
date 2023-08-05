@@ -117,13 +117,13 @@ class Battery():
             rate.sleep()
 
         #Save array of recorded battery
-        pu.dump_data(battery_record, '{}_robot{}_battery.pkl'.format(filename, self.robot_id))
-        pu.dump_data(battery_status_record, '{}_robot{}_batt_status.pkl'.format(filename, self.robot_id))
+        pu.dump_data(battery_record, '{}_robot{}_battery'.format(filename, self.robot_id))
+        pu.dump_data(battery_status_record, '{}_robot{}_batt_status'.format(filename, self.robot_id))
 
         self.battery_status_pub.publish(battStatus.SHUTDOWN.value)
 
 
 if __name__ == '__main__':
-    os.chdir('/root/catkin_ws/src/int_preservation/results')
+    os.chdir('/root/catkin_ws/src/results/int_preservation')
     filename = rospy.get_param('/file_data_dump')
     Battery('battery').run_operation(filename)

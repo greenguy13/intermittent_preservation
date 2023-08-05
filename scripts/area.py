@@ -164,13 +164,13 @@ class Area():
             rate.sleep()
 
         #Pickle dump
-        pu.dump_data(f_record, '{}_area{}_fmeasure.pkl'.format(filename, self.area))
-        pu.dump_data(status_record, '{}_area{}_status.pkl'.format(filename, self.area))
+        pu.dump_data(f_record, '{}_area{}_fmeasure'.format(filename, self.area))
+        pu.dump_data(status_record, '{}_area{}_status'.format(filename, self.area))
 
         self.status_pub.publish(areaStatus.SHUTDOWN.value)
 
 
 if __name__ == '__main__':
-    os.chdir('/root/catkin_ws/src/int_preservation/results')
+    os.chdir('/root/catkin_ws/src/results/int_preservation')
     filename = rospy.get_param('/file_data_dump')
     Area().run_operation(filename)

@@ -31,15 +31,16 @@ import pickle
 import os
 from reset_simulation import *
 
-os.chdir('/root/catkin_ws/src/int_preservation/results')
+os.chdir('/root/catkin_ws/src/results/int_preservation')
 worlds = ['office', 'open']
-nareas = [3, 6]
+nareas_list = [3]
 decay_category = ['uniform', 'non_uniform']
 dec_steps = [1, 3]
 nplacements = 2
 ntrials = 2
 tframe = 10
 
+#Deprecated
 #Different placement of areas
 # for w in worlds:
 #     for n in nareas:
@@ -52,12 +53,18 @@ tframe = 10
 #             launch_nodes('int_preservation', 'sample_areas.launch', params)
 #             kill_nodes(sleep=10)
 
-def sample_nodes_poses(worlds, nareas, nplacements):
-    for w in worlds:
-        for n in nareas:
-            params = ['world:={}'.format(w), 'nareas:={}'.format(n), 'nplacements:={}'.format(nplacements)]
-            launch_nodes('int_preservation', 'sample_areas.launch', params)
-            kill_nodes(sleep=10)
+#TODO: Separate script for sampling of nodes
+def sample_nodes_poses(world, nareas, nplacements):
+    """
+    Create a dictionary of sampled node poses (count=nareas) placed in the world randomly for nplacements.
+    Each placement would be the value for this dict.
+    :param worlds:
+    :param nareas:
+    :param nplacements:
+    :return:
+    """
+    params = ['world:={}'.format(world), 'nareas:={}'.format(nareas), 'nplacements:={}'.format(nplacements)]
+    launch_nodes('int_preservation', 'sample_areas.launch', params)
 
 def open_data(filename):
     with open(filename, 'rb') as f:
@@ -70,28 +77,33 @@ TODO: Refinement of sampling of nodes
 For each world: We launch each world once, then sample a number of areas for each narea, taking different placements for p times
 """
 
-#
+#Create file for the different placement of nodes in the world first
 for w in worlds:
-    for n in nareas:
+    for n in nareas_list:
+        fileposes = '{}_n{}_sampled_nodes_poses_dict'.format(w, n)
+        if os.path.exists(fileposes) is False:
+            sample_nodes_poses(w, n, nplacements)  # TODO: This is imported from another script
+
+
+#Run the experiment
+for w in worlds:
+    for n in nareas_list:
         # Open sampled nodes poses in the world if it exists, otherwise we sample
-        filename = '{}_n{}_p{}_sampled_nodes_poses_dict'.format(w, n, nplacements)
-        if os.path.exists(filename) is False:
-            sample_nodes_poses(w, n, nplacements)
+        fileposes = '{}_n{}_sampled_nodes_poses_dict'.format(w, n)
 
-        sampled_nodes_poses_dict = open_data(filename)
-
+        #NOTE: We will open sampled_nodes_poses_dict in treebased_decision.py
+        #We just need to supply it the filename
+        #Inside treebased_decision.py, we loop through the proper placement, which is a key to the sampled_nodes_poses_dict
+        #Therefore: the looped placement p should likewise be a parameter
         for p in range(nplacements):
-            sampled_nodes_poses = sampled_nodes_poses_dict['n{}_p{}'.format(n, p+1)]
             for d in decay_category:
                 for k in dec_steps:
                     for i in range(ntrials):
-                        filedata = '{}_n{}_p{}_{}_k{}_{}'.format(w, n, p+1, d, k, i+1)
+                        fileresult = '{}_n{}_p{}_{}_k{}_{}'.format(w, n, p+1, d, k, i+1)
                         #TODO: Update the way we access the sampled nodes poses
                         params = ['world:={}'.format(w), 'nareas:={}'.format(n),
                                   'decay:={}'.format(d), 'dsteps:={}'.format(k),
-                                  'tframe:={}'.format(tframe),
-                                  'fileareas:={}'.format(fileareas), 'filedata:={}'.format(filedata)]
-                        print("Launching...world: {}, nareas: {}, decay: {}, dsteps: {}, tframe: {}, placement: {}".format(w, n, d, k, tframe, fileareas))
+                                  'tframe:={}'.format(tframe), 'placement:={}'.format(p+1),
+                                  'fileposes:={}'.format(fileposes), 'fileresult:={}'.format(fileresult)]
+                        print("Launching...world: {}, nareas: {}, decay: {}, dsteps: {}, tframe: {}, placement: {}".format(w, n, d, k, tframe, p+1))
                         launch_nodes('int_preservation', 'mission.launch', params)
-                        #Ensure we reached the end and saved the desired length of rosbag. perhaps t_operation?
-                        # kill_nodes(sleep=5)

@@ -12,11 +12,8 @@ Server to decay rates of areas
 
 """
 
-import pickle
 import random as rd
-import numpy as np
 import rospy
-import tf
 import project_utils as pu
 from scipy.spatial import distance, Voronoi
 import igraph
@@ -52,8 +49,8 @@ class SampleAreaPoses:
         self.degree_criterion_node_selection = rospy.get_param("/degree_criterion_node_selection")
 
         # Initialize variables
-        self.sampled_nodes_poses = dict()  # dict container for sampled nodes
         self.graph = None
+        self.sampled_nodes_poses = dict()  # dict container for sampled nodes
 
         # Publishers/Subscribers
         self.robot_id = 'null'
@@ -209,22 +206,17 @@ class SampleAreaPoses:
         potential_nodes = self.graph.vs.select(_degree=self.degree_criterion_node_selection)
         sampled_nodes = rd.sample(potential_nodes.indices, nsample)
 
-        # Establish the coordinate dictionary here
+        result = []
         for node in sampled_nodes:
             p = self.graph.vs[node]["coord"]
             p_t = self.latest_map.grid_to_pose(p)
             p_coords = (p_t[0], p_t[1])
-            self.sampled_nodes_poses.append(p_coords)
+            result.append(p_coords)
+        return result
 
 
-    # Methods: Run operation
-    """
-    While the number of sampled nodes is less than the length of self.nareas+1, sleep.
-    We pickle the sampled nodes as a list using filename.
-    We then kill the node.
-    """
-
-    def sample_node_poses(self):
+    # Methods: Sample node poses
+    def sample_poses(self):
         """
         :return:
         """
@@ -232,34 +224,20 @@ class SampleAreaPoses:
         rate = rospy.Rate(1)
         while self.graph is None:
             self.debug("Waiting for graph to register...")
-            rate.sleep()  # Data for decay rates haven't registered yet
+            rate.sleep()
 
-        """
-        Now for a given world, we will sample nareas (which is a loop in itself), and place them randomly in the world p times
-        PO structure:
-            > Migrate this to be a function of its own. We sha
-        """
-        for n in self.nareas:
-            for p in range(self.nplacements):
-                seed = n*1000 + (p+1)*100 + p*10
-                sampled_nodes = self.sample_nodes_from_voronoi(n, seed)
-                self.sampled_nodes_poses['n{}_p{}'.format(n, p+1)] = sampled_nodes
+        for p in range(self.nplacements):
+            seed = self.nareas*1000 + (p+1)*100 + (self.nareas)*10 + (p+1)
+            sampled_nodes = self.sample_nodes_from_voronoi(self.nareas, seed)
+            self.sampled_nodes_poses['n{}_p{}'.format(self.nareas, p+1)] = sampled_nodes
 
         #Pickle dump the sampled nodes poses
-        filename = '{}_n{}_p{}_sampled_nodes_poses_dict'.format(self.world, self.nareas, self.nplacements)
+        filename = '{}_n{}_sampled_nodes_poses_dict'.format(self.world, self.nareas)
         pu.dump_data(self.sampled_nodes_poses, filename)
 
         #Shutdown all nodes
         self.debug("Done sampling: {}".format(filename))
         self.shutdown(sleep=10)
-
-    def dump_data(self, data, filename):
-        """
-        Pickle dumps recorded chosen optimal decisions
-        :return:
-        """
-        with open('{}.pkl'.format(filename), 'wb') as f:
-            pickle.dump(data, f)
 
     def debug(self, msg):
         pu.log_msg('robot', self.robot_id, msg, self.debug_mode)
@@ -270,5 +248,5 @@ class SampleAreaPoses:
 
 
 if __name__ == '__main__':
-    os.chdir('/root/catkin_ws/src/int_preservation/results')
-    SampleAreaPoses('sample_areas').sample_node_poses()
+    os.chdir('/root/catkin_ws/src/results/int_preservation')
+    SampleAreaPoses('sample_areas').sample_poses()
