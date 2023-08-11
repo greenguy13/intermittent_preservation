@@ -9,6 +9,8 @@ import tf
 import shapely.geometry as sg
 from scipy import stats  # linregress
 from sklearn.metrics import mean_squared_error
+from geometry_msgs.msg import Point, Pose, PoseStamped
+
 
 
 TOTAL_COVERAGE = 1
@@ -79,6 +81,22 @@ def pixel2pose(point, origin_x, origin_y, resolution):
     new_p[INDEX_FOR_X] = origin_x + point[INDEX_FOR_X] * resolution
     new_p[INDEX_FOR_Y] = origin_y + point[INDEX_FOR_Y] * resolution
     return tuple(new_p)
+
+def convert_coords_to_PoseStamped(coords, frame='map'):
+    """
+    Converts x,y coords to PoseStampled wrt frame
+    :param coord:
+    :return:
+    """
+    pose = PoseStamped()
+    pose.header.seq = 0
+    pose.header.frame_id = frame
+    pose.header.stamp = rospy.Time.now()
+    pose.pose.position.x = coords[0]
+    pose.pose.position.y = coords[1]
+    pose.pose.orientation.w = 1.0
+
+    return pose
 
 
 def get_vector(p1, p2):

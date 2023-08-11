@@ -6,13 +6,12 @@
     <arg name="decay" default="non_uniform"/>
     <arg name="dsteps" default="1"/>
     <arg name="tframe" default="50"/>
-    <arg name="fileareas" default="1"/>
-    <arg name="filedata" default="1"/>
+    <arg name="placement" default="1"/>
+    <arg name="fileposes" default="1"/>
+    <arg name="fileresult" default="1"/>
 
 <!---
     PO: method TODO: Random decision making
-    PO: number of different placement of the areas. TODO: Loop script, use seed
-    PO: trials TODO: Loop script, use trial as experiment ID for result storage
 -->
 
     <param name="/use_sim_time" value="true" />

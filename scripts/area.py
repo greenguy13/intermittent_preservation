@@ -133,7 +133,7 @@ class Area():
         """
         rate = rospy.Rate(freq_hz)
         f_record, status_record = [], []
-        while not rospy.is_shutdown() and len(f_record)<self.t_operation:
+        while not rospy.is_shutdown():
             status_record.append(self.status)
             if self.status == areaStatus.IDLE.value:
                 pass
@@ -156,18 +156,14 @@ class Area():
             elif self.status == areaStatus.RESTORED_F.value:
                 self.update_status(areaStatus.IDLE)
 
-            # Save F-measure here
             if self.status != areaStatus.IDLE.value:
                 f_record.append(self.fmeasure)
             self.publish_fmeasure()
 
+            pu.dump_data(f_record, '{}_area{}_fmeasure'.format(filename, self.area))
+            pu.dump_data(status_record, '{}_area{}_status'.format(filename, self.area))
+
             rate.sleep()
-
-        #Pickle dump
-        pu.dump_data(f_record, '{}_area{}_fmeasure'.format(filename, self.area))
-        pu.dump_data(status_record, '{}_area{}_status'.format(filename, self.area))
-
-        self.status_pub.publish(areaStatus.SHUTDOWN.value)
 
 
 if __name__ == '__main__':

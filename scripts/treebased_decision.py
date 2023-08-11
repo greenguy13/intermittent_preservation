@@ -56,6 +56,7 @@ class Robot:
         self.robot_velocity = rospy.get_param("/robot_velocity") #Linear velocity of robot; we assume linear and angular are relatively equal
         self.max_fmeasure = rospy.get_param("/max_fmeasure")  # Max F-measure of an area
         self.max_battery = rospy.get_param("/max_battery") #Max battery
+        self.battery_reserve = rospy.get_param("/battery_reserve") #Battery reserve
         self.fsafe, self.fcrit = rospy.get_param("/f_thresh") #(safe, crit)
         self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = rospy.get_param("/batt_consumed_per_time") #(travel, restoration)
         self.dec_steps = rospy.get_param("/dec_steps") #STAR
@@ -68,7 +69,7 @@ class Robot:
 
         #Initialize variables
         charging_station_coords = rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y") #rospy.get_param("/charging_station_coords")
-        charging_pose_stamped = self.convert_coords_to_PoseStamped(charging_station_coords)
+        charging_pose_stamped = pu.convert_coords_to_PoseStamped(charging_station_coords)
         self.sampled_nodes_poses = [charging_pose_stamped] #list container for sampled nodes of type PoseStamped
 
         #Pickle load the sampled area poses
@@ -76,7 +77,7 @@ class Robot:
         with open(rospy.get_param("/file_sampled_areas")+'.pkl', 'rb') as f:
             sampled_areas_coords = pickle.load(f)
         for area_coords in sampled_areas_coords['n{}_p{}'.format(self.nareas, rospy.get_param("/placement"))]:
-            pose_stamped = self.convert_coords_to_PoseStamped(area_coords)
+            pose_stamped = pu.convert_coords_to_PoseStamped(area_coords)
             self.sampled_nodes_poses.append(pose_stamped)
 
         self.charging_station = 0
@@ -98,7 +99,7 @@ class Robot:
         #We sum this up
         self.environment_status = dict()
         for node in range(self.nareas+1):
-            self.environment_status[node] = None
+            self.environment_status[node] = 999
 
         #Publishers/Subscribers
         # Service request to move_base to get plan : make_Plan
@@ -139,22 +140,6 @@ class Robot:
 
 
     # METHODS: Node poses and distance matrix
-    def convert_coords_to_PoseStamped(self, coords, frame='map'):
-        """
-        Converts x,y coords to PoseStampled wrt frame
-        :param coord:
-        :return:
-        """
-        pose = PoseStamped()
-        pose.header.seq = 0
-        pose.header.frame_id = frame
-        pose.header.stamp = rospy.Time.now()
-        pose.pose.position.x = coords[0]
-        pose.pose.position.y = coords[1]
-        pose.pose.orientation.w = 1.0
-
-        return pose
-
     def get_plan_request(self, start_pose, goal_pose, tolerance):
         """
         Sends a request to GetPlan service to create a plan for path from start to goal without actually moving the robot
@@ -277,6 +262,7 @@ class Robot:
     def grow_tree(self, dec_steps, restoration, noise):
         """
         We grow a decision tree of depth dec_steps starting from where the robot is.
+        Note: Each branch is a tuple containing the path, battery, fmeasures, cost, feasible_battery info
         :param curr_location: current location of robot
         :param dec_steps: number of decision steps, (i.e., tree depth)
         :param restoration: duration it takes to restore per unit F-measure
@@ -297,7 +283,7 @@ class Robot:
         to_grow = list()  #container for branches still being grown/expanded
         nodes = [self.charging_station]
         nodes.extend(self.areas)
-        pu.log_msg('robot', self.robot_id, "Nodes: {}".format(nodes), self.debug_mode)
+        self.debug("Nodes: {}".format(nodes))
 
         #Start at the current location as the root node.
         #Scenario 1
@@ -306,7 +292,7 @@ class Robot:
         path = [self.curr_loc]
         battery = self.battery
         cost = 0 #Initialize cost of path
-        if self.robot_id==0: pu.log_msg('robot', self.robot_id, "Areas: {}. Fmeasures: {}. Battery: {}".format(self.areas, fmeasures, battery), self.debug_mode)
+        if self.robot_id==0: self.debug("Areas: {}. Fmeasures: {}. Battery: {}".format(self.areas, fmeasures, battery))
 
         #Initial feasible battery level
         feasible_battery_consumption = self.consume_battery(start_area=self.curr_loc, next_area=self.charging_station, curr_measure=None, noise=noise)
@@ -317,11 +303,11 @@ class Robot:
 
         #Succeeding decision steps:
         while k < dec_steps:
-            pu.log_msg('robot', self.robot_id, "\nDec step: {}".format(k), self.debug_mode)
+            self.debug("\nDec step: {}".format(k))
             consider_branches = to_grow.copy()
             to_grow = list() #At the end of the iterations, to-grow will be empty while branches must be complete
             for branch in consider_branches:
-                pu.log_msg('robot', self.robot_id, "Branch to grow: {}".format(branch), self.debug_mode)
+                self.debug("Branch to grow: {}".format(branch))
                 considered_growing = 0 #Indicators whether the branch has been considered for growing
                 for i in range(len(nodes)):
                     # Hypothetical: What if we travel to this node, what will the consumed battery be and the updated F-fmeasures?
@@ -347,11 +333,11 @@ class Robot:
                     battery_consumption_backto_charging_station = self.consume_battery(start_area=next_area, next_area=self.charging_station, curr_measure=None, noise=noise) #Battery consumed travel back to charging station
                     feasible_battery_consumption = battery_consumption + battery_consumption_backto_charging_station
 
-                    pu.log_msg('robot', self.robot_id, "Next area: {}, Batt level: {}, TLapsed decay: {}, Duration: {}, Decayed fmeasure: {}, Batt consumption: {}".format(next_area, battery, tlapse_decay, duration, decayed_fmeasure, battery_consumption), self.debug_mode)
+                    self.debug("Next area: {}, Batt level: {}, TLapsed decay: {}, Duration: {}, Decayed fmeasure: {}, Batt consumption: {}".format(next_area, battery, tlapse_decay, duration, decayed_fmeasure, battery_consumption))
 
                     # If branch is not to be pruned and length still less than dec_steps, then we continue to grow that branch
-                    cond1 = prune(battery, feasible_battery_consumption, decayed_fmeasure, self.fsafe)
-                    pu.log_msg('robot', self.robot_id, "Condition: {}".format(cond1), self.debug_mode)
+                    cond1 = prune(battery, feasible_battery_consumption, self.battery_reserve)
+                    self.debug("Prune: {}".format(cond1))
                     if (cond1 is False and (k < dec_steps)) and start_area != next_area:
                         #PO condition: If next node is charging station + one of the areas is decaying if we travel to that area + battery is safe or 100 (given when in charging station?)
 
@@ -364,8 +350,8 @@ class Robot:
                         feasible_battery = battery - feasible_battery_consumption  # battery available after taking into account battery to go back to charging station from current location. Note: if location is charging station, feasible_battery = max_battery
                         updated_fmeasures = self.adjust_fmeasures(fmeasures, next_area, duration) #F-measure of areas adjusted accordingly, i.e., consequence of decision
                         cost += self.compute_cost(updated_fmeasures) #Cost of this decision
-                        pu.log_msg('robot', self.robot_id, "Resultant F-measures: {}".format(updated_fmeasures))
-                        pu.log_msg('robot', self.robot_id, "Branch to grow appended (path, batt, upd_fmeasures, cost, feas_batt): {}, {}, {}, {}, {}".format(path, battery, updated_fmeasures, cost, feasible_battery), self.debug_mode)
+                        self.debug("Resultant F-measures: {}".format(updated_fmeasures))
+                        self.debug("Branch to grow appended (path, batt, upd_fmeasures, cost, feas_batt): {}, {}, {}, {}, {}".format(path, battery, updated_fmeasures, cost, feasible_battery))
                         to_grow.append((path, battery, updated_fmeasures, cost, feasible_battery)) #Branch: (path, battery, updated_fmeasures, cost, feasible battery)
                         considered_growing += 1
 
@@ -374,16 +360,16 @@ class Robot:
                     # 2.) Furthermore: If even after iterating through all possible nodes, (thats why i == len(nodes)-1), branch not considered for growing.
                     # 3.) And branch not yet in branches.
                     else:
-                        if (is_feasible(battery, feasible_battery_consumption) is True) and (i == len(nodes)-1 and considered_growing == 0) and (branch not in branches):
-                            pu.log_msg('robot', self.robot_id, "Branch appended to tree: {}".format(branch), self.debug_mode)
+                        if (is_feasible(battery, feasible_battery_consumption, self.battery_reserve) is True) and (i == len(nodes)-1 and considered_growing == 0) and (branch not in branches):
+                            self.debug("Branch appended to tree: {}".format(branch))
                             branches.append(branch)
             k += 1 #We are done with k depth, so move on to the next depth
 
         #We append to branches the branches of length k, (i.e., the final decision step)
-        pu.log_msg('robot', self.robot_id, "We arrived at last decision step!")
         for branch in to_grow:
             if branch not in branches:
                 branches.append(branch)
+        self.debug("Arrived at last dec. step. Number of branches: {}".format(len(branches)))
         return branches
 
     def compute_duration(self, start_area, next_area, curr_measure, restoration, noise):
@@ -478,67 +464,68 @@ class Robot:
         # Sort the branches: the cost is key while the value is branch
         sorted_branches = sorted(tree, key = lambda x: (x[-2], -x[-1])) #sorted by cost, x[-2] increasing; then sorted by feasible battery x[-1] decreasing
         #Debug
-        pu.log_msg('robot', self.robot_id, "Branches sorted by cost:", self.debug_mode)
+        self.debug("Branches sorted by cost:")
         for branch in sorted_branches:
-            pu.log_msg('robot', self.robot_id, "Branch: {}".format(branch), self.debug_mode)
-        pu.log_msg('robot', self.robot_id, "Optimal branch (branch info + cost): {}".format(sorted_branches[0]), self.debug_mode)
+            self.debug("Branch: {}".format(branch))
+        self.debug("Optimal branch (branch info + cost): {}".format(sorted_branches[0]))
         optimal_path = sorted_branches[0][0] #pick the branch with least cost and most available feasible battery
         optimal_path.pop(0) #we pop out the first element of the path, which is the current location, which is not needed in current mission
         return optimal_path
 
     def shutdown(self, sleep):
-        pu.log_msg('robot', self.robot_id, "Reached {} time operation. Shutting down...".format(self.t_operation), self.debug_mode)
+        self.debug("Reached {} time operation. Shutting down...".format(self.t_operation))
         kill_nodes(sleep)
 
     #Methods: Run operation
-    def run_operation(self, filename):
+    def run_operation(self, filenam, freq=1):
         """
         :return:
         """
 
         if self.robot_id == 0:
-            rate = rospy.Rate(1)
+            rate = rospy.Rate(freq)
             while self.decay_rates_counter != self.nareas and len(self.sampled_nodes_poses) != self.nareas+1:
-                pu.log_msg('robot', self.robot_id, "Insufficient data. Decay rates: {}/{}. Sampled nodes poses: {}/{}".format(len(self.decay_rates_counter), self.nareas,                                                                                                              len(self.sampled_nodes_poses), self.nareas+1), self.debug_mode)
+                self.debug("Insufficient data. Decay rates: {}/{}. Sampled nodes poses: {}/{}".format(len(self.decay_rates_counter), self.nareas,
+                                                                                                      len(self.sampled_nodes_poses), self.nareas+1))
                 rate.sleep() #Data for decay rates haven't registered yet
 
-            pu.log_msg('robot', self.robot_id, "Sufficent data. Decay rates: {}. Sampled nodes poses: {}".format(self.decay_rates_dict, self.sampled_nodes_poses), self.debug_mode)
+            self.debug("Sufficent data. Decay rates: {}. Sampled nodes poses: {}".format(self.decay_rates_dict, self.sampled_nodes_poses))
             self.build_dist_matrix()
             t = 0
             while not rospy.is_shutdown() and t<self.t_operation:
                 self.robot_status_pub.publish(self.robot_status)
                 self.status_history.append(self.robot_status)
                 if self.robot_status == robotStatus.IDLE.value:
-                    pu.log_msg('robot', self.robot_id, 'Robot idle', self.debug_mode)
-                    if self.dist_matrix is not None:  # Here, the distance matrix we have to supply the correct distance computations
+                    self.debug('Robot idle')
+                    if self.dist_matrix is not None:
                         self.update_robot_status(robotStatus.READY)
 
                 elif self.robot_status == robotStatus.READY.value:
-                    pu.log_msg('robot', self.robot_id, 'Robot ready', self.debug_mode)
+                    self.debug('Robot ready')
                     self.think_decisions()
-                    pu.log_msg('robot', self.robot_id, 'Path: ' + str(self.optimal_path), self.debug_mode)
+                    self.debug('Path: ' + str(self.optimal_path))
                     self.update_robot_status(robotStatus.IN_MISSION)
 
                 elif self.robot_status == robotStatus.IN_MISSION.value:
-                    pu.log_msg('robot', self.robot_id, 'Robot in mission', self.debug_mode)
+                    self.debug('Robot in mission')
                     if self.available:
                         self.commence_mission()
 
                 elif self.robot_status == robotStatus.CHARGING.value:
-                    pu.log_msg('robot', self.robot_id, 'Waiting for battery to charge up', self.debug_mode)
+                    self.debug('Waiting for battery to charge up')
 
                 elif self.robot_status == robotStatus.RESTORING_F.value:
-                    pu.log_msg('robot', self.robot_id, 'Restoring F-measure', self.debug_mode)
+                    self.debug('Restoring F-measure')
 
                 t += 1
                 rate.sleep()
 
             #Store results
-            #Wait before all other nodes have finished dumping their data
-            while sum(self.environment_status.values()) != (self.nareas+1)*SHUTDOWN_CODE:
-                pu.log_msg('robot', self.robot_id, "Waiting for other nodes to dump their data...", self.debug_mode)
-                rate.sleep()
+            self.update_robot_status(robotStatus.SHUTDOWN)
+            self.robot_status_pub.publish(self.robot_status)
+            self.status_history.append(self.robot_status)
 
+            #Wait before all other nodes have finished dumping their data
             pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
             pu.dump_data(self.decisions_accomplished, '{}_robot{}_decisions_acc'.format(filename, self.robot_id))
             pu.dump_data(self.status_history, '{}_robot{}_status_history'.format(filename, self.robot_id))
@@ -549,8 +536,10 @@ class Robot:
         Thinks of the optimal path before starting mission
         :return:
         """
+        self.optimal_path = [self.charging_station]  # Default decision is to go back to the charging station
         tree = self.grow_tree(self.dec_steps, self.restoration, self.noise)
-        self.optimal_path = self.get_optimal_branch(tree)  # Indices of areas/nodes
+        if tree:
+            self.optimal_path = self.get_optimal_branch(tree)  # Indices of areas/nodes
 
     def commence_mission(self):
         """
@@ -568,7 +557,7 @@ class Robot:
         if len(self.optimal_path):
             self.mission_area = self.optimal_path.pop(0)
             self.mission_area_pub.publish(self.mission_area)
-            pu.log_msg('robot', self.robot_id, 'Heading to: {}. {}'.format(self.mission_area, self.sampled_nodes_poses[self.mission_area]), self.debug_mode)
+            self.debug('Heading to: {}. {}'.format(self.mission_area, self.sampled_nodes_poses[self.mission_area]))
             self.decisions_made.append(self.mission_area) #store decisions made
             self.go_to_target(self.mission_area)
             return 1
@@ -596,9 +585,9 @@ class Robot:
         :param msg:
         :return:
         """
-        self.environment_status[0] = msg.data
+        self.environment_status[self.charging_station] = msg.data
         if msg.data == battStatus.FULLY_CHARGED.value:
-            if self.robot_id == 0: pu.log_msg('robot', self.robot_id, "Fully charged!")
+            if self.robot_id == 0: self.debug("Fully charged!")
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 
@@ -610,7 +599,7 @@ class Robot:
         """
         self.environment_status[area_id] = msg.data
         if msg.data == areaStatus.RESTORED_F.value:
-            if self.robot_id == 0: pu.log_msg('robot', self.robot_id, "Area fully restored!")
+            if self.robot_id == 0: self.debug("Area fully restored!")
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 
@@ -622,7 +611,7 @@ class Robot:
         :return:
         """
         if self.decay_rates_dict[str(area_id)] == None:
-            if self.robot_id == 0: pu.log_msg('robot', self.robot_id, "Area {} decay rate: {}".format(area_id, msg.data))
+            if self.robot_id == 0: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
             self.decay_rates_dict[str(area_id)] = msg.data
             self.decay_rates_counter += 1
 
@@ -639,7 +628,6 @@ class Robot:
         pu.log_msg('robot', self.robot_id, msg, self.debug_mode)
 
 if __name__ == '__main__':
-    #TODO: We may have to change results directory outside of the package to avoid overloading Github
     os.chdir('/root/catkin_ws/src/results/int_preservation')
     filename = rospy.get_param('/file_data_dump')
     Robot('treebased_decision').run_operation(filename)

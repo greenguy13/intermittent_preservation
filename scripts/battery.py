@@ -85,11 +85,11 @@ class Battery():
     def shutdown(self):
         pu.log_msg('robot', self.robot_id, "Reached {} time operation. Shutting down...".format(self.t_operation))
 
-    def run_operation(self, exp, filepath='', freq_hz=1):
-        rate = rospy.Rate(freq_hz)
-        battery_record, battery_status_record = [], []
-        while not rospy.is_shutdown() and len(battery_record)<self.t_operation:
-            if self.robot_id == 0:
+    def run_operation(self, filename, freq=1):
+        if self.robot_id == 0:
+            rate = rospy.Rate(freq)
+            battery_record, battery_status_record = [], []
+            while not rospy.is_shutdown():
                 battery_status_record.append(self.status)
                 if self.status == battStatus.IDLE.value:
                     pass
@@ -114,13 +114,10 @@ class Battery():
                     battery_record.append(self.battery)
                 self.publish_battery()
 
-            rate.sleep()
+                pu.dump_data(battery_record, '{}_robot{}_battery'.format(filename, self.robot_id))
+                pu.dump_data(battery_status_record, '{}_robot{}_batt_status'.format(filename, self.robot_id))
 
-        #Save array of recorded battery
-        pu.dump_data(battery_record, '{}_robot{}_battery'.format(filename, self.robot_id))
-        pu.dump_data(battery_status_record, '{}_robot{}_batt_status'.format(filename, self.robot_id))
-
-        self.battery_status_pub.publish(battStatus.SHUTDOWN.value)
+                rate.sleep()
 
 
 if __name__ == '__main__':
