@@ -3,18 +3,33 @@ debug_mode: 1
 method: $(arg method) # method that is running
 nrobots: $(arg nrobots)    # number of robots on the team
 nareas: $(arg nareas) #number of areas to preserve
+placement: $(arg placement) #placement of areas
 dec_steps: $(arg dsteps) #number of decision steps
 t_operation: $(arg tframe) #total duration of the operation
 file_sampled_areas: $(arg fileposes) #file name of sampled areas
 file_data_dump: $(arg fileresult) #file name for data dump
-placement: $(arg placement) #placement of areas
+save: $(arg save) #save data
 
+gamma: 0.75 #discount factor for future losses/rewards: [0, 1]. If gamma=0, present looking. Else if gamma=1, all future rewards are treated equally with present reward
 robot_velocity: 1.0 #Linear velocity of robot; we assume linear and angular are relatively equal
-max_fmeasure: 100  # Max F-measure of an area
+max_fmeasure: 100 # Max F-measure of an area
 max_battery: 100 #Max battery
 battery_reserve: 20 #battery reserve
 f_thresh: [80, 50] #(safe, crit)
 batt_consumed_per_time: [0.10, 0.10] #(travel, restoration)
 restoration: 25 #F-measure/battery.py units per second restored
-noise: 0.25
+noise: 0.25 #noise/error in navigation and restoration
 move_base_tolerance: 0.5
+
+#DQN parameters
+epsilon: 0.14 #epsilon for greedy selection
+number_episodes: 1000 #number of training episodes
+state_dims: 3 #number of states
+action_dims: 3 #number of actions
+replay_buffer_size: 500 #replay buffer size
+batch_replay_buffer_size: 100 #sample size of replay buffer for batch training
+update_target_network_period: 50 #number of training episodes for the network to get updated
+length_replay_data: 100 #max number of data points stored in an experience replay; if exceeded, a terminal state
+select_action_random: 40 #number of episodes where we choose action randomly for batch replay
+select_action_decrease_eps: 50 #number of episodes where we decrease eps for eps-greedy action selection
+train_epochs: 100 #training epochs of the main network

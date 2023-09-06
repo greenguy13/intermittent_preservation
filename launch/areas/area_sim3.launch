@@ -33,13 +33,13 @@
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="2"/>
-            <arg name="decay_rate" value="0.005"/>
+            <arg name="decay_rate" value="0.006"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="3"/>
-            <arg name="decay_rate" value="0.009"/>
+            <arg name="decay_rate" value="0.007"/>
         </include>
     </group>
 

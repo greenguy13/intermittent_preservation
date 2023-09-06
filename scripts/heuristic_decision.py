@@ -1,13 +1,8 @@
 #!/usr/bin/env python
 
 """
-Tree-based decision making
+Heuristic decision making
 
-    Given all feasible areas and not in safe zone for the next k decision steps:
-    Process:
-        1. Stack all the combination of length k
-        2. Compute cost
-        3. Pick the least cost
 """
 import math
 from time import process_time
@@ -25,14 +20,6 @@ from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from status import areaStatus, battStatus, robotStatus
 from reset_simulation import *
 
-"""
-Tasks
-    T1: Fine tune move_base params to effectively maneuver obstacles
-    T2: Modularize some aspects of the scripts, particularly the sampling of nodes from decision methods
-    T3: Save data by rosbag: Identify info/data for summary
-    T4: Replicate the experiments (multiple experiments with diff seeds)
-    T5: Visualize real-time changes in F-measure in areas
-"""
 
 INDEX_FOR_X = 0
 INDEX_FOR_Y = 1
@@ -263,6 +250,50 @@ class Robot:
             if self.mission_area == self.charging_station:
                 self.update_robot_status(robotStatus.CHARGING)
             self.decisions_accomplished.append(self.mission_area)
+
+    """
+    TODO:
+    1. Measure the duration matrix
+    2. Measure the average duration that an area decays
+    3. Measure the forecasted decay by the heuristic function
+    4. Measure the immediate loss at the same time discounting forecasted losses
+    """
+
+    def greedy_best_decision(self):
+        """
+
+        :return:
+        """
+        #Measure duration matrix
+        duration_matrix = self.dist_matrix/self.robot_velocity
+
+        #Measure the average duration an area decays
+        mean_duration_decay_array = []
+        for area in self.areas:
+            mean_duration_decay_array[area] = mean_duration_decay(duration_matrix, area) #TODO: mean_duration_decay()
+
+        #Evaluate decision
+        decision_array = []
+        for decision in self.areas:
+            if prune(decision): #TODO: prune
+                forecasted_loss_decision = forecast_loss(current_fmeasure[decision], dec_steps, discount, self.fcrit) #TODO: forecast_loss()
+                feasible_battery = measure_feasible_battery() #TODO
+                decision_array.append((area, forecasted_loss_decision, feasible_battery))
+
+        best_decision = self.charging_station
+
+        if len(decision_array)>0:
+            decision_array = sorted() #TODO: Sort by forecasted_loss ascendingly then feasible battery descendingly
+            best_decision = decision_array[0]
+
+        return best_decision
+
+
+
+
+
+
+
 
     #DECISION-MAKING methods
     def grow_tree(self, dec_steps, restoration, noise):

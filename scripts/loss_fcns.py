@@ -10,7 +10,7 @@ def decay(rate, t, starting_value):
     :param t:
     :return:
     """
-    decayed_fmeasure = starting_value*(1.0 - rate)**t
+    decayed_fmeasure = starting_value*(math.exp(-rate*t)) #previous decay: starting_value*(1.0 - rate)**t
     return decayed_fmeasure
 
 def get_time_given_decay(max_fmeasure, decayed_fmeasure, rate):
@@ -59,15 +59,19 @@ def compute_loss(max_fmeasure, decayed_fmeasure, fsafe, fcrit, rate, est_duratio
     est_decayed_fmeasure = decay(rate, t, max_fmeasure)
     print("Current measure: {}. Estimated decayed measure: {}".format(decayed_fmeasure, est_decayed_fmeasure))
 
+    """
+    #previous loss function
     # Safe zone
     if est_decayed_fmeasure >= fsafe:
-        loss = 0 #fsafe - est_decayed_fmeasure
+        loss = max_fmeasure - est_decayed_fmeasure
     # Caution zone
     elif fcrit <= est_decayed_fmeasure and est_decayed_fmeasure < fsafe:
         loss = 2*(fsafe - est_decayed_fmeasure) #fsafe - est_decayed_fmeasure
     # Crit zone
     elif est_decayed_fmeasure < fcrit:
-        loss = (fsafe - est_decayed_fmeasure)**2
+        loss = 4*(fsafe - est_decayed_fmeasure)
+    """
+    loss = (max_fmeasure - est_decayed_fmeasure)**2
 
     return float(loss)
 
@@ -80,12 +84,19 @@ def compute_cost_fmeasures(fmeasures, fsafe, fcrit):
     cost = 0
     areas = fmeasures.keys()
     for area in areas:
+        """
+        #previous loss function
         if fmeasures[area] >= fsafe:
             loss = 100 - fmeasures[area]
         elif fcrit <= fmeasures[area] and fmeasures[area] < fsafe:
-            loss = 2*(100 - fmeasures[area]) #fsafe - fmeasures[area]
+            loss = 1.5*(100 - fmeasures[area]) #fsafe - fmeasures[area]
         elif fmeasures[area] < fcrit:
-            loss = (100 - fmeasures[area])**2
+            loss = 2.0*(100 - fmeasures[area])
         cost += loss
+        """
+        #TODO: We compute the time lapsed for each of the F-measures. We then compute the relative lapse for each area as the weight.
+        loss = (100-fmeasures[area])**2
+        cost += loss
+
     return cost
 

@@ -28,6 +28,8 @@ class Battery():
         self.batt_depletion_travel, self.batt_depletion_restoring_f = rospy.get_param("/batt_consumed_per_time") #two types of batt depletion rate: while travelling and restoring F
         self.batt_restoration = rospy.get_param("/restoration")
         self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
+        self.save = rospy.get_param("/save")  # Whether to save data
+        self.debug_mode = rospy.get_param("/debug_mode")
 
         #Publisher/subscriber
         rospy.Subscriber("/robot_{}/robot_status".format(self.robot_id), Int8, self.robot_status_cb)
@@ -55,7 +57,7 @@ class Battery():
             self.update_status(battStatus.DEPLETING)
         elif (robot_status == robotStatus.CHARGING.value) and (self.battery < self.max_battery):
             self.update_status(battStatus.CHARGING)
-        pu.log_msg('robot', self.robot_id, 'robot status: {}. battery status: {} level: {}'.format(robot_status, self.status, self.battery))
+        self.debug('robot status: {}. battery status: {} level: {}'.format(robot_status, self.status, self.battery))
 
     def update_status(self, status):
         """
@@ -81,9 +83,6 @@ class Battery():
         """
         self.battery_pub.publish(self.battery)
         self.battery_status_pub.publish(self.status)
-
-    def shutdown(self):
-        pu.log_msg('robot', self.robot_id, "Reached {} time operation. Shutting down...".format(self.t_operation))
 
     def run_operation(self, filename, freq=1):
         if self.robot_id == 0:
@@ -114,11 +113,13 @@ class Battery():
                     battery_record.append(self.battery)
                 self.publish_battery()
 
-                pu.dump_data(battery_record, '{}_robot{}_battery'.format(filename, self.robot_id))
-                pu.dump_data(battery_status_record, '{}_robot{}_batt_status'.format(filename, self.robot_id))
-
+                if self.save:
+                    pu.dump_data(battery_record, '{}_robot{}_battery'.format(filename, self.robot_id))
+                    pu.dump_data(battery_status_record, '{}_robot{}_batt_status'.format(filename, self.robot_id))
                 rate.sleep()
 
+    def debug(self, msg):
+        pu.log_msg('robot', self.robot_id, msg, self.debug_mode)
 
 if __name__ == '__main__':
     os.chdir('/root/catkin_ws/src/results/int_preservation')

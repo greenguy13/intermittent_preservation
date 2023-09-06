@@ -62,6 +62,7 @@ class Robot():
         self.areas = [int(i + 1) for i in range(self.nareas)]  # list of int area IDs
         self.tolerance = rospy.get_param("/move_base_tolerance")
         self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
+        self.save = rospy.get_param("/save") #Whether to save data
 
         # Initialize variables
         charging_station_coords = rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y")  # rospy.get_param("/charging_station_coords")
@@ -74,6 +75,7 @@ class Robot():
         for area_coords in sampled_areas_coords['n{}_p{}'.format(self.nareas, rospy.get_param("/placement"))]:
             pose_stamped = pu.convert_coords_to_PoseStamped(area_coords)
             self.sampled_nodes_poses.append(pose_stamped)
+        rd.seed(100*self.nareas + 10*rospy.get_param("/placement"))
 
         self.charging_station = 0
         self.curr_loc = self.charging_station  # Initial location robot is the charging station
@@ -327,12 +329,18 @@ class Robot():
         Among the feasible areas not yet assigned, pick randomly the next area to monitor
         :return:
         """
+        """
+        DEBUG: Something here needs to be debugged when it comes to sending the robot to the charging station.
+        """
+
+
         if self.robot_id == 0:
             rate = rospy.Rate(1)
             while len(self.sampled_nodes_poses) != self.nareas+1:
                 self.debug("Insufficient data. Sampled nodes poses: {}/{}. Area status None: {}".format(len(self.sampled_nodes_poses), self.nareas + 1, sum(self.environment_status.values())))
                 rate.sleep()
 
+            self.debug("Sufficent data. Sampled nodes poses: {}".format(self.sampled_nodes_poses))
             self.build_dist_matrix()
             t = 0
 
@@ -352,7 +360,7 @@ class Robot():
 
                 elif self.robot_status == robotStatus.IN_MISSION.value:
                     self.debug('Robot in mission')
-                    if self.available:
+                    if self.available: #TODO: Potentially the self.available has some issues
                         self.commence_mission()
 
                 elif self.robot_status == robotStatus.CHARGING.value:
@@ -369,9 +377,10 @@ class Robot():
             self.robot_status_pub.publish(self.robot_status)
             self.status_history.append(self.robot_status)
 
-            pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
-            pu.dump_data(self.decisions_accomplished, '{}_robot{}_decisions_acc'.format(filename, self.robot_id))
-            pu.dump_data(self.status_history, '{}_robot{}_status_history'.format(filename, self.robot_id))
+            if self.save:
+                pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
+                pu.dump_data(self.decisions_accomplished, '{}_robot{}_decisions_acc'.format(filename, self.robot_id))
+                pu.dump_data(self.status_history, '{}_robot{}_status_history'.format(filename, self.robot_id))
             self.shutdown(sleep=10)
 
 
@@ -382,7 +391,7 @@ class Robot():
         """
         self.chosen_area = self.charging_station #Default is the charging station
         feasible_areas = self.find_feasible_areas(self.curr_loc, self.battery)
-        if feasible_areas:
+        if len(feasible_areas)>0:
             self.chosen_area = self.choose_area_randomly(feasible_areas)
             self.debug("Feasible areas: {}. Chosen area: {}".format(feasible_areas, self.chosen_area))
 
@@ -399,7 +408,7 @@ class Robot():
         Sends the robot to the randomly chosen area
         :return:
         """
-        if self.chosen_area:
+        if self.chosen_area is not None: #TODO: Potential chosen_area is not being set as None
             self.mission_area = self.chosen_area
             self.mission_area_pub.publish(self.mission_area)
             self.debug('Heading to {}'.format(self.mission_area))
@@ -448,6 +457,19 @@ class Robot():
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 
+            #TODO: What happens to self.chosen_area?
+            """
+            Initially set as None.
+            Randomly chosen from feasible nodes.
+            Robot then goes to the chosen area as current mission.
+            After succesful mission, robot resets chosen area to None. 
+            """
+            #TODO: Also, what happens to self.available before?
+            """
+            Initially set as True.
+            When there is a chosen area, as we commence the mission and do the request, we set to False.
+            If fully charged or restored an area, we reset back to True.
+            """
     def area_fmeasure_cb(self, msg, area_id):
         """
         Updates fmeasure of area
@@ -465,7 +487,6 @@ class Robot():
         kill_nodes(sleep)
 
 if __name__ == '__main__':
-    rd.seed(1234)
     os.chdir('/root/catkin_ws/src/results/int_preservation')
     filename = rospy.get_param('/file_data_dump')
     Robot('decision_making').run_operation(filename)

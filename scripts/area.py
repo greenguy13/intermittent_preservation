@@ -41,8 +41,10 @@ class Area():
         self.max_fmeasure = rospy.get_param("~max_fmeasure")
         self.fmeasure = self.max_fmeasure #initialize at max fmeasure
         self.restoration = rospy.get_param("~restoration")
+        self.save = rospy.get_param("/save")  # Whether to save data
+        self.debug_mode = rospy.get_param("/debug_mode")
 
-        pu.log_msg('area', self.area, 'Area {}. decay rate: {}. t_operation: {}. max_f: {}. restore: {}. robot id: {}'.format(self.area, self.decay_rate, self.t_operation, self.max_fmeasure, self.restoration, self.robot_id), 1)
+        self.debug('Area {}. decay rate: {}. t_operation: {}. max_f: {}. restore: {}. robot id: {}'.format(self.area, self.decay_rate, self.t_operation, self.max_fmeasure, self.restoration, self.robot_id))
 
         # Published topics
         self.decay_rate_pub = rospy.Publisher("/area_{}/decay_rate".format(self.area), Float32, queue_size=1)
@@ -115,10 +117,6 @@ class Area():
         """
         self.status = status.value
 
-    def shutdown(self):
-        pu.log_msg('robot', self.robot_id, "path: {}".format(os.getcwd()))
-        pu.log_msg('robot', self.robot_id, "Reached {} time operation. Shutting down...".format(self.t_operation))
-
     def run_operation(self, filename, freq_hz=1):
         """
         Statuses:
@@ -160,11 +158,13 @@ class Area():
                 f_record.append(self.fmeasure)
             self.publish_fmeasure()
 
-            pu.dump_data(f_record, '{}_area{}_fmeasure'.format(filename, self.area))
-            pu.dump_data(status_record, '{}_area{}_status'.format(filename, self.area))
-
+            if self.save:
+                pu.dump_data(f_record, '{}_area{}_fmeasure'.format(filename, self.area))
+                pu.dump_data(status_record, '{}_area{}_status'.format(filename, self.area))
             rate.sleep()
 
+    def debug(self, msg):
+        pu.log_msg('area', self.area, msg, self.debug_mode)
 
 if __name__ == '__main__':
     os.chdir('/root/catkin_ws/src/results/int_preservation')

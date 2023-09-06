@@ -35,6 +35,6 @@ floorplan
 (
   name "cluttered"
   bitmap "bitmaps/cluttered.png"
-  size [ 60.0 45.0 4 ]
+  size [ 80.0 60.0 4 ]
   pose [  0.0  0.0 0.0 0.0 ]   # center of the floorplan
 )

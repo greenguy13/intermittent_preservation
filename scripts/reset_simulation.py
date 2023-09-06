@@ -34,7 +34,7 @@ def kill_nodes(sleep):
     os.popen('rosnode cleanup purge')
     time.sleep(sleep)
 
-def launch_nodes(package, launch_file, params, sleep=None):
+def launch_nodes(package, launch_file, params, logfile, sleep=None):
     """
     Runs the launch file with params
     Returns:
