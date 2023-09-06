@@ -36,6 +36,18 @@ ABORTED = 4  # The goal was aborted during execution by the action server due to
 LOST = 9  # An action client can determine that a goal is LOST. This should not be sent over the wire by an action
 
 
+def add_entries_dicts(dict1, dict2):
+    """
+    Adds the entries of the dicts
+    :param dicts:
+    :return:
+    """
+    if list(dict1.keys()) == list(dict2.keys()):
+        sum_array = dict1
+    sum_dict = dict()
+
+
+
 def save_data(data, file_name):
     saved_data = []
     if path.exists(file_name):

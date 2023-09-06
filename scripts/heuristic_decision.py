@@ -19,6 +19,7 @@ from std_msgs.msg import Int8, Float32
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from status import areaStatus, battStatus, robotStatus
 from reset_simulation import *
+from heuristic_fcns import *
 
 
 INDEX_FOR_X = 0
@@ -81,7 +82,7 @@ class Robot:
         self.curr_fmeasures = dict() #container of current F-measure of areas
         self.decay_rates_dict = dict() #dictionary for decay rates
         for area in self.areas:
-            self.decay_rates_dict[str(area)] = None
+            self.decay_rates_dict[area] = None
         self.decay_rates_counter = 0 #counter for stored decay rates; should be equal to number of areas
         self.decisions_made, self.decisions_accomplished, self.status_history = [], [], [] #record of data
         self.total_dist_travelled = 0 #total distance travelled
@@ -258,6 +259,45 @@ class Robot:
     3. Measure the forecasted decay by the heuristic function
     4. Measure the immediate loss at the same time discounting forecasted losses
     """
+    def mean_duration_decay(self, duration_matrix, area):
+        """
+        Measures the average duration that an area decays (when robot commits to another decision than restoring area)
+        Note that each column of the duration matrix represents that the corresponding area is the decision that the robot is committing to.
+        We thus delete the column of the area, and then take the average to measure the average duration.
+        :param duration_matrix:
+        :param area:
+        :return:
+        """
+        submatrix = np.delete(duration_matrix, area, axis=1)
+        return np.mean(submatrix)
+
+    def estimate_battery_params(self, decision, curr_battery, curr_loc, fmeasures, noise):
+        """
+        Measures battery consumption and feasible battery
+        :param decision:
+        :return:
+        """
+        # Battery consumed travel and preserve area (if not charging station)
+        battery_consumption = self.consume_battery(start_area=curr_loc, next_area=decision,
+                                                   curr_measure=fmeasures[decision],
+                                                   noise=noise)
+        # Battery consumed travel back to charging station
+        battery_consumption_backto_charging_station = self.consume_battery(start_area=decision,
+                                                                           next_area=self.charging_station,
+                                                                           curr_measure=None,
+                                                                           noise=noise)
+        # Feasible batt = current batt - (consumption of decision + consumption to travel back to charging station)
+        feasible_battery = curr_battery - (battery_consumption + battery_consumption_backto_charging_station)
+
+        return battery_consumption, feasible_battery
+
+    def prune_decision(self, curr_battery, battery_consumption, battery_reserve):
+        """
+        Decides whether to prune decision (see pruning.py for conditions)
+        :return:
+        """
+        return prune(curr_battery, battery_consumption, battery_reserve)
+
 
     def greedy_best_decision(self):
         """
@@ -268,16 +308,19 @@ class Robot:
         duration_matrix = self.dist_matrix/self.robot_velocity
 
         #Measure the average duration an area decays
-        mean_duration_decay_array = []
+        mean_duration_decay_dict = dict()
         for area in self.areas:
-            mean_duration_decay_array[area] = mean_duration_decay(duration_matrix, area) #TODO: mean_duration_decay()
+            mean_duration_decay_dict[area] = self.mean_duration_decay(duration_matrix, area)
 
         #Evaluate decision
         decision_array = []
         for decision in self.areas:
-            if prune(decision): #TODO: prune
-                forecasted_loss_decision = forecast_loss(current_fmeasure[decision], dec_steps, discount, self.fcrit) #TODO: forecast_loss()
-                feasible_battery = measure_feasible_battery() #TODO
+            #Measure battery consumption
+            # Battery consumption
+            battery_consumption, feasible_battery = self.estimate_battery_params(decision, self.battery, self.curr_loc, self.curr_fmeasures, self.noise)
+            if prune(self.battery, battery_consumption, self.battery_reserve):
+                forecasted_loss_decision = forecast_loss(self.curr_fmeasures, self.decay_rates_dict, (self.fsafe, self.fcrit),
+                                                         self.gamma, self.dec_steps, mean_duration_decay_dict)
                 decision_array.append((area, forecasted_loss_decision, feasible_battery))
 
         best_decision = self.charging_station
@@ -288,124 +331,117 @@ class Robot:
 
         return best_decision
 
-
-
-
-
-
-
-
     #DECISION-MAKING methods
-    def grow_tree(self, dec_steps, restoration, noise):
-        """
-        We grow a decision tree of depth dec_steps starting from where the robot is.
-        Note: Each branch is a tuple containing the path, battery, fmeasures, cost, feasible_battery info
-        :param curr_location: current location of robot
-        :param dec_steps: number of decision steps, (i.e., tree depth)
-        :param restoration: duration it takes to restore per unit F-measure
-        :param noise: anticipated noise in actual travel to an area
-        :return:
-        """
-        """
-        Comments:
-        1. How do we get updated F-measure of areas?
-            > Scenario 1: We are able to monitor F in real-time
-                Subscribe to topic 
-            > Scenario 2: We only get to know the F-measure once we are there.
-                We have our belief/computation/model of what F would be. We start with 100 and decay based on that model.
-                As we go through our mission and visit areas, we constantly measure F. We then update our model (or parameters) of F for that area.
-        """
-
-        branches = list() #container for final branches up to depth k
-        to_grow = list()  #container for branches still being grown/expanded
-        nodes = [self.charging_station]
-        nodes.extend(self.areas)
-        self.debug("Nodes: {}".format(nodes))
-
-        #Start at the current location as the root node.
-        #Scenario 1
-        fmeasures = self.curr_fmeasures.copy()
-        k = 0
-        path = [self.curr_loc]
-        battery = self.battery
-        cost = 0 #Initialize cost of path
-        if self.robot_id==0: self.debug("Areas: {}. Fmeasures: {}. Battery: {}".format(self.areas, fmeasures, battery))
-
-        #Initial feasible battery level
-        feasible_battery_consumption = self.consume_battery(start_area=self.curr_loc, next_area=self.charging_station, curr_measure=None, noise=noise)
-        feasible_battery = battery - feasible_battery_consumption
-
-        branch = (path, battery, fmeasures, cost, feasible_battery)
-        to_grow.append(branch)
-
-        #Succeeding decision steps:
-        while k < dec_steps:
-            self.debug("\nDec step: {}".format(k))
-            consider_branches = to_grow.copy()
-            to_grow = list() #At the end of the iterations, to-grow will be empty while branches must be complete
-            for branch in consider_branches:
-                self.debug("Branch to grow: {}".format(branch))
-                considered_growing = 0 #Indicators whether the branch has been considered for growing
-                for i in range(len(nodes)):
-                    # Hypothetical: What if we travel to this node, what will the consumed battery be and the updated F-fmeasures?
-                    # Shall we prune this in the next decision step?
-                    path = branch[0].copy()  # path at depth k
-                    battery = branch[1]  # battery level at depth k
-                    fmeasures = branch[2].copy()  # current fmeasures at depth k
-                    cost = branch[3] # cost of path at depth k
-                    start_area = path[-1]
-                    next_area = nodes[i]  # We are considering travelling to all nodes
-
-                    if next_area != self.charging_station:
-                        curr_measure = fmeasures[next_area]
-                        tlapse_decay = get_time_given_decay(self.max_fmeasure, curr_measure, self.decay_rates_dict[str(next_area)])
-                        duration = self.compute_duration(start_area=start_area, next_area=next_area, curr_measure=curr_measure, restoration=restoration, noise=noise) #Duration if we preserve area: travel plus restoration
-                        decayed_fmeasure = decay(self.decay_rates_dict[str(next_area)], tlapse_decay+duration, self.max_fmeasure)  # Decayed measure of area if we travel there
-                    else:
-                        curr_measure, tlapse_decay, decayed_fmeasure = None, None, None
-                        duration = self.compute_duration(start_area=start_area, next_area=self.charging_station, curr_measure=battery, restoration=restoration, noise=noise) #Duration if we charge up
-
-                    #Battery consumption
-                    battery_consumption = self.consume_battery(start_area=start_area, next_area=next_area, curr_measure=curr_measure, noise=noise) #Battery consumed travel and preserve area (if not charging station)
-                    battery_consumption_backto_charging_station = self.consume_battery(start_area=next_area, next_area=self.charging_station, curr_measure=None, noise=noise) #Battery consumed travel back to charging station
-                    feasible_battery_consumption = battery_consumption + battery_consumption_backto_charging_station
-
-                    self.debug("Next area: {}, Batt level: {}, TLapsed decay: {}, Duration: {}, Decayed fmeasure: {}, Batt consumption: {}".format(next_area, battery, tlapse_decay, duration, decayed_fmeasure, battery_consumption))
-
-                    # If branch is not to be pruned and length still less than dec_steps, then we continue to grow that branch
-                    cond1 = prune(battery, feasible_battery_consumption, self.battery_reserve)
-                    self.debug("Prune: {}".format(cond1))
-                    if cond1 is False and start_area != next_area:
-                        #PO condition: If next node is charging station + one of the areas is decaying if we travel to that area + battery is safe or 100 (given when in charging station?)
-                        path.append(next_area) #append next area as part of the path at depth k+1. #This is where the additional or overwriting happens. We need to make dummy list/container
-                        if next_area != self.charging_station:
-                            battery -= battery_consumption #actual battery depleted at depth k+1
-                        else:
-                            battery = self.max_battery #actual battery restored to max value
-                        feasible_battery = battery - feasible_battery_consumption  # battery available after taking into account battery to go back to charging station from current location. Note: if location is charging station, feasible_battery = max_battery
-                        updated_fmeasures = self.adjust_fmeasures(fmeasures, next_area, duration) #F-measure of areas adjusted accordingly, i.e., consequence of decision
-                        cost += (self.gamma**k)*self.compute_cost(updated_fmeasures) #Discounted cost of this decision
-                        self.debug("Resultant F-measures: {}".format(updated_fmeasures))
-                        self.debug("Branch to grow appended (path, batt, upd_fmeasures, cost, feas_batt): {}, {}, {}, {}, {}".format(path, battery, updated_fmeasures, cost, feasible_battery))
-                        to_grow.append((path, battery, updated_fmeasures, cost, feasible_battery)) #Branch: (path, battery, updated_fmeasures, cost, feasible battery)
-                        considered_growing += 1
-
-                    #Else, we add that branch to branches (for return), which includes pruned branches. Conditions:
-                    # 1.) Robot is not dead at the end of the operation, i.e., we check whether remaining feasible battery >= 0. If not, then this path ends dead, thus we don't append it.
-                    # 2.) Furthermore: If even after iterating through all possible nodes, (thats why i == len(nodes)-1), branch not considered for growing.
-                    # 3.) And branch not yet in branches.
-                    else:
-                        if (is_feasible(battery, feasible_battery_consumption, self.battery_reserve) is True) and (i == len(nodes)-1 and considered_growing == 0) and (branch not in branches):
-                            self.debug("Branch appended to tree: {}".format(branch))
-                            branches.append(branch)
-            k += 1 #We are done with k depth, so move on to the next depth
-
-        #We append to branches the branches of length k, (i.e., the final decision step)
-        for branch in to_grow:
-            if branch not in branches:
-                branches.append(branch)
-        self.debug("Arrived at last dec. step. Number of branches: {}".format(len(branches)))
-        return branches
+    # def grow_tree(self, dec_steps, restoration, noise):
+    #     """
+    #     We grow a decision tree of depth dec_steps starting from where the robot is.
+    #     Note: Each branch is a tuple containing the path, battery, fmeasures, cost, feasible_battery info
+    #     :param curr_location: current location of robot
+    #     :param dec_steps: number of decision steps, (i.e., tree depth)
+    #     :param restoration: duration it takes to restore per unit F-measure
+    #     :param noise: anticipated noise in actual travel to an area
+    #     :return:
+    #     """
+    #     """
+    #     Comments:
+    #     1. How do we get updated F-measure of areas?
+    #         > Scenario 1: We are able to monitor F in real-time
+    #             Subscribe to topic
+    #         > Scenario 2: We only get to know the F-measure once we are there.
+    #             We have our belief/computation/model of what F would be. We start with 100 and decay based on that model.
+    #             As we go through our mission and visit areas, we constantly measure F. We then update our model (or parameters) of F for that area.
+    #     """
+    #
+    #     branches = list() #container for final branches up to depth k
+    #     to_grow = list()  #container for branches still being grown/expanded
+    #     nodes = [self.charging_station]
+    #     nodes.extend(self.areas)
+    #     self.debug("Nodes: {}".format(nodes))
+    #
+    #     #Start at the current location as the root node.
+    #     #Scenario 1
+    #     fmeasures = self.curr_fmeasures.copy()
+    #     k = 0
+    #     path = [self.curr_loc]
+    #     battery = self.battery
+    #     cost = 0 #Initialize cost of path
+    #     if self.robot_id==0: self.debug("Areas: {}. Fmeasures: {}. Battery: {}".format(self.areas, fmeasures, battery))
+    #
+    #     #Initial feasible battery level
+    #     feasible_battery_consumption = self.consume_battery(start_area=self.curr_loc, next_area=self.charging_station, curr_measure=None, noise=noise)
+    #     feasible_battery = battery - feasible_battery_consumption
+    #
+    #     branch = (path, battery, fmeasures, cost, feasible_battery)
+    #     to_grow.append(branch)
+    #
+    #     #Succeeding decision steps:
+    #     while k < dec_steps:
+    #         self.debug("\nDec step: {}".format(k))
+    #         consider_branches = to_grow.copy()
+    #         to_grow = list() #At the end of the iterations, to-grow will be empty while branches must be complete
+    #         for branch in consider_branches:
+    #             self.debug("Branch to grow: {}".format(branch))
+    #             considered_growing = 0 #Indicators whether the branch has been considered for growing
+    #             for i in range(len(nodes)):
+    #                 # Hypothetical: What if we travel to this node, what will the consumed battery be and the updated F-fmeasures?
+    #                 # Shall we prune this in the next decision step?
+    #                 path = branch[0].copy()  # path at depth k
+    #                 battery = branch[1]  # battery level at depth k
+    #                 fmeasures = branch[2].copy()  # current fmeasures at depth k
+    #                 cost = branch[3] # cost of path at depth k
+    #                 start_area = path[-1]
+    #                 next_area = nodes[i]  # We are considering travelling to all nodes
+    #
+    #                 if next_area != self.charging_station:
+    #                     curr_measure = fmeasures[next_area]
+    #                     tlapse_decay = get_time_given_decay(self.max_fmeasure, curr_measure, self.decay_rates_dict[str(next_area)])
+    #                     duration = self.compute_duration(start_area=start_area, next_area=next_area, curr_measure=curr_measure, restoration=restoration, noise=noise) #Duration if we preserve area: travel plus restoration
+    #                     decayed_fmeasure = decay(self.decay_rates_dict[str(next_area)], tlapse_decay+duration, self.max_fmeasure)  # Decayed measure of area if we travel there
+    #                 else:
+    #                     curr_measure, tlapse_decay, decayed_fmeasure = None, None, None
+    #                     duration = self.compute_duration(start_area=start_area, next_area=self.charging_station, curr_measure=battery, restoration=restoration, noise=noise) #Duration if we charge up
+    #
+    #                 #Battery consumption
+    #                 battery_consumption = self.consume_battery(start_area=start_area, next_area=next_area, curr_measure=curr_measure, noise=noise) #Battery consumed travel and preserve area (if not charging station)
+    #                 battery_consumption_backto_charging_station = self.consume_battery(start_area=next_area, next_area=self.charging_station, curr_measure=None, noise=noise) #Battery consumed travel back to charging station
+    #                 feasible_battery_consumption = battery_consumption + battery_consumption_backto_charging_station
+    #
+    #                 self.debug("Next area: {}, Batt level: {}, TLapsed decay: {}, Duration: {}, Decayed fmeasure: {}, Batt consumption: {}".format(next_area, battery, tlapse_decay, duration, decayed_fmeasure, battery_consumption))
+    #
+    #                 # If branch is not to be pruned and length still less than dec_steps, then we continue to grow that branch
+    #                 cond1 = prune(battery, feasible_battery_consumption, self.battery_reserve)
+    #                 self.debug("Prune: {}".format(cond1))
+    #                 if cond1 is False and start_area != next_area:
+    #                     #PO condition: If next node is charging station + one of the areas is decaying if we travel to that area + battery is safe or 100 (given when in charging station?)
+    #                     path.append(next_area) #append next area as part of the path at depth k+1. #This is where the additional or overwriting happens. We need to make dummy list/container
+    #                     if next_area != self.charging_station:
+    #                         battery -= battery_consumption #actual battery depleted at depth k+1
+    #                     else:
+    #                         battery = self.max_battery #actual battery restored to max value
+    #                     feasible_battery = battery - feasible_battery_consumption  # battery available after taking into account battery to go back to charging station from current location. Note: if location is charging station, feasible_battery = max_battery
+    #                     updated_fmeasures = self.adjust_fmeasures(fmeasures, next_area, duration) #F-measure of areas adjusted accordingly, i.e., consequence of decision
+    #                     cost += (self.gamma**k)*self.compute_cost(updated_fmeasures) #Discounted cost of this decision
+    #                     self.debug("Resultant F-measures: {}".format(updated_fmeasures))
+    #                     self.debug("Branch to grow appended (path, batt, upd_fmeasures, cost, feas_batt): {}, {}, {}, {}, {}".format(path, battery, updated_fmeasures, cost, feasible_battery))
+    #                     to_grow.append((path, battery, updated_fmeasures, cost, feasible_battery)) #Branch: (path, battery, updated_fmeasures, cost, feasible battery)
+    #                     considered_growing += 1
+    #
+    #                 #Else, we add that branch to branches (for return), which includes pruned branches. Conditions:
+    #                 # 1.) Robot is not dead at the end of the operation, i.e., we check whether remaining feasible battery >= 0. If not, then this path ends dead, thus we don't append it.
+    #                 # 2.) Furthermore: If even after iterating through all possible nodes, (thats why i == len(nodes)-1), branch not considered for growing.
+    #                 # 3.) And branch not yet in branches.
+    #                 else:
+    #                     if (is_feasible(battery, feasible_battery_consumption, self.battery_reserve) is True) and (i == len(nodes)-1 and considered_growing == 0) and (branch not in branches):
+    #                         self.debug("Branch appended to tree: {}".format(branch))
+    #                         branches.append(branch)
+    #         k += 1 #We are done with k depth, so move on to the next depth
+    #
+    #     #We append to branches the branches of length k, (i.e., the final decision step)
+    #     for branch in to_grow:
+    #         if branch not in branches:
+    #             branches.append(branch)
+    #     self.debug("Arrived at last dec. step. Number of branches: {}".format(len(branches)))
+    #     return branches
 
     def compute_duration(self, start_area, next_area, curr_measure, restoration, noise):
         """
@@ -468,8 +504,8 @@ class Robot:
             if area == visit_area:
                 fmeasures[area] = self.max_fmeasure
             else:
-                tlapse_decay = get_time_given_decay(self.max_fmeasure, fmeasures[area], self.decay_rates_dict[str(area)]) + duration
-                fmeasures[area] = decay(self.decay_rates_dict[str(area)], tlapse_decay, self.max_fmeasure)
+                tlapse_decay = get_time_given_decay(self.max_fmeasure, fmeasures[area], self.decay_rates_dict[area]) + duration
+                fmeasures[area] = decay(self.decay_rates_dict[area], tlapse_decay, self.max_fmeasure)
 
         return fmeasures
 
@@ -663,9 +699,9 @@ class Robot:
         :param area_id:
         :return:
         """
-        if self.decay_rates_dict[str(area_id)] == None:
+        if self.decay_rates_dict[area_id] == None:
             if self.robot_id == 0: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
-            self.decay_rates_dict[str(area_id)] = msg.data
+            self.decay_rates_dict[area_id] = msg.data
             self.decay_rates_counter += 1
 
     def area_fmeasure_cb(self, msg, area_id):
