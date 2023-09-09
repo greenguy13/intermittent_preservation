@@ -24,6 +24,13 @@ def open_data(filename):
 
     return data
 
+def batch_sample_nodes_poses(worlds, nareas_list, nplacements):
+    for w in worlds:
+        for n in nareas_list:
+            fileposes = '{}_n{}_sampled_nodes_poses_dict.pkl'.format(w, n)
+            if os.path.exists(fileposes) is False:
+                sample_nodes_poses(w, n, nplacements)
+
 
 
 #Run the experiment
@@ -42,11 +49,7 @@ def batch_experiments(method, worlds, nareas_list, nplacements, decay_category, 
     """
     # Create file for the different placement of nodes in the world first
     if sample_nodes:
-        for w in worlds:
-            for n in nareas_list:
-                fileposes = '{}_n{}_sampled_nodes_poses_dict.pkl'.format(w, n)
-                if os.path.exists(fileposes) is False:
-                    sample_nodes_poses(w, n, nplacements)
+        batch_sample_nodes_poses(worlds, nareas_list, nplacements)
 
     # Run experiments
     for w in worlds:
@@ -121,21 +124,92 @@ def run_experiment(method, world, nareas, placement, decay, tframe, dec_steps=1,
 
 if __name__ == '__main__':
     os.chdir('/root/catkin_ws/src/results/int_preservation')
-    worlds = ['office']
-    nareas_list = [3]
-    decay_category = ['non_uniform']
-    dec_steps = [3]
-    nplacements = 5
-    ntrials = 5
-    tframe = 2100
+    # worlds = ['office']
+    # nareas_list = [3]
+    # decay_category = ['non_uniform']
+    # dec_steps = [3]
+    # nplacements = 5
+    # ntrials = 5
+    # tframe = 2100
 
     #Random decision making
     # batch_experiments(method='random_decision', worlds=worlds, nareas_list=nareas_list, nplacements=nplacements, decay_category=decay_category, tframe=tframe, ntrials=ntrials, dec_steps=None)
 
     #Treebased decision
     # batch_experiments(method='treebased_decision', worlds=worlds, nareas_list=nareas_list, nplacements=nplacements, decay_category=decay_category, tframe=tframe, ntrials=ntrials, dec_steps=dec_steps)
+    # run_experiment(method='random_decision', world='office', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
+    # run_experiment(method='random_decision', world='office', nareas=3, placement=2, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
+    # run_experiment(method='random_decision', world='office', nareas=3, placement=3, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
+    # run_experiment(method='random_decision', world='office', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
+    # run_experiment(method='random_decision', world='office', nareas=6, placement=2, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
+    # run_experiment(method='random_decision', world='office', nareas=6, placement=3, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
+    # run_experiment(method='random_decision', world='office', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
+    # run_experiment(method='random_decision', world='office', nareas=9, placement=2, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
+    # run_experiment(method='random_decision', world='office', nareas=9, placement=3, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
 
-    run_experiment(method='treebased_decision', world='office', nareas=3, placement=2, decay='non_uniform', tframe=2100, dec_steps=1, ntrials=5, save=True)
-    # run_experiment(method='treebased_decision', world='office', nareas=3, placement=2, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=5, save=True)
-    # run_experiment(method='treebased_decision', world='office', nareas=3, placement=2, decay='non_uniform', tframe=2100, dec_steps=6, ntrials=5, save=True)
-    # run_experiment(method='treebased_decision', world='office', nareas=3, placement=2, decay='non_uniform', tframe=2100, dec_steps=9, ntrials=5, save=True)
+
+    # #Sample node poses
+    # #nareas = 6, 9
+    # worlds = ['office', 'open', 'cluttered']
+    # nareas_list = [6, 9]
+    # nplacements = 5
+    # batch_sample_nodes_poses(worlds, nareas_list, nplacements)
+
+
+    #To-Run
+    #Office, placement = 1
+    #nareas = 3
+    # run_experiment(method='random_decision', world='office', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
+    run_experiment(method='treebased_decision', world='office', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=1, ntrials=5, save=True)
+    run_experiment(method='treebased_decision', world='office', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=5, save=True)
+    run_experiment(method='treebased_decision', world='office', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=6, ntrials=5, save=True)
+    run_experiment(method='treebased_decision', world='office', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=9, ntrials=5, save=True)
+
+
+    #nareas = 6
+    # run_experiment(method='random_decision', world='office', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
+    run_experiment(method='treebased_decision', world='office', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=1, ntrials=5, save=True)
+    run_experiment(method='treebased_decision', world='office', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=5, save=True)
+
+    #nareas =9
+    # run_experiment(method='random_decision', world='office', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
+    run_experiment(method='treebased_decision', world='office', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=1, ntrials=5, save=True)
+    run_experiment(method='treebased_decision', world='office', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=5, save=True)
+
+    #Open
+    #nareas = 3
+    # run_experiment(method='random_decision', world='open', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
+    # run_experiment(method='treebased_decision', world='open', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=1, ntrials=5, save=True)
+    # run_experiment(method='treebased_decision', world='open', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=5, save=True)
+    # run_experiment(method='treebased_decision', world='open', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=6, ntrials=5, save=True)
+    # run_experiment(method='treebased_decision', world='open', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=9, ntrials=5, save=True)
+
+
+    #nareas = 6
+    # run_experiment(method='random_decision', world='open', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
+    # run_experiment(method='treebased_decision', world='open', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=1, ntrials=5, save=True)
+    # run_experiment(method='treebased_decision', world='open', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=5, save=True)
+
+    #nareas =9
+    # run_experiment(method='random_decision', world='open', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
+    # run_experiment(method='treebased_decision', world='open', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=1, ntrials=5, save=True)
+    # run_experiment(method='treebased_decision', world='open', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=5, save=True)
+
+    #Cluttered
+    #nareas = 3
+    # run_experiment(method='random_decision', world='cluttered', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
+    # run_experiment(method='treebased_decision', world='cluttered', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=1, ntrials=5, save=True)
+    # run_experiment(method='treebased_decision', world='cluttered', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=5, save=True)
+    # run_experiment(method='treebased_decision', world='cluttered', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=6, ntrials=5, save=True)
+    # run_experiment(method='treebased_decision', world='cluttered', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=9, ntrials=5, save=True)
+
+
+    #nareas = 6
+    # run_experiment(method='random_decision', world='cluttered', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
+    # run_experiment(method='treebased_decision', world='cluttered', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=1, ntrials=5, save=True)
+    # run_experiment(method='treebased_decision', world='cluttered', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=5, save=True)
+
+    #nareas =9
+    # run_experiment(method='random_decision', world='cluttered', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
+    # run_experiment(method='treebased_decision', world='cluttered', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=1, ntrials=5, save=True)
+    # run_experiment(method='treebased_decision', world='cluttered', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=5, save=True)

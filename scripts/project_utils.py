@@ -42,11 +42,19 @@ def add_entries_dicts(dict1, dict2):
     :param dicts:
     :return:
     """
+    #If the keys are identical, we sum the values right away
     if list(dict1.keys()) == list(dict2.keys()):
-        sum_array = dict1
-    sum_dict = dict()
+        sum_array = np.array(list(dict1.values())) + np.array(list(dict2.values()))
+        sum_array = sum_array.tolist()
+        sum_dict = dict(zip(dict1.keys(), sum_array))
 
+    #Else, we do a pairing to sum respective values
+    else:
+        sum_dict = dict()
+        for key in dict1:
+            sum_dict[key] = dict1[key] + dict2[key]
 
+    return sum_dict
 
 def save_data(data, file_name):
     saved_data = []

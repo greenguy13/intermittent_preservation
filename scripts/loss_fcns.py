@@ -34,18 +34,6 @@ def beta_rate(rate, rates):
     beta = rate / sum(rates)
     return beta
 
-"""
-TODO: Refinements
-> compute_loss
-    + the loss function
-> forecast_loss
-    + forecast the loss given estimated duration
-    + uses compute_loss 
-> compute_cost_fmeasures
-    + compute the loss for each F-measure
-    + sum up all the losses
-"""
-
 def compute_loss(max_fmeasure, decayed_fmeasure, fsafe, fcrit, rate, est_duration):
     """
     Computes loss by estimating the decayed fmeasure given the decay rate after a set duration
@@ -59,7 +47,6 @@ def compute_loss(max_fmeasure, decayed_fmeasure, fsafe, fcrit, rate, est_duratio
     est_decayed_fmeasure = decay(rate, t, max_fmeasure)
     print("Current measure: {}. Estimated decayed measure: {}".format(decayed_fmeasure, est_decayed_fmeasure))
 
-    """
     #previous loss function
     # Safe zone
     if est_decayed_fmeasure >= fsafe:
@@ -70,8 +57,8 @@ def compute_loss(max_fmeasure, decayed_fmeasure, fsafe, fcrit, rate, est_duratio
     # Crit zone
     elif est_decayed_fmeasure < fcrit:
         loss = 4*(fsafe - est_decayed_fmeasure)
-    """
-    loss = (max_fmeasure - est_decayed_fmeasure)**2
+
+    # loss = (max_fmeasure - est_decayed_fmeasure)**2
 
     return float(loss)
 
@@ -82,9 +69,8 @@ def compute_cost_fmeasures(fmeasures, fsafe, fcrit):
     :return:
     """
     cost = 0
-    areas = fmeasures.keys()
-    for area in areas:
-        """
+
+    for area in fmeasures:
         #previous loss function
         if fmeasures[area] >= fsafe:
             loss = 100 - fmeasures[area]
@@ -93,10 +79,10 @@ def compute_cost_fmeasures(fmeasures, fsafe, fcrit):
         elif fmeasures[area] < fcrit:
             loss = 2.0*(100 - fmeasures[area])
         cost += loss
-        """
-        #TODO: We compute the time lapsed for each of the F-measures. We then compute the relative lapse for each area as the weight.
-        loss = (100-fmeasures[area])**2
-        cost += loss
+
+        #TODO: Possible addition, we compute the time lapsed for each of the F-measures. We then compute the relative lapse for each area as the weight.
+        # loss = (100-fmeasures[area])**2
+        # cost += loss
 
     return cost
 

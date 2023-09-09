@@ -45,37 +45,37 @@
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="1"/>
-            <arg name="decay_rate" value="0.001"/>
+            <arg name="decay_rate" value="0.00114"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="2"/>
-            <arg name="decay_rate" value="0.005"/>
+            <arg name="decay_rate" value="0.00103"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="3"/>
-            <arg name="decay_rate" value="0.009"/>
+            <arg name="decay_rate" value="0.00151"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="4"/>
-            <arg name="decay_rate" value="0.001"/>
+            <arg name="decay_rate" value="0.00171"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="5"/>
-            <arg name="decay_rate" value="0.005"/>
+            <arg name="decay_rate" value="0.00211"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="6"/>
-            <arg name="decay_rate" value="0.009"/>
+            <arg name="decay_rate" value="0.00207"/>
         </include>
     </group>
 

@@ -286,18 +286,11 @@ class Robot:
                                                                            next_area=self.charging_station,
                                                                            curr_measure=None,
                                                                            noise=noise)
+        total_battery_consumption = battery_consumption + battery_consumption_backto_charging_station
         # Feasible batt = current batt - (consumption of decision + consumption to travel back to charging station)
-        feasible_battery = curr_battery - (battery_consumption + battery_consumption_backto_charging_station)
+        feasible_battery = curr_battery - total_battery_consumption
 
-        return battery_consumption, feasible_battery
-
-    def prune_decision(self, curr_battery, battery_consumption, battery_reserve):
-        """
-        Decides whether to prune decision (see pruning.py for conditions)
-        :return:
-        """
-        return prune(curr_battery, battery_consumption, battery_reserve)
-
+        return total_battery_consumption, feasible_battery
 
     def greedy_best_decision(self):
         """
@@ -312,16 +305,21 @@ class Robot:
         for area in self.areas:
             mean_duration_decay_dict[area] = self.mean_duration_decay(duration_matrix, area)
 
+
         #Evaluate decision
         decision_array = []
         for decision in self.areas:
-            #Measure battery consumption
             # Battery consumption
-            battery_consumption, feasible_battery = self.estimate_battery_params(decision, self.battery, self.curr_loc, self.curr_fmeasures, self.noise)
+            battery_consumption, feasible_battery = self.estimate_battery_params(decision, self.battery, self.curr_loc,
+                                                                                 self.curr_fmeasures, self.noise)
             if prune(self.battery, battery_consumption, self.battery_reserve):
-                forecasted_loss_decision = forecast_loss(self.curr_fmeasures, self.decay_rates_dict, (self.fsafe, self.fcrit),
-                                                         self.gamma, self.dec_steps, mean_duration_decay_dict)
-                decision_array.append((area, forecasted_loss_decision, feasible_battery))
+                #Immediate loss in i=1
+                immediate_loss_decision = 0 #TODO:
+                #Heuristic loss for i=2...k
+                forecasted_loss_decision = heuristic_loss_decision(self.curr_fmeasures, self.decay_rates_dict, (self.fsafe, self.fcrit),
+                                                         self.gamma, self.dec_steps, mean_duration_decay_dict) #Main
+                evaluated_loss_decision = immediate_loss_decision + forecasted_loss_decision
+                decision_array.append((decision, evaluated_loss_decision, feasible_battery))
 
         best_decision = self.charging_station
 
