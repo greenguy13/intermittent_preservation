@@ -360,7 +360,7 @@ class Robot():
 
                 elif self.robot_status == robotStatus.IN_MISSION.value:
                     self.debug('Robot in mission')
-                    if self.available: #TODO: Potentially the self.available has some issues
+                    if self.available:
                         self.commence_mission()
 
                 elif self.robot_status == robotStatus.CHARGING.value:
@@ -408,7 +408,7 @@ class Robot():
         Sends the robot to the randomly chosen area
         :return:
         """
-        if self.chosen_area is not None: #TODO: Potential chosen_area is not being set as None
+        if self.chosen_area is not None:
             self.mission_area = self.chosen_area
             self.mission_area_pub.publish(self.mission_area)
             self.debug('Heading to {}'.format(self.mission_area))
@@ -457,19 +457,6 @@ class Robot():
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 
-            #TODO: What happens to self.chosen_area?
-            """
-            Initially set as None.
-            Randomly chosen from feasible nodes.
-            Robot then goes to the chosen area as current mission.
-            After succesful mission, robot resets chosen area to None. 
-            """
-            #TODO: Also, what happens to self.available before?
-            """
-            Initially set as True.
-            When there is a chosen area, as we commence the mission and do the request, we set to False.
-            If fully charged or restored an area, we reset back to True.
-            """
     def area_fmeasure_cb(self, msg, area_id):
         """
         Updates fmeasure of area
