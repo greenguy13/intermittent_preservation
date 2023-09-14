@@ -312,22 +312,28 @@ class Robot:
             # Battery consumption
             battery_consumption, feasible_battery = self.estimate_battery_params(decision, self.battery, self.curr_loc,
                                                                                  self.curr_fmeasures, self.noise)
-            if prune(self.battery, battery_consumption, self.battery_reserve):
+            self.debug("Batt consumption: {}. Feasible batt: {}".format(battery_consumption, feasible_battery))
+            if not prune(self.battery, battery_consumption, self.battery_reserve) and decision != self.curr_loc:
                 #Immediate loss in i=1
                 duration = self.compute_duration(self.curr_loc, decision, self.curr_fmeasures[decision], self.restoration, self.noise)
-                updated_fmeasures = self.adjust_fmeasures(self.curr_fmeasures, decision, duration)  # F-measure of areas adjusted accordingly, i.e., consequence of decision
+                updated_fmeasures = self.adjust_fmeasures(self.curr_fmeasures.copy(), decision, duration)  # F-measure of areas adjusted accordingly, i.e., consequence of decision
                 immediate_loss_decision = self.compute_net_loss(updated_fmeasures)
+                self.debug("Current F-measures: {}".format(self.curr_fmeasures))
+                self.debug("Feasible decision: {}. Duration: {}. Updated F: {}. Immediate loss: {}".format(decision, duration, updated_fmeasures, immediate_loss_decision))
+
                 #Heuristic loss for i=2...k
-                forecasted_loss_decision = heuristic_loss_decision(self.curr_fmeasures, self.decay_rates_dict, (self.fsafe, self.fcrit),
+                forecasted_loss_decision = heuristic_loss_decision(updated_fmeasures, self.decay_rates_dict, (self.fsafe, self.fcrit),
                                                          self.gamma, self.dec_steps, mean_duration_decay_dict) #Main
+
+                self.debug("Discounted future losses through {} steps: {}".format(self.dec_steps, forecasted_loss_decision))
                 evaluated_loss_decision = immediate_loss_decision + forecasted_loss_decision
+                self.debug("Appending: {}".format((decision, evaluated_loss_decision, feasible_battery)))
                 decision_array.append((decision, evaluated_loss_decision, feasible_battery))
 
         best_decision = self.charging_station
 
         if len(decision_array)>0:
-            decision_array = self.get_best_decision(decision_array)
-            best_decision = decision_array[0]
+            best_decision = self.get_best_decision(decision_array)
 
         return best_decision
 
@@ -417,7 +423,7 @@ class Robot:
         """
         # Sort the decisions: the cost is key while the value is decision
         sorted_decisions = sorted(dec_arr, key = lambda x: (x[-2], -x[-1]))
-        self.debug("Decisions sorted by cost:", sorted_decisions)
+        self.debug("Decisions sorted by cost: {}".format(sorted_decisions))
         self.debug("Best decision (branch info): {}".format(sorted_decisions[0]))
         best_decision = sorted_decisions[0][0] #pick the decision with least net loss and most available feasible battery
         return best_decision

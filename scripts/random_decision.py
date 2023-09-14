@@ -329,10 +329,6 @@ class Robot():
         Among the feasible areas not yet assigned, pick randomly the next area to monitor
         :return:
         """
-        """
-        DEBUG: Something here needs to be debugged when it comes to sending the robot to the charging station.
-        """
-
 
         if self.robot_id == 0:
             rate = rospy.Rate(1)
