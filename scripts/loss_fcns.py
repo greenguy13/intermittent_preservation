@@ -10,6 +10,7 @@ def decay(rate, t, starting_value):
     :param t:
     :return:
     """
+    #TODO: Adjust the decay rate measurement as the derivative
     decayed_fmeasure = starting_value*(math.exp(-rate*t)) #previous decay: starting_value*(1.0 - rate)**t
     return decayed_fmeasure
 

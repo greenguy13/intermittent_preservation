@@ -12,5 +12,5 @@ pioneer3at
 (
   name "robot2"
   color "DarkBlue"
-  pose [-50.0 -50.0 0.0 0.0]
+  pose [-50.000 -50.000 0.000 0.000]
 )

@@ -34,7 +34,7 @@ def batch_sample_nodes_poses(worlds, nareas_list, nplacements):
 
 
 #Run the experiment
-def batch_experiments(method, worlds, nareas_list, nplacements, decay_category, tframe, dec_steps=None, ntrials=1, sample_nodes=False, save=False):
+def batch_experiments(method, worlds, nareas_list, nplacements, decay_category, tframe, dec_steps=None, ntrials=1, sample_nodes=False, save=False, exp_id=None):
     """
     Runs a batch of experiments
     :param method:
@@ -60,7 +60,7 @@ def batch_experiments(method, worlds, nareas_list, nplacements, decay_category, 
                     if method == 'treebased_decision':
                         for k in dec_steps:
                             for i in range(ntrials):
-                                fileresult = '{}_{}_n{}_p{}_{}_k{}_{}'.format(method, w, n, p+1, d, k, i+1)
+                                fileresult = '{}_{}_n{}_p{}_{}_k{}_{}_exp{}'.format(method, w, n, p+1, d, k, i+1, exp_id)
                                 logfile = fileresult + '.txt'
                                 params = ['method:={}'.format(method),
                                           'world:={}'.format(w), 'nareas:={}'.format(n),
@@ -68,22 +68,22 @@ def batch_experiments(method, worlds, nareas_list, nplacements, decay_category, 
                                           'tframe:={}'.format(tframe), 'placement:={}'.format(p+1),
                                           'fileposes:={}'.format(fileposes), 'fileresult:={}'.format(fileresult),
                                           'save:={}'.format(save)]
-                                print("Launching...method: {}, world: {}, nareas: {}, decay: {}, dsteps: {}, tframe: {}, placement: {}, save: {}".format(method, w, n, d, k, tframe, p+1, save))
+                                print("Launching...method: {}, world: {}, nareas: {}, decay: {}, dsteps: {}, tframe: {}, placement: {}, save: {}, exp: {}".format(method, w, n, d, k, tframe, p+1, save, exp_id))
                                 launch_nodes('int_preservation', 'mission.launch', params, logfile)
 
                     elif method == 'random_decision':
                         for i in range(ntrials):
-                            fileresult = '{}_{}_n{}_p{}_{}_{}'.format(method, w, n, p + 1, d, i + 1)
+                            fileresult = '{}_{}_n{}_p{}_{}_{}_exp{}'.format(method, w, n, p + 1, d, i + 1, exp_id)
                             logfile = fileresult + '.txt'
                             params = ['method:={}'.format(method), 'world:={}'.format(w),
                                       'nareas:={}'.format(n), 'decay:={}'.format(d),
                                       'tframe:={}'.format(tframe), 'placement:={}'.format(p + 1),
                                       'fileposes:={}'.format(fileposes), 'fileresult:={}'.format(fileresult),
                                       'save:={}'.format(save)]
-                            print("Launching...method: {}, world: {}, nareas: {}, decay: {}, tframe: {}, placement: {}, save: {}".format(method, w, n, d, tframe, p+1, save))
+                            print("Launching...method: {}, world: {}, nareas: {}, decay: {}, tframe: {}, placement: {}, save: {}, exp: {}".format(method, w, n, d, tframe, p+1, save, exp_id))
                             launch_nodes('int_preservation', 'mission.launch', params, logfile)
 
-def run_experiment(method, world, nareas, placement, decay, tframe, dec_steps=1, ntrials=1, save=False):
+def run_experiment(method, world, nareas, placement, decay, tframe, dec_steps=1, ntrials=1, save=False, exp_id=None):
     """
     Runs a single experiment
     :param method:
@@ -99,27 +99,27 @@ def run_experiment(method, world, nareas, placement, decay, tframe, dec_steps=1,
     fileposes = '{}_n{}_sampled_nodes_poses_dict'.format(world, nareas)
     if method == 'treebased_decision' or method == 'heuristic_decision':
         for i in range(ntrials):
-            fileresult = '{}_{}_n{}_p{}_{}_k{}_{}'.format(method, world, nareas, placement, decay, dec_steps, i + 1)
+            fileresult = '{}_{}_n{}_p{}_{}_k{}_{}_exp{}'.format(method, world, nareas, placement, decay, dec_steps, i + 1, exp_id)
             logfile = fileresult + '.txt'
             params = ['method:={}'.format(method),
                       'world:={}'.format(world), 'nareas:={}'.format(nareas),
                       'decay:={}'.format(decay), 'dsteps:={}'.format(dec_steps),
                       'tframe:={}'.format(tframe), 'placement:={}'.format(placement),
                       'fileposes:={}'.format(fileposes), 'fileresult:={}'.format(fileresult), 'save:={}'.format(save)]
-            print("Launching...method: {}, world: {}, nareas: {}, decay: {}, dsteps: {}, tframe: {}, placement: {}, trial: {}, save: {}".format(
-                    method, world, nareas, decay, dec_steps, tframe, placement, i+1, save))
+            print("Launching...method: {}, world: {}, nareas: {}, decay: {}, dsteps: {}, tframe: {}, placement: {}, trial: {}, save: {}, exp_id: {}".format(
+                    method, world, nareas, decay, dec_steps, tframe, placement, i+1, save, exp_id))
             launch_nodes('int_preservation', 'mission.launch', params, logfile)
 
     elif method == 'random_decision':
         for i in range(ntrials):
-            fileresult = '{}_{}_n{}_p{}_{}_{}'.format(method, world, nareas, placement, decay, i + 1)
+            fileresult = '{}_{}_n{}_p{}_{}_{}_exp{}'.format(method, world, nareas, placement, decay, i + 1, exp_id)
             logfile = fileresult + '.txt'
             params = ['method:={}'.format(method), 'world:={}'.format(world),
                       'nareas:={}'.format(nareas), 'decay:={}'.format(decay),
                       'tframe:={}'.format(tframe), 'placement:={}'.format(placement),
                       'fileposes:={}'.format(fileposes), 'fileresult:={}'.format(fileresult), 'save:={}'.format(save)]
-            print("Launching...method: {}, world: {}, nareas: {}, decay: {}, tframe: {}, placement: {}, trial:{}, save: {}".format(
-                method, world, nareas, decay, tframe, placement, i+1, save))
+            print("Launching...method: {}, world: {}, nareas: {}, decay: {}, tframe: {}, placement: {}, trial:{}, save: {}, exp_id: {}".format(
+                method, world, nareas, decay, tframe, placement, i+1, save, exp_id))
             launch_nodes('int_preservation', 'mission.launch', params, logfile)
 
 if __name__ == '__main__':
@@ -149,17 +149,21 @@ if __name__ == '__main__':
 
 
     #Sample node poses
-    #nareas = 6, 9
     # worlds = ['office']
-    # nareas_list = [20]
-    # nplacements = 3
+    # nareas_list = [3]
+    # nplacements = 1
     # batch_sample_nodes_poses(worlds, nareas_list, nplacements)
 
 
     #To-Run: placements 2, 3
     #Office, placement = 1
     #nareas = 3
-    # run_experiment(method='random_decision', world='office', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=5, save=True)
+    run_experiment(method='heuristic_decision', world='office', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=9, ntrials=3, save=True, exp_id=1)
+    # run_experiment(method='heuristic_decision', world='cluttered', nareas=70, placement=1, decay='non_uniform', tframe=500,
+    #                dec_steps=10, ntrials=1, save=True)
+
+
+
     # run_experiment(method='heuristic_decision', world='office', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=5, save=True)
     # run_experiment(method='heuristic_decision', world='office', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=6, ntrials=5, save=True)
     # run_experiment(method='heuristic_decision', world='office', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=9, ntrials=5, save=True)
@@ -195,7 +199,12 @@ if __name__ == '__main__':
     # run_experiment(method='treebased_decision', world='office', nareas=9, placement=2, decay='non_uniform', tframe=2100, dec_steps=1, ntrials=5, save=True)
     # run_experiment(method='treebased_decision', world='office', nareas=9, placement=2, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=5, save=True)
 
-    # run_experiment(method='heuristic_decision', world='office', nareas=20, placement=1, decay='non_uniform', tframe=4200, dec_steps=10, ntrials=5, save=True)
+    # run_experiment(method='heuristic_decision', world='cluttered', nareas=70, placement=1, decay='non_uniform', tframe=50, dec_steps=10, ntrials=1, save=True)
+    # run_experiment(method='heuristic_decision', world='cluttered', nareas=70, placement=1, decay='non_uniform', tframe=50, dec_steps=10000, ntrials=1, save=True)
+    # run_experiment(method='heuristic_decision', world='cluttered', nareas=70, placement=1, decay='non_uniform', tframe=50, dec_steps=100000, ntrials=1, save=True)
+    # run_experiment(method='heuristic_decision', world='cluttered', nareas=70, placement=1, decay='non_uniform', tframe=50, dec_steps=1000000, ntrials=1, save=True)
+    # # run_experiment(method='heuristic_decision', world='office', nareas=50, placement=1, decay='non_uniform', tframe=100,
+    #                dec_steps=10, ntrials=1, save=True)
     # run_experiment(method='treebased_decision', world='office', nareas=20, placement=1, decay='non_uniform', tframe=4200, dec_steps=1, ntrials=5, save=True)
     # run_experiment(method='random_decision', world='office', nareas=20, placement=1, decay='non_uniform', tframe=4200, dec_steps=None, ntrials=5, save=True)
     # run_experiment(method='heuristic_decision', world='office', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=6, ntrials=5, save=True)
@@ -245,17 +254,17 @@ if __name__ == '__main__':
     # run_experiment(method='heuristic_decision', world='open', nareas=3, placement=3, decay='non_uniform', tframe=2100, dec_steps=9, ntrials=1, save=True)
 
     #nareas = 6 (p1)
-    run_experiment(method='random_decision', world='open', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=1, save=True)
-    run_experiment(method='treebased_decision', world='open', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=1, ntrials=1, save=True)
-    run_experiment(method='treebased_decision', world='open', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=1, save=True)
-    # run_experiment(method='heuristic_decision', world='open', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=1, save=True)
-    run_experiment(method='heuristic_decision', world='open', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=6, ntrials=1, save=True)
-    run_experiment(method='heuristic_decision', world='open', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=9, ntrials=1, save=True)
-
-    #nareas =9 (p1)
-    run_experiment(method='random_decision', world='open', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=1, save=True)
-    run_experiment(method='treebased_decision', world='open', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=1, ntrials=1, save=True)
-    run_experiment(method='treebased_decision', world='open', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=1, save=True)
-    # run_experiment(method='heuristic_decision', world='open', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=1, save=True)
-    run_experiment(method='heuristic_decision', world='open', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=6, ntrials=1, save=True)
-    run_experiment(method='heuristic_decision', world='open', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=9, ntrials=1, save=True)
+    # run_experiment(method='random_decision', world='open', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=1, save=True)
+    # run_experiment(method='treebased_decision', world='open', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=1, ntrials=1, save=True)
+    # run_experiment(method='treebased_decision', world='open', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=1, save=True)
+    # # run_experiment(method='heuristic_decision', world='open', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=1, save=True)
+    # run_experiment(method='heuristic_decision', world='open', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=6, ntrials=1, save=True)
+    # run_experiment(method='heuristic_decision', world='open', nareas=6, placement=1, decay='non_uniform', tframe=2100, dec_steps=9, ntrials=1, save=True)
+    #
+    # #nareas =9 (p1)
+    # run_experiment(method='random_decision', world='open', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=None, ntrials=1, save=True)
+    # run_experiment(method='treebased_decision', world='open', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=1, ntrials=1, save=True)
+    # run_experiment(method='treebased_decision', world='open', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=1, save=True)
+    # # run_experiment(method='heuristic_decision', world='open', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=3, ntrials=1, save=True)
+    # run_experiment(method='heuristic_decision', world='open', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=6, ntrials=1, save=True)
+    # run_experiment(method='heuristic_decision', world='open', nareas=9, placement=1, decay='non_uniform', tframe=2100, dec_steps=9, ntrials=1, save=True)

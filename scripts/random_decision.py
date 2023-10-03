@@ -25,6 +25,7 @@ from loss_fcns import *
 from pruning import *
 import project_utils as pu
 from nav_msgs.srv import GetPlan
+from nav_msgs.msg import Odometry
 from std_msgs.msg import Int8, Float32
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from status import areaStatus, battStatus, robotStatus
@@ -86,6 +87,8 @@ class Robot():
         self.robot_status = robotStatus.IDLE.value
         self.available = True
         self.curr_fmeasures = dict()  # container of current F-measure of areas
+        self.total_dist_travelled = 0  # total distance travelled
+        self.x, self.y = 0.0, 0.0  # Initialize robot pose
 
         # Containers for recorded data
         self.decisions_made, self.decisions_accomplished, self.status_history = [], [], []
@@ -111,6 +114,8 @@ class Robot():
 
         self.robot_status_pub = rospy.Publisher('/robot_{}/robot_status'.format(self.robot_id), Int8, queue_size=1)
         self.mission_area_pub = rospy.Publisher('/robot_{}/mission_area'.format(self.robot_id), Int8, queue_size=1)
+
+        rospy.Subscriber('/robot_{}/odom'.format(self.robot_id), Odometry, self.distance_travelled_cb, queue_size=1)
 
         # Action client to move_base
         self.robot_goal_client = actionlib.SimpleActionClient('/robot_' + str(self.robot_id) + '/move_base', MoveBaseAction)
@@ -375,8 +380,9 @@ class Robot():
 
             if self.save:
                 pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
-                pu.dump_data(self.decisions_accomplished, '{}_robot{}_decisions_acc'.format(filename, self.robot_id))
+                pu.dump_data((self.decisions_accomplished, self.total_dist_travelled), '{}_robot{}_decisions_acc_travel'.format(filename, self.robot_id))
                 pu.dump_data(self.status_history, '{}_robot{}_status_history'.format(filename, self.robot_id))
+                self.debug("Dumped all data.".format(self.robot_id))
             self.shutdown(sleep=10)
 
 
@@ -461,6 +467,13 @@ class Robot():
         :return:
         """
         self.curr_fmeasures[area_id] = msg.data
+
+    def distance_travelled_cb(self, msg):
+        #Updates total distance travelled
+        #Sets curr robot pose
+        x, y = msg.pose.pose.position.x, msg.pose.pose.position.y
+        self.total_dist_travelled += math.dist((self.x, self.y), (x, y))
+        self.x, self.y = x, y
 
     def debug(self, msg):
         pu.log_msg('robot', self.robot_id, msg, self.debug_mode)

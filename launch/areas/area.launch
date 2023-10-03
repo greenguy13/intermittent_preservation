@@ -3,11 +3,13 @@
     <arg name="area_id"/>
     <arg name="decay_rate"/>
     <arg name="robot_id"/>
+    <arg name="decay_evolution"/>
 
     <node name="area_$(arg area_id)" pkg="int_preservation" type="area.py">
         <param name="area_id" value="$(arg area_id)" />
         <param name="decay_rate" value="$(arg decay_rate)" />
         <param name="robot_id" value="$(arg robot_id)" />
+        <param name="decay_evolution" value="$(arg decay_evolution)" />
         <rosparam command="load" file="$(find int_preservation)/param/area.yaml" subst_value="true" />
     </node>
 

@@ -1,4 +1,4 @@
-# Intermittent preservation of temporal environment
+# Search-based Strategy for Preservation of Temporal Environmental Properties
 Author: Amel Docena
 
 ## Nodes

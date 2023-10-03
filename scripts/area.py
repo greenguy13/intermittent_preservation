@@ -31,12 +31,12 @@ from status import areaStatus, robotStatus
 class Area():
     def __init__(self):
         rospy.init_node('area', anonymous=True)
+        self.debug_mode = rospy.get_param("/debug_mode")
         self.area = rospy.get_param("~area_id")
         self.robot_id = rospy.get_param("~robot_id")
         self.decay_rate = float(rospy.get_param("~decay_rate"))
-
-        #We can write these params as general param
-        #Change/evolution in decay rate; po in the general parameter
+        self.decay_evolution_list = eval(rospy.get_param("~decay_evolution"))
+        self.evolving_decay = True if len(self.decay_evolution_list) > 0 else False
         self.t_operation = rospy.get_param("/t_operation") #total duration of the operation
         self.max_fmeasure = rospy.get_param("~max_fmeasure")
         self.fmeasure = self.max_fmeasure #initialize at max fmeasure
@@ -45,6 +45,7 @@ class Area():
         self.debug_mode = rospy.get_param("/debug_mode")
 
         self.debug('Area {}. decay rate: {}. t_operation: {}. max_f: {}. restore: {}. robot id: {}'.format(self.area, self.decay_rate, self.t_operation, self.max_fmeasure, self.restoration, self.robot_id))
+        self.debug("Decay evolution list: {}".format(self.decay_evolution_list))
 
         # Published topics
         self.decay_rate_pub = rospy.Publisher("/area_{}/decay_rate".format(self.area), Float32, queue_size=1)
@@ -59,7 +60,8 @@ class Area():
         self.status = areaStatus.IDLE.value
         self.robot_mission_area = None
         self.tlapse = 0
-
+        self.decay_evolve_tframe = round(self.t_operation / (len(self.decay_evolution_list) + 1))
+        self.sim_t = 0
     def robot_status_cb(self, msg):
         """
         Callback for robot status. If robot is not on mission, we pause decay simulation
@@ -73,7 +75,8 @@ class Area():
             self.update_status(areaStatus.DECAYING)
         elif (robot_status == robotStatus.RESTORING_F.value and self.robot_mission_area == self.area) and (self.fmeasure < self.max_fmeasure):
             self.update_status(areaStatus.RESTORING_F)
-        pu.log_msg('robot', self.robot_id, 'robot status: {}. area {} status: {} fmeasure: {} tlapse: {}'.format(robot_status, self.area, self.status, self.fmeasure, self.tlapse))
+        self.debug('robot status: {}. area {} status: {} fmeasure: {} tlapse: {}, sim_t: {}'.format(robot_status, self.area, self.status, self.fmeasure, self.tlapse, self.sim_t))
+        # pu.log_msg('robot', self.robot_id, 'robot status: {}. area {} status: {} fmeasure: {} tlapse: {}'.format(robot_status, self.area, self.status, self.fmeasure, self.tlapse))
 
     def mission_area_cb(self, msg):
         """
@@ -106,8 +109,13 @@ class Area():
         :param t:
         :return:
         """
-        decayed_f = self.max_fmeasure*(1 - self.decay_rate)**t
-        self.fmeasure = decayed_f
+        # decayed_f = self.max_fmeasure*(1 - self.decay_rate)**t
+        derivative = 0
+        if t>0:
+            derivative = (self.max_fmeasure*(1 - self.decay_rate)**t) * math.log(1 - self.decay_rate)
+        decayed_f2 = self.fmeasure + derivative
+        # self.debug("Orig decay: {}. Derivative decay: {}, tlapse: {}".format(decayed_f, decayed_f2, t))
+        self.fmeasure = decayed_f2
 
     def update_status(self, status):
         """
@@ -131,8 +139,19 @@ class Area():
         """
         rate = rospy.Rate(freq_hz)
         f_record, status_record = [], []
+        if self.evolving_decay:
+            time_decay_evolves, evolve_decay_idx = self.sim_t + self.decay_evolve_tframe, 0 #first time stamp where decay rate evolves
+
         while not rospy.is_shutdown():
             status_record.append(self.status)
+            #TODO: Adjust the decay rate here depending on where the time frame we are right now
+            if self.evolving_decay and (self.sim_t >= time_decay_evolves) and (self.sim_t < self.t_operation):
+                self.decay_rate = (1 + self.decay_evolution_list[evolve_decay_idx])*self.decay_rate
+                self.debug("Decay now evolved to {} beginning time {}".format(self.decay_rate, time_decay_evolves))
+                #Set the next evolution time stamp
+                time_decay_evolves = self.sim_t + self.decay_evolve_tframe
+                evolve_decay_idx += 1
+
             if self.status == areaStatus.IDLE.value:
                 pass
 
@@ -156,7 +175,9 @@ class Area():
 
             if self.status != areaStatus.IDLE.value:
                 f_record.append(self.fmeasure)
+                self.sim_t += 1
             self.publish_fmeasure()
+
 
             if self.save:
                 pu.dump_data(f_record, '{}_area{}_fmeasure'.format(filename, self.area))
