@@ -57,6 +57,9 @@ class Area():
         rospy.Subscriber('/robot_{}/robot_status'.format(self.robot_id), Int8, self.robot_status_cb)
         rospy.Subscriber('/robot_{}/mission_area'.format(self.robot_id), Int8, self.mission_area_cb)
 
+        # TODO: Server for F-measure
+        # Service (F, t) from request of robot
+
         self.status = areaStatus.IDLE.value
         self.robot_mission_area = None
         self.tlapse = 0

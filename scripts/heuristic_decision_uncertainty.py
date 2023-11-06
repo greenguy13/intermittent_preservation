@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Heuristic decision making
+Heuristic decision making under uncertainty
 
 """
 import math
@@ -20,6 +20,13 @@ from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from status import areaStatus, battStatus, robotStatus
 from reset_simulation import *
 from heuristic_fcns import *
+
+"""
+TODO: Incorporate
+1. estimate decay params
+2. condition trigger
+3. condition sensitivity
+"""
 
 
 INDEX_FOR_X = 0
@@ -256,9 +263,15 @@ class Robot:
             #PO: Request from the corresponding is better over subscribe since we can get the exact measure with time stamp
             #The result of the request from an area then is a tuple: (F, t)
 
+            """
+            PO
+            > Event trigger
+            
+            > Sensitivity
+            """
+
             if self.mission_area == self.charging_station:
                 self.update_robot_status(robotStatus.CHARGING)
-                #TODO: Update decay model predictor with stored data on (F, t)
             self.decisions_accomplished.append(self.mission_area)
             self.best_decision = None
 
@@ -315,6 +328,10 @@ class Robot:
         duration_matrix = self.dist_matrix/self.robot_velocity
 
         #Measure the average duration an area decays
+        #TODO: This one here may not be needed anymore for a greedy algorithm that assumes submodular objective function
+
+
+        #Estimates the time/duration it takes to areas
         mean_duration_decay_dict = dict()
         for area in self.areas:
             mean_duration_decay_dict[area] = self.mean_duration_decay(duration_matrix, area)
@@ -334,12 +351,13 @@ class Robot:
                 self.debug("Current F-measures: {}".format(self.curr_fmeasures))
                 self.debug("Feasible decision: {}. Duration: {}. Updated F: {}. Immediate loss: {}".format(decision, duration, updated_fmeasures, immediate_loss_decision))
 
-                #Heuristic loss for i=2...k
-                forecasted_loss_decision = heuristic_loss_decision(updated_fmeasures, self.decay_rates_dict, (self.fsafe, self.fcrit),
-                                                         self.gamma, self.dec_steps, mean_duration_decay_dict) #Main
-
-                self.debug("Discounted future losses through {} steps: {}".format(self.dec_steps, forecasted_loss_decision))
-                evaluated_loss_decision = immediate_loss_decision + forecasted_loss_decision
+                # #Heuristic loss for i=2...k
+                # forecasted_loss_decision = heuristic_loss_decision(updated_fmeasures, self.decay_rates_dict, (self.fsafe, self.fcrit),
+                #                                          self.gamma, self.dec_steps, mean_duration_decay_dict) #Main
+                #
+                # self.debug("Discounted future losses through {} steps: {}".format(self.dec_steps, forecasted_loss_decision))
+                # evaluated_loss_decision = immediate_loss_decision + forecasted_loss_decision
+                evaluated_loss_decision = immediate_loss_decision
                 self.debug("Appending: {}".format((decision, evaluated_loss_decision, feasible_battery)))
                 decision_array.append((decision, evaluated_loss_decision, feasible_battery))
 
@@ -478,15 +496,24 @@ class Robot:
                 elif self.robot_status == robotStatus.IN_MISSION.value:
                     self.debug('Robot in mission. Total distance travelled: {}'.format(self.total_dist_travelled))
                     if self.available:
-                        self.commence_mission() #TODO: Where to insert the uncertainty? Potentially here
+                        self.commence_mission()
 
                 elif self.robot_status == robotStatus.CHARGING.value:
                     self.debug('Waiting for battery to charge up')
 
                 elif self.robot_status == robotStatus.RESTORING_F.value:
-                    #TODO: Measure F and update model
                     self.debug('Restoring F-measure')
 
+                # elif self.robot_status = robotStatus.CONSIDER_REPLAN.value:
+                    #TODO: We do the consideration of re-planning after we restore F (This suggests an updated status)
+                    """
+                    > trigger event is True
+                        + this suggests storing data of area just restored, recorded_F, as an array
+                        + own script: if recorded_F[t] > threshold and number of correlated areas > 1 
+                    > sensitivity is True
+                        + we predict the average change of correlated areas and estimate the loss,
+                            measure the gain/loss if we stick to original params
+                    """
                 t += 1
                 rate.sleep()
 
@@ -509,7 +536,9 @@ class Robot:
         Thinks of the best decision before starting mission
         :return:
         """
-        self.best_decision = self.greedy_best_decision()
+        #TODO: Estimate decay model parameters
+        #TODO: PO1. We feed or instantiate, which will then be used by self.greedy_best_decision()
+        self.best_decision = self.greedy_best_decision() #So inside here we can
 
     def time_elapsed(self, think_start, think_end):
         """
@@ -529,7 +558,7 @@ class Robot:
 
     def send2_next_area(self):
         """
-        Sends the robot to the next area in the optimal path:
+        Sends the robot to the next area in the optimal path/decision:
         :return:
         """
         if self.best_decision is not None:
@@ -585,6 +614,9 @@ class Robot:
         self.environment_status[area_id] = msg.data
         if msg.data == areaStatus.RESTORED_F.value:
             if self.robot_id == 0: self.debug("Area fully restored!")
+
+            #TODO: self.robot_status = CONSIDER_REPLAN
+
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 

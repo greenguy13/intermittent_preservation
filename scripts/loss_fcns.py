@@ -86,4 +86,3 @@ def compute_cost_fmeasures(fmeasures, fsafe, fcrit):
         # cost += loss
 
     return cost
-

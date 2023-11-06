@@ -158,7 +158,7 @@ if __name__ == '__main__':
     #To-Run: placements 2, 3
     #Office, placement = 1
     #nareas = 3
-    run_experiment(method='heuristic_decision', world='office', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=9, ntrials=3, save=True, exp_id=1)
+    run_experiment(method='heuristic_decision', world='office', nareas=3, placement=1, decay='non_uniform', tframe=2100, dec_steps=9, ntrials=3, save=True, exp_id=0)
     # run_experiment(method='heuristic_decision', world='cluttered', nareas=70, placement=1, decay='non_uniform', tframe=500,
     #                dec_steps=10, ntrials=1, save=True)
 
