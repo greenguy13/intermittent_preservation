@@ -26,6 +26,9 @@ from std_msgs.msg import Float32, Int8
 import project_utils as pu
 import pickle
 from status import areaStatus, robotStatus
+from int_preservation.srv import flevel, flevelResponse
+from loss_fcns import *
+
 
 
 class Area():
@@ -57,21 +60,22 @@ class Area():
         rospy.Subscriber('/robot_{}/robot_status'.format(self.robot_id), Int8, self.robot_status_cb)
         rospy.Subscriber('/robot_{}/mission_area'.format(self.robot_id), Int8, self.mission_area_cb)
 
-        # TODO: Server for F-measure
-        # Service (F, t) from request of robot
+        # Service server: Fmeasure
+        self.fmeasure_server = rospy.Service("/flevel_server_" + str(self.area), flevel, self.report_flevel_cb)
 
         self.status = areaStatus.IDLE.value
         self.robot_mission_area = None
         self.tlapse = 0
         self.decay_evolve_tframe = round(self.t_operation / (len(self.decay_evolution_list) + 1))
         self.sim_t = 0
+
     def robot_status_cb(self, msg):
         """
         Callback for robot status. If robot is not on mission, we pause decay simulation
         :return:
         """
         robot_status = msg.data
-        if (robot_status == robotStatus.IDLE.value) or (robot_status == robotStatus.READY.value):
+        if (robot_status == robotStatus.IDLE.value) or (robot_status == robotStatus.READY.value) or (robot_status == robotStatus.CONSIDER_REPLAN.value):
             self.update_status(areaStatus.IDLE)
         elif robot_status == robotStatus.IN_MISSION.value or (robot_status == robotStatus.RESTORING_F.value and self.robot_mission_area != self.area) \
                 or robot_status == robotStatus.CHARGING.value:
@@ -79,7 +83,6 @@ class Area():
         elif (robot_status == robotStatus.RESTORING_F.value and self.robot_mission_area == self.area) and (self.fmeasure < self.max_fmeasure):
             self.update_status(areaStatus.RESTORING_F)
         self.debug('robot status: {}. area {} status: {} fmeasure: {} tlapse: {}, sim_t: {}'.format(robot_status, self.area, self.status, self.fmeasure, self.tlapse, self.sim_t))
-        # pu.log_msg('robot', self.robot_id, 'robot status: {}. area {} status: {} fmeasure: {} tlapse: {}'.format(robot_status, self.area, self.status, self.fmeasure, self.tlapse))
 
     def mission_area_cb(self, msg):
         """
@@ -88,6 +91,19 @@ class Area():
         :return:
         """
         self.robot_mission_area = msg.data
+
+    def report_flevel_cb(self, msg):
+        """
+        Callback as Service Server for F-measure
+        :param msg:
+        :return:
+        """
+        if bool(msg.fmeasure_request) is True:
+            # self.debug("Measuring F-value of area {} (tlapse, F): {}. Est decay: {}. Act decay: {}".format(self.area, (self.tlapse, self.fmeasure),
+            #                                                                                                get_decay_rate(max_fmeasure=100, decayed_fmeasure=self.fmeasure, tlapse=self.tlapse), self.decay_rate))
+            self.debug("Measuring decay rate: {}".format(self.decay_rate))
+            record = self.decay_rate #[self.tlapse, self.fmeasure]
+            return flevelResponse(record)
 
     def restore_delay(self):
         """
@@ -147,7 +163,6 @@ class Area():
 
         while not rospy.is_shutdown():
             status_record.append(self.status)
-            #TODO: Adjust the decay rate here depending on where the time frame we are right now
             if self.evolving_decay and (self.sim_t >= time_decay_evolves) and (self.sim_t < self.t_operation):
                 self.decay_rate = (1 + self.decay_evolution_list[evolve_decay_idx])*self.decay_rate
                 self.debug("Decay now evolved to {} beginning time {}".format(self.decay_rate, time_decay_evolves))
@@ -180,7 +195,6 @@ class Area():
                 f_record.append(self.fmeasure)
                 self.sim_t += 1
             self.publish_fmeasure()
-
 
             if self.save:
                 pu.dump_data(f_record, '{}_area{}_fmeasure'.format(filename, self.area))

@@ -8,6 +8,7 @@ dec_steps: $(arg dsteps) #number of decision steps
 t_operation: $(arg tframe) #total duration of the operation
 file_sampled_areas: $(arg fileposes) #file name of sampled areas
 file_data_dump: $(arg fileresult) #file name for data dump
+learn_decay_param_type: $(arg learndecay) #type of heuristic for learning decay param
 save: $(arg save) #save data
 
 gamma: 0.25 #discount factor for future losses/rewards: [0, 1]. If gamma=0, present looking. Else if gamma=1, all future rewards are treated equally with present reward
@@ -21,15 +22,24 @@ restoration: 25 #F-measure/battery.py units per second restored
 noise: 0.25 #noise/error in navigation and restoration
 move_base_tolerance: 0.5
 
+#Uncertainty params
+correlation_matrix: [[1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1]]
+sensitivity_threshold: 0.001
+correlation_threshold: 0.70
+alpha: 0.05
+
+#[[1, 1, 1], [1, 1, 1], [1, 1, 1]]
+#[[1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1]]
+
 #DQN parameters
-epsilon: 0.14 #epsilon for greedy selection
-number_episodes: 1000 #number of training episodes
-state_dims: 3 #number of states
-action_dims: 3 #number of actions
-replay_buffer_size: 500 #replay buffer size
-batch_replay_buffer_size: 100 #sample size of replay buffer for batch training
-update_target_network_period: 50 #number of training episodes for the network to get updated
-length_replay_data: 100 #max number of data points stored in an experience replay; if exceeded, a terminal state
-select_action_random: 40 #number of episodes where we choose action randomly for batch replay
-select_action_decrease_eps: 50 #number of episodes where we decrease eps for eps-greedy action selection
-train_epochs: 100 #training epochs of the main network
+#epsilon: 0.14 #epsilon for greedy selection
+#number_episodes: 1000 #number of training episodes
+#state_dims: 3 #number of states
+#action_dims: 3 #number of actions
+#replay_buffer_size: 500 #replay buffer size
+#batch_replay_buffer_size: 100 #sample size of replay buffer for batch training
+#update_target_network_period: 50 #number of training episodes for the network to get updated
+#length_replay_data: 100 #max number of data points stored in an experience replay; if exceeded, a terminal state
+#select_action_random: 40 #number of episodes where we choose action randomly for batch replay
+#select_action_decrease_eps: 50 #number of episodes where we decrease eps for eps-greedy action selection
+#train_epochs: 100 #training epochs of the main network

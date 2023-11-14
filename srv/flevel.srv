@@ -1,0 +1,3 @@
+bool fmeasure_request
+---
+float32 decay_rate

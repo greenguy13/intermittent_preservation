@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Heuristic decision making
+Heuristic decision making under uncertainty
 
 """
 import math
@@ -14,13 +14,34 @@ from loss_fcns import *
 from pruning import *
 import project_utils as pu
 from nav_msgs.msg import Odometry
-from nav_msgs.srv import GetPlan
 from std_msgs.msg import Int8, Float32
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
+from nav_msgs.srv import GetPlan
+from int_preservation.srv import flevel, flevelRequest
 from status import areaStatus, battStatus, robotStatus
 from reset_simulation import *
 from heuristic_fcns import *
+from estimate_decay_parameters import *
+from condition_trigger import *
+from condition_sensitivity import *
 
+"""
+TODO: Incorporate
+1. estimate decay params
+2. condition trigger
+3. condition sensitivity
+"""
+def request_fmeasure(area, msg=True):
+    """
+    Service request for F-measure
+    :param msg:
+    :return: (tlapse, F) #tlapse here is time lapsed since decay model of area has been updated
+    """
+    rospy.wait_for_service("/flevel_server_" + str(area))
+    flevel_service = rospy.ServiceProxy("/flevel_server_" + str(area), flevel)
+    request = flevelRequest(msg)
+    result = flevel_service(request)
+    return result.decay_rate
 
 INDEX_FOR_X = 0
 INDEX_FOR_Y = 1
@@ -81,14 +102,24 @@ class Robot:
         self.available = True
         self.curr_fmeasures = dict() #container of current F-measure of areas
         self.decay_rates_dict = dict() #dictionary for decay rates
+        self.recorded_data = dict() #dictionary of recorded data collected during mission per area
+        self.recorded_decay_param = dict() #dictionary of recorded decay parameter based on data collected during mission
 
-        #TODO: We are setting the (initial) prior information of the decay rates
         for area in self.areas:
             self.decay_rates_dict[area] = None
+            self.recorded_data[area] = list()
+            self.recorded_decay_param[area] = list()
+
         self.decay_rates_counter = 0 #counter for stored decay rates; should be equal to number of areas
         self.decisions_made, self.decisions_accomplished, self.status_history = [], [], [] #record of data
         self.total_dist_travelled = 0 #total distance travelled
         self.process_time_counter = [] #container for time it took to come up with decision
+
+        self.learn_decay_param_type = rospy.get_param("/learn_decay_param_type")
+        self.alpha = rospy.get_param("/alpha")
+        self.correlation_matrix = np.array(rospy.get_param("/correlation_matrix")).reshape((len(self.areas), len(self.areas)))
+        self.correlation_threshold = rospy.get_param("/correlation_threshold")
+        self.sensitivity_threshold = rospy.get_param("/sensitivity_threshold")
 
         #We sum this up
         self.environment_status = dict()
@@ -103,8 +134,6 @@ class Robot:
         rospy.wait_for_service(server)
         self.get_plan_service = rospy.ServiceProxy(server, GetPlan)
         self.debug("Getplan service: {}".format(self.get_plan_service))
-
-        # TODO: Service request to area for (F, t) when measuring/monitoring F as it goes around during deployment
 
         rospy.Subscriber('/robot_{}/battery_status'.format(self.robot_id), Int8, self.battery_status_cb)
         rospy.Subscriber('/robot_{}/battery'.format(self.robot_id), Float32, self.battery_level_cb)
@@ -250,28 +279,17 @@ class Robot:
         :return:
         """
         if state == SUCCEEDED:
+            self.debug("Arrived at mision_area: {}".format(self.mission_area))
             self.curr_loc = self.mission_area
-            self.update_robot_status(robotStatus.RESTORING_F)
-            #TODO: Record/Store F-measure and time stamp
-            #PO: Request from the corresponding is better over subscribe since we can get the exact measure with time stamp
-            #The result of the request from an area then is a tuple: (F, t)
-
-            if self.mission_area == self.charging_station:
-                self.update_robot_status(robotStatus.CHARGING)
-                #TODO: Update decay model predictor with stored data on (F, t)
             self.decisions_accomplished.append(self.mission_area)
             self.best_decision = None
-
-
-    #TODO: Learns the decay model
-    #We potentially can turn this into an independent script, where there are different possible learning models.
-    #For example: simple moving average, exponential moving average, regression, sampling based approach with Gaussian kernel, Monte-Carlo?
-    def learn_decay(self):
-        """
-
-        :return:
-        """
-        pass
+            if self.mission_area == self.charging_station:
+                self.update_robot_status(robotStatus.CHARGING)
+            else:
+                data = request_fmeasure(self.curr_loc)
+                measured_decay_param = float(data)
+                self.recorded_decay_param[self.curr_loc].append(measured_decay_param)  # Append recorded decay param
+                self.update_robot_status(robotStatus.RESTORING_F)
 
     def mean_duration_decay(self, duration_matrix, area):
         """
@@ -313,8 +331,14 @@ class Robot:
         """
         #Measure duration matrix
         duration_matrix = self.dist_matrix/self.robot_velocity
-
-        #Measure the average duration an area decays
+        """
+        For a greedy algorithm that assumes submodular objective function, set k=1. But for the objective function can be marginal loss
+        This can be defined as a separate function in the loss_fcns. And then we just set it as a parameter here to toggle between
+            actual loss and marginal loss
+        Although it is still possible to keep it for comparison
+        """
+        # Measure the average duration an area decays
+        #Estimates the time/duration it takes to areas
         mean_duration_decay_dict = dict()
         for area in self.areas:
             mean_duration_decay_dict[area] = self.mean_duration_decay(duration_matrix, area)
@@ -441,6 +465,25 @@ class Robot:
         best_decision = sorted_decisions[0][0] #pick the decision with least net loss and most available feasible battery
         return best_decision
 
+    # We potentially can turn this into an independent script, where there are different possible learning models.
+    # For example: simple moving average, exponential moving average, regression, sampling based approach with Gaussian kernel, Monte-Carlo?
+    def learn_decay_param(self, area, type):
+        """
+        Uses the self.recorded_decay_param
+        :return: Updates self.decay_rates_dict
+        """
+
+        if type == "simple_average":
+            return simple_average_param(self.recorded_decay_param, area)
+        elif type == "weighted_average":
+            return weighted_average_param(self.recorded_decay_param, area)
+        elif type == "lower_bound":
+            return lower_bound_param(self.recorded_decay_param, area, self.alpha)
+        elif type == "cvar":
+            return CVaR_param(self.recorded_decay_param, area, self.alpha)
+        elif type == "proposed":
+            return proposed_heuristic(self.recorded_decay_param, area, self.alpha)
+
     #Methods: Run operation
     def run_operation(self, filename, freq=1):
         """
@@ -478,15 +521,49 @@ class Robot:
                 elif self.robot_status == robotStatus.IN_MISSION.value:
                     self.debug('Robot in mission. Total distance travelled: {}'.format(self.total_dist_travelled))
                     if self.available:
-                        self.commence_mission() #TODO: Where to insert the uncertainty? Potentially here
+                        self.commence_mission()
 
                 elif self.robot_status == robotStatus.CHARGING.value:
                     self.debug('Waiting for battery to charge up')
 
                 elif self.robot_status == robotStatus.RESTORING_F.value:
-                    #TODO: Measure F and update model
                     self.debug('Restoring F-measure')
 
+                elif self.robot_status == robotStatus.CONSIDER_REPLAN.value:
+                    self.debug('Consider re-plan...')
+                    """
+                    > trigger event is True
+                        + this suggests storing data of area just restored, recorded_F, as an array
+                        + own script: if recorded_F[t] > threshold and number of correlated areas > 1 
+                    > sensitivity is True
+                        + we predict the average change of correlated areas and estimate the loss,
+                            measure the gain/loss if we stick to original params
+                        > FOR CONSIDERATION: Perhaps the sensitivity threshold can already be inferred in the trigger event
+                            since the loss, where the sensitivity condition is based on, is monotonic on the decay function         
+                    
+                    > afterwards, regardless of conditions being True
+                        + we set the robot to 
+                    """
+
+                    """
+                    params:
+                    self.sensitivity_threshold
+                    self.correlation_threshold
+                    self.correlation_matrix
+                    self.learn_decay_param_type
+                    """
+                    self.debug("Mission area: {}. Current decay rates: {}".format(self.mission_area, self.decay_rates_dict))
+                    measured_decay_param = self.recorded_decay_param[self.mission_area][-1]
+                    current_decay_param = self.decay_rates_dict[self.mission_area]
+                    self.debug('Measured: {}. Current: {}. Sensitivity: {}. Threshold: {}'.format(measured_decay_param, current_decay_param, abs((measured_decay_param-current_decay_param)/current_decay_param), self.sensitivity_threshold))
+                    self.debug('Sensitivity: {}. Correlation: {}'.format(sensitivity_condition(measured_decay_param, current_decay_param, self.sensitivity_threshold), correlation_condition(self.mission_area-1, self.correlation_matrix, self.correlation_threshold)))
+                    if sensitivity_condition(measured_decay_param, current_decay_param, self.sensitivity_threshold) and correlation_condition(self.mission_area-1, self.correlation_matrix, self.correlation_threshold):
+                        self.debug("Measured decay params: {}. Mission area for re-planning: {}".format(self.recorded_decay_param, self.mission_area))
+                        est = self.learn_decay_param(self.mission_area, type=self.learn_decay_param_type)
+                        self.decay_rates_dict[self.mission_area] = est
+                        self.debug("Measured decay param above sens threshold: {}. Updated decay rate by {}: {}".format(measured_decay_param, self.learn_decay_param_type, self.decay_rates_dict[self.mission_area]))
+
+                    self.update_robot_status(robotStatus.IN_MISSION)
                 t += 1
                 rate.sleep()
 
@@ -509,7 +586,7 @@ class Robot:
         Thinks of the best decision before starting mission
         :return:
         """
-        self.best_decision = self.greedy_best_decision()
+        self.best_decision = self.greedy_best_decision() #So inside here we can
 
     def time_elapsed(self, think_start, think_end):
         """
@@ -529,7 +606,7 @@ class Robot:
 
     def send2_next_area(self):
         """
-        Sends the robot to the next area in the optimal path:
+        Sends the robot to the next area in the optimal path/decision:
         :return:
         """
         if self.best_decision is not None:
@@ -586,7 +663,10 @@ class Robot:
         if msg.data == areaStatus.RESTORED_F.value:
             if self.robot_id == 0: self.debug("Area fully restored!")
             self.available = True
-            self.update_robot_status(robotStatus.IN_MISSION)
+            if (self.learn_decay_param_type is not None) and (self.learn_decay_param_type is not 'oracle'):
+                self.update_robot_status(robotStatus.CONSIDER_REPLAN)
+            else:
+                self.update_robot_status(robotStatus.IN_MISSION)
 
     def decay_rate_cb(self, msg, area_id):
         """
@@ -598,7 +678,14 @@ class Robot:
         if self.decay_rates_dict[area_id] == None:
             if self.robot_id == 0: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
             self.decay_rates_dict[area_id] = msg.data
+            #We store the prior decay rate data as first input to the recorded decay rates data
+            if len(self.recorded_decay_param[area_id]) == 0:
+                self.recorded_decay_param[area_id].append(self.decay_rates_dict[area_id])
             self.decay_rates_counter += 1
+        else:
+            if self.learn_decay_param_type == 'oracle':
+                if self.decay_rates_dict[area_id] != msg.data: self.debug("Oracle change in decay in area {}: {}".format(area_id, msg.data))
+                self.decay_rates_dict[area_id] = msg.data
 
     def area_fmeasure_cb(self, msg, area_id):
         """

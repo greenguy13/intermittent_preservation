@@ -23,5 +23,6 @@ class robotStatus(Enum):
     IN_MISSION = 20
     CHARGING = 30
     RESTORING_F = 40
+    CONSIDER_REPLAN = 50
     SHUTDOWN = SHUTDOWN_CODE
 

@@ -47,7 +47,7 @@ class Battery():
         :return:
         """
         robot_status = msg.data
-        if robot_status == robotStatus.IDLE.value or robot_status == robotStatus.READY.value:
+        if robot_status == robotStatus.IDLE.value or robot_status == robotStatus.READY.value or robot_status == robotStatus.CONSIDER_REPLAN.value:
             self.update_status(battStatus.IDLE)
         elif robot_status == robotStatus.IN_MISSION.value or robot_status == robotStatus.RESTORING_F.value:
             #Differentiate the rate of battery depletion between travelling and restoring F

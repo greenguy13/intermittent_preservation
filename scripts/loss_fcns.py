@@ -10,7 +10,6 @@ def decay(rate, t, starting_value):
     :param t:
     :return:
     """
-    #TODO: Adjust the decay rate measurement as the derivative
     decayed_fmeasure = starting_value*(math.exp(-rate*t)) #previous decay: starting_value*(1.0 - rate)**t
     return decayed_fmeasure
 
@@ -24,6 +23,16 @@ def get_time_given_decay(max_fmeasure, decayed_fmeasure, rate):
     t = math.log(decayed_fmeasure/max_fmeasure) / math.log(1.0-rate)
 
     return t
+
+def get_decay_rate(max_fmeasure, decayed_fmeasure, tlapse):
+    """
+    Computes the decay rate given F-measure and time elapsed since last update
+    :param fmeasure:
+    :param time:
+    :return:
+    """
+    rate = 1 - (decayed_fmeasure/max_fmeasure)**(1/tlapse)
+    return rate
 
 def beta_rate(rate, rates):
     """
@@ -81,8 +90,32 @@ def compute_cost_fmeasures(fmeasures, fsafe, fcrit):
             loss = 2.0*(100 - fmeasures[area])
         cost += loss
 
-        #TODO: Possible addition, we compute the time lapsed for each of the F-measures. We then compute the relative lapse for each area as the weight.
+        #TODO: For consideration. Possible addition, we compute the time lapsed for each of the F-measures. We then compute the relative lapse for each area as the weight.
         # loss = (100-fmeasures[area])**2
         # cost += loss
 
     return cost
+
+def marginal_loss():
+    """
+    Marginal loss (for use if we assume submodular objective function
+    :return:
+    """
+    pass
+
+def compute_trigger_threshold(sensitivity, max_fmeasure=100, type='caution'):
+    """
+    Computes the equivalent trigger threshold from sensitivity threshold
+    :param sensitivity:
+    :return:
+    """
+    if type=='safe':
+        L, k = 80, 1.0
+    elif type=='caution':
+        L, k = 65, 1.5
+    elif type=='critical':
+        L, k = 50, 2.0
+
+    # delta = 1 - (1 - (L/k*max_fmeasure))**1/tlapse
+    # threshold = sensitivity*delta
+
