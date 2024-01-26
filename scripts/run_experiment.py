@@ -152,27 +152,25 @@ if __name__ == '__main__':
     #Learn decay param: launch
 
     run_experiment(method='random_decision', world='office', nareas=6, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=1)
+                   learn_decay=None, tframe=2100, dec_steps=1, ntrials=1, save=False, exp_id=2)
 
     run_experiment(method='heuristic_decision', world='office', nareas=6, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=11)
+                   learn_decay=None, tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=12)
 
     run_experiment(method='heuristic_decision', world='office', nareas=6, placement=1, decay='non_uniform',
-                   learn_decay='oracle', tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=21)
+                   learn_decay='oracle', tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=22)
 
     run_experiment(method='heuristic_decision', world='office', nareas=6, placement=1, decay='non_uniform',
-                   learn_decay='simple_average', tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=31)
+                   learn_decay='simple_average', tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=32)
 
     run_experiment(method='heuristic_decision', world='office', nareas=6, placement=1, decay='non_uniform',
-                   learn_decay='lower_bound', tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=41)
+                   learn_decay='lower_bound', tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=42)
 
     run_experiment(method='heuristic_decision', world='office', nareas=6, placement=1, decay='non_uniform',
-                   learn_decay='cvar', tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=51)
+                   learn_decay='cvar', tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=52)
 
     run_experiment(method='heuristic_decision', world='office', nareas=6, placement=1, decay='non_uniform',
-                   learn_decay='proposed', tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=61)
-
-
+                   learn_decay='proposed', tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=62)
 
     #nareas = 6
 

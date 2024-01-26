@@ -23,10 +23,10 @@ noise: 0.25 #noise/error in navigation and restoration
 move_base_tolerance: 0.5
 
 #Uncertainty params
-correlation_matrix: [[1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1]]
-sensitivity_threshold: 0.001
-correlation_threshold: 0.70
-alpha: 0.05
+correlation_matrix: [[1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1]] #A priori correlation matrix
+sensitivity_threshold: 0.001 #the growth from?
+correlation_threshold: 0.70 #the strength of the spillover/correlation
+alpha: 0.05 #alpha-quantile for heuristics that measure some expected value of a distribution
 
 #[[1, 1, 1], [1, 1, 1], [1, 1, 1]]
 #[[1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1]]

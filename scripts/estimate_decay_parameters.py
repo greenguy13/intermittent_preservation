@@ -12,6 +12,7 @@ import scipy.stats as stats
 import numpy as np
 import project_utils as pu
 import math
+import pandas as pd
 """
 params: alpha
 """
@@ -80,3 +81,15 @@ def proposed_heuristic(recorded_param_dict, area, alpha):
     if math.isnan(proposed): proposed = m
     pu.log_msg('robot', 0, 'data, mean, VaR, proposed: {}'.format((data, m, VaR, proposed)))
     return proposed
+
+#TODO: Sanity check
+def moving_average(recorded_param_dict, area):
+    """
+    Forecasts the decay rate by moving average
+    :param recorded_param_dict:
+    :param area:
+    :return:
+    """
+    data = np.array(recorded_param_dict[area])
+    #TODO: Sanity check in python notebook
+    pass

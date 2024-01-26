@@ -115,6 +115,7 @@ class Robot:
         self.total_dist_travelled = 0 #total distance travelled
         self.process_time_counter = [] #container for time it took to come up with decision
 
+        #Parameters under uncertainty
         self.learn_decay_param_type = rospy.get_param("/learn_decay_param_type")
         self.alpha = rospy.get_param("/alpha")
         self.correlation_matrix = np.array(rospy.get_param("/correlation_matrix")).reshape((len(self.areas), len(self.areas)))
@@ -467,6 +468,7 @@ class Robot:
 
     # We potentially can turn this into an independent script, where there are different possible learning models.
     # For example: simple moving average, exponential moving average, regression, sampling based approach with Gaussian kernel, Monte-Carlo?
+    # TODO: Propsed method
     def learn_decay_param(self, area, type):
         """
         Uses the self.recorded_decay_param
@@ -557,9 +559,11 @@ class Robot:
                     current_decay_param = self.decay_rates_dict[self.mission_area]
                     self.debug('Measured: {}. Current: {}. Sensitivity: {}. Threshold: {}'.format(measured_decay_param, current_decay_param, abs((measured_decay_param-current_decay_param)/current_decay_param), self.sensitivity_threshold))
                     self.debug('Sensitivity: {}. Correlation: {}'.format(sensitivity_condition(measured_decay_param, current_decay_param, self.sensitivity_threshold), correlation_condition(self.mission_area-1, self.correlation_matrix, self.correlation_threshold)))
+
+                    #TODO: Sensitivity condition
                     if sensitivity_condition(measured_decay_param, current_decay_param, self.sensitivity_threshold) and correlation_condition(self.mission_area-1, self.correlation_matrix, self.correlation_threshold):
                         self.debug("Measured decay params: {}. Mission area for re-planning: {}".format(self.recorded_decay_param, self.mission_area))
-                        est = self.learn_decay_param(self.mission_area, type=self.learn_decay_param_type)
+                        est = self.learn_decay_param(self.mission_area, type=self.learn_decay_param_type) #TODO: This part here updates the decay parameters
                         self.decay_rates_dict[self.mission_area] = est
                         self.debug("Measured decay param above sens threshold: {}. Updated decay rate by {}: {}".format(measured_decay_param, self.learn_decay_param_type, self.decay_rates_dict[self.mission_area]))
 
@@ -664,6 +668,7 @@ class Robot:
             if self.robot_id == 0: self.debug("Area fully restored!")
             self.available = True
             if (self.learn_decay_param_type is not None) and (self.learn_decay_param_type is not 'oracle'):
+                #TODO: Consider including a re-plan for oracle
                 self.update_robot_status(robotStatus.CONSIDER_REPLAN)
             else:
                 self.update_robot_status(robotStatus.IN_MISSION)

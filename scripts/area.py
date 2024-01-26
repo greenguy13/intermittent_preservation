@@ -92,6 +92,7 @@ class Area():
         """
         self.robot_mission_area = msg.data
 
+    #TODO: For now, we are setting the as-is naming for F-level request when we modified it to give/provide the decay rate
     def report_flevel_cb(self, msg):
         """
         Callback as Service Server for F-measure
