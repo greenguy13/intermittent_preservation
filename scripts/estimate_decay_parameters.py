@@ -82,8 +82,7 @@ def proposed_heuristic(recorded_param_dict, area, alpha):
     pu.log_msg('robot', 0, 'data, mean, VaR, proposed: {}'.format((data, m, VaR, proposed)))
     return proposed
 
-#TODO: Sanity check
-def moving_average(recorded_param_dict, area):
+def moving_average(recorded_param_dict, area, win_size):
     """
     Forecasts the decay rate by moving average
     :param recorded_param_dict:
@@ -91,5 +90,19 @@ def moving_average(recorded_param_dict, area):
     :return:
     """
     data = np.array(recorded_param_dict[area])
-    #TODO: Sanity check in python notebook
-    pass
+    win_size = max(1, win_size)
+    forecast = np.mean(data[-win_size:])
+    return forecast
+
+"""
+UPNEXT: Run an experiment for sanity check
+1. Implement the method: 
+    > yaml file for the window size
+    > heuristic_decision.py
+    > run_experiment.py
+    > launch file(?) 
+2. Check whether the forecast is correct
+    > The collected decay list
+    > The sensitivity condition and the forecast trigger
+    > The forecast
+"""

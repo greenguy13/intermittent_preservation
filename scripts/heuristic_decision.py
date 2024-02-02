@@ -485,6 +485,7 @@ class Robot:
             return CVaR_param(self.recorded_decay_param, area, self.alpha)
         elif type == "proposed":
             return proposed_heuristic(self.recorded_decay_param, area, self.alpha)
+        #TODO: Insert forecast methods
 
     #Methods: Run operation
     def run_operation(self, filename, freq=1):
