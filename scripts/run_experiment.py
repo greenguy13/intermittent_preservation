@@ -31,8 +31,6 @@ def batch_sample_nodes_poses(worlds, nareas_list, nplacements):
             if os.path.exists(fileposes) is False:
                 sample_nodes_poses(w, n, nplacements)
 
-
-
 #Run the experiment
 def batch_experiments(method, worlds, nareas_list, nplacements, decay_category, learn_decay_types, tframe, dec_steps=None, ntrials=1, sample_nodes=False, save=False, exp_id=None):
     """
@@ -127,56 +125,75 @@ def run_experiment(method, world, nareas, placement, decay, learn_decay, tframe,
 
 if __name__ == '__main__':
     os.chdir('/root/catkin_ws/src/results/int_preservation')
-    # worlds = ['office']
-    # nareas_list = [3]
-    # decay_category = ['non_uniform']
-    # dec_steps = [3]
-    # nplacements = 5
-    # ntrials = 5
-    # tframe = 2100
 
     #Sample node poses
-    # worlds = ['office']
-    # nareas_list = [3]
-    # nplacements = 1
+    # worlds = ['office', 'open', 'cluttered']
+    # nareas_list = [4, 8, 12]
+    # nplacements = 1000
     # batch_sample_nodes_poses(worlds, nareas_list, nplacements)
 
-    #Office, placement = 1
-    #nareas = 3
+    #Office
+    run_experiment(method='treebased_decision', world='office', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True, exp_id=40)
 
-    #Where do I place the params for decisions made under uncertainty?
+    run_experiment(method='heuristic_decision', world='office', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=2, ntrials=3, save=True, exp_id=120)
 
-    #Correlation matrix: mission.yamlSet here
-    #threshold: mission.yaml
+    run_experiment(method='heuristic_decision', world='office', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True, exp_id=140)
 
-    #Learn decay param: launch
+    run_experiment(method='heuristic_decision', world='office', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=6, ntrials=3, save=True, exp_id=160)
 
-    run_experiment(method='random_decision', world='office', nareas=6, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=1, ntrials=1, save=False, exp_id=2)
+    run_experiment(method='heuristic_decision', world='office', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=8, ntrials=3, save=True, exp_id=180)
 
-    run_experiment(method='heuristic_decision', world='office', nareas=6, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=12)
+    run_experiment(method='heuristic_decision', world='office', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=10, ntrials=3, save=True, exp_id=200)
 
-    run_experiment(method='heuristic_decision', world='office', nareas=6, placement=1, decay='non_uniform',
-                   learn_decay='oracle', tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=22)
-
-    run_experiment(method='heuristic_decision', world='office', nareas=6, placement=1, decay='non_uniform',
-                   learn_decay='simple_average', tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=32)
-
-    run_experiment(method='heuristic_decision', world='office', nareas=6, placement=1, decay='non_uniform',
-                   learn_decay='lower_bound', tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=42)
-
-    run_experiment(method='heuristic_decision', world='office', nareas=6, placement=1, decay='non_uniform',
-                   learn_decay='cvar', tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=52)
-
-    run_experiment(method='heuristic_decision', world='office', nareas=6, placement=1, decay='non_uniform',
-                   learn_decay='proposed', tframe=2100, dec_steps=1, ntrials=1, save=True, exp_id=62)
-
-    #nareas = 6
-
-    #nareas = 9
-
+    run_experiment(method='heuristic_decision', world='office', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=12, ntrials=3, save=True, exp_id=220)
 
     #Cluttered
+    run_experiment(method='treebased_decision', world='cluttered', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True, exp_id=41)
+
+    run_experiment(method='heuristic_decision', world='cluttered', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=2, ntrials=3, save=True, exp_id=121)
+
+    run_experiment(method='heuristic_decision', world='cluttered', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True, exp_id=141)
+
+    run_experiment(method='heuristic_decision', world='cluttered', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=6, ntrials=3, save=True, exp_id=161)
+
+    run_experiment(method='heuristic_decision', world='cluttered', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=8, ntrials=3, save=True, exp_id=181)
+
+    run_experiment(method='heuristic_decision', world='cluttered', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=10, ntrials=3, save=True, exp_id=201)
+
+    run_experiment(method='heuristic_decision', world='cluttered', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=12, ntrials=3, save=True, exp_id=221)
 
     #Open
+    run_experiment(method='treebased_decision', world='open', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True, exp_id=42)
+
+    run_experiment(method='heuristic_decision', world='open', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=2, ntrials=3, save=True, exp_id=122)
+
+    run_experiment(method='heuristic_decision', world='open', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True, exp_id=142)
+
+    run_experiment(method='heuristic_decision', world='open', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=6, ntrials=3, save=True, exp_id=162)
+
+    run_experiment(method='heuristic_decision', world='open', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=8, ntrials=3, save=True, exp_id=182)
+
+    run_experiment(method='heuristic_decision', world='open', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=10, ntrials=3, save=True, exp_id=202)
+
+    run_experiment(method='heuristic_decision', world='open', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=12, ntrials=3, save=True, exp_id=222)

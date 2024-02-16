@@ -1,3 +1,5 @@
 debug_mode: 1
 robot_radius: 1.0 #for grid cell computation
 degree_criterion_node_selection: 3 #Criterion for area selection, number of degree = 2 suggests leaf areas
+map_dims: [80, 60] #LxW dims of the map
+origin: [-40, -30] #origin of the map

@@ -98,7 +98,7 @@ def moving_average(recorded_param_dict, area, win_size):
 UPNEXT: Run an experiment for sanity check
 1. Implement the method: 
     > yaml file for the window size
-    > heuristic_decision.py
+    > heuristic_decision_uncertainty.py
     > run_experiment.py
     > launch file(?) 
 2. Check whether the forecast is correct
