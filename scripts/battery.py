@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """
 ### Robot battery
@@ -10,7 +10,6 @@ Battery node that depletes when the robot is in mission, charges up when in char
         robot status
 
 """
-from enum import Enum
 import math
 import rospy
 from std_msgs.msg import Float32, Int8
@@ -122,6 +121,6 @@ class Battery():
         pu.log_msg('robot', self.robot_id, msg, self.debug_mode)
 
 if __name__ == '__main__':
-    os.chdir('/root/catkin_ws/src/results/int_preservation')
+    os.chdir('/home/ameldocena/.ros/int_preservation/results')
     filename = rospy.get_param('/file_data_dump')
     Battery('battery').run_operation(filename)

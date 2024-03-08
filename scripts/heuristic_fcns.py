@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import math
 import numpy as np
 from loss_fcns import *
 import project_utils as pu
@@ -30,7 +29,6 @@ def heuristic_forecast_loss(curr_fmeasures, forecast_time_dict, decay_dict, fsaf
     :param fcrit:
     :return:
     """
-    #TODO: Eye
     forecasted_fmeasures = dict()
     for area in curr_fmeasures:
         #Case 1: Keep decaying if curr_fmeasure >= fcrit

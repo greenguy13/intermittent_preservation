@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """
 Tree-based decision making
@@ -9,11 +9,10 @@ Tree-based decision making
         2. Compute cost
         3. Pick the least cost
 """
-import math
+import rospy
 from time import process_time
 import pickle
 import numpy as np
-import rospy
 import actionlib
 from loss_fcns import *
 from pruning import *
@@ -654,6 +653,6 @@ class Robot:
         kill_nodes(sleep)
 
 if __name__ == '__main__':
-    os.chdir('/root/catkin_ws/src/results/int_preservation')
+    os.chdir('/home/ameldocena/.ros/int_preservation/results')
     filename = rospy.get_param('/file_data_dump')
     Robot('treebased_decision').run_operation(filename)

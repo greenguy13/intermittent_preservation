@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """
 Environment: Determines the temporal areas in a map by sampling n nodes from a Voronoi graph that satisfy the condition of a corridor (node degree=3).
@@ -352,5 +352,5 @@ class SampleAreaPoses:
 
 
 if __name__ == '__main__':
-    os.chdir('/root/catkin_ws/src/results/int_preservation')
+    os.chdir('/home/ameldocena/.ros/int_preservation/results')
     SampleAreaPoses('sample_areas').sample_poses()

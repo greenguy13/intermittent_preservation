@@ -1,18 +1,15 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """
 Heuristic decision making
 
 """
-import math
+import rospy
 from time import process_time
 import pickle
 import numpy as np
-import rospy
 import actionlib
-from loss_fcns import *
 from pruning import *
-import project_utils as pu
 from nav_msgs.msg import Odometry
 from nav_msgs.srv import GetPlan
 from std_msgs.msg import Int8, Float32
@@ -452,6 +449,16 @@ class Robot:
 
                 elif self.robot_status == robotStatus.READY.value:
                     self.debug('Robot ready')
+                    #TODO: Insert here where we record/collect the time elapsed
+                    """
+                    How does this method work?
+                    1. We get the current Fmeasure of areas
+                    2. We then invert to get the time elapsed
+                    3. We store the measures as a tuple, then append to an instance
+                    4. We dump that instance as data
+                    
+                    PO: ACtually we can infer this from the data too.
+                    """
                     think_start = process_time()
                     self.think_decisions()
                     think_end = process_time()
@@ -601,6 +608,6 @@ class Robot:
         kill_nodes(sleep)
 
 if __name__ == '__main__':
-    os.chdir('/root/catkin_ws/src/results/int_preservation')
+    os.chdir('/home/ameldocena/.ros/int_preservation/results')
     filename = rospy.get_param('/file_data_dump')
     Robot('heuristic_decision').run_operation(filename)

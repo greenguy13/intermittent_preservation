@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """
 F-measure
@@ -19,7 +19,6 @@ Relay of information:
 2. Server to decision_making about current F-level
 """
 import os
-from enum import Enum
 import math
 import rospy
 from std_msgs.msg import Float32, Int8
@@ -206,6 +205,6 @@ class Area():
         pu.log_msg('area', self.area, msg, self.debug_mode)
 
 if __name__ == '__main__':
-    os.chdir('/root/catkin_ws/src/results/int_preservation')
+    os.chdir('/home/ameldocena/.ros/int_preservation/results')
     filename = rospy.get_param('/file_data_dump')
     Area().run_operation(filename)

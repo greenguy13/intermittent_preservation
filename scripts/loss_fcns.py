@@ -58,21 +58,22 @@ def compute_loss(max_fmeasure, decayed_fmeasure, fsafe, fcrit, rate, est_duratio
     print("Current measure: {}. Estimated decayed measure: {}".format(decayed_fmeasure, est_decayed_fmeasure))
 
     #previous loss function
-    # Safe zone
-    if est_decayed_fmeasure >= fsafe:
-        loss = max_fmeasure - est_decayed_fmeasure
-    # Caution zone
-    elif fcrit <= est_decayed_fmeasure and est_decayed_fmeasure < fsafe:
-        loss = 2*(fsafe - est_decayed_fmeasure) #fsafe - est_decayed_fmeasure
-    # Crit zone
-    elif est_decayed_fmeasure < fcrit:
-        loss = 4*(fsafe - est_decayed_fmeasure)
+    # # Safe zone
+    # if est_decayed_fmeasure >= fsafe:
+    #     loss = max_fmeasure - est_decayed_fmeasure
+    # # Caution zone
+    # elif fcrit <= est_decayed_fmeasure and est_decayed_fmeasure < fsafe:
+    #     loss = 2*(fsafe - est_decayed_fmeasure) #fsafe - est_decayed_fmeasure
+    # # Crit zone
+    # elif est_decayed_fmeasure < fcrit:
+    #     loss = 4*(fsafe - est_decayed_fmeasure)
 
     # loss = (max_fmeasure - est_decayed_fmeasure)**2
 
+    loss = (max_fmeasure - est_decayed_fmeasure)**2
     return float(loss)
 
-def compute_cost_fmeasures(fmeasures, fsafe, fcrit):
+def compute_cost_fmeasures(fmeasures, fsafe, fcrit, max_fmeasure=100):
     """
     Computes the cost, (i.e., the sum of losses), given the F-measures
     :param fmeasures: dict of F-measures of areas
@@ -82,17 +83,14 @@ def compute_cost_fmeasures(fmeasures, fsafe, fcrit):
 
     for area in fmeasures:
         #previous loss function
-        if fmeasures[area] >= fsafe:
-            loss = 100 - fmeasures[area]
-        elif fcrit <= fmeasures[area] and fmeasures[area] < fsafe:
-            loss = 1.5*(100 - fmeasures[area]) #fsafe - fmeasures[area]
-        elif fmeasures[area] < fcrit:
-            loss = 2.0*(100 - fmeasures[area])
+        # if fmeasures[area] >= fsafe:
+        #     loss = 100 - fmeasures[area]
+        # elif fcrit <= fmeasures[area] and fmeasures[area] < fsafe:
+        #     loss = 1.5*(100 - fmeasures[area]) #fsafe - fmeasures[area]
+        # elif fmeasures[area] < fcrit:
+        #     loss = 2.0*(100 - fmeasures[area])
+        loss = (max_fmeasure-fmeasures[area])**2
         cost += loss
-
-        #TODO: For consideration. Possible addition, we compute the time lapsed for each of the F-measures. We then compute the relative lapse for each area as the weight.
-        # loss = (100-fmeasures[area])**2
-        # cost += loss
 
     return cost
 

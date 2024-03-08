@@ -83,7 +83,7 @@ def batch_experiments(method, worlds, nareas_list, nplacements, decay_category, 
                                 print("Launching...method: {}, world: {}, nareas: {}, decay: {}, tframe: {}, placement: {}, save: {}, exp: {}".format(method, w, n, d, tframe, p+1, save, exp_id))
                                 launch_nodes('int_preservation', 'mission.launch', params, logfile)
 
-def run_experiment(method, world, nareas, placement, decay, learn_decay, tframe, dec_steps=1, ntrials=1, save=False, exp_id=None):
+def run_experiment(method, world, nareas, placement, decay, learn_decay, tframe, dec_steps=1, ntrials=1, save=False):
     """
     Runs a single experiment
     :param method:
@@ -99,7 +99,7 @@ def run_experiment(method, world, nareas, placement, decay, learn_decay, tframe,
     fileposes = '{}_n{}_sampled_nodes_poses_dict'.format(world, nareas)
     if method == 'treebased_decision' or method == 'heuristic_decision':
         for i in range(ntrials):
-            fileresult = '{}_{}_n{}_p{}_{}_k{}_{}_exp{}'.format(method, world, nareas, placement, decay, dec_steps, i + 1, exp_id)
+            fileresult = '{}_{}_n{}_p{}_{}_k{}_{}'.format(method, world, nareas, placement, decay, dec_steps, i + 1)
             logfile = fileresult + '.txt'
             params = ['method:={}'.format(method),
                       'world:={}'.format(world), 'nareas:={}'.format(nareas),
@@ -107,93 +107,86 @@ def run_experiment(method, world, nareas, placement, decay, learn_decay, tframe,
                       'dsteps:={}'.format(dec_steps),
                       'tframe:={}'.format(tframe), 'placement:={}'.format(placement),
                       'fileposes:={}'.format(fileposes), 'fileresult:={}'.format(fileresult), 'save:={}'.format(save)]
-            print("Launching...method: {}, world: {}, nareas: {}, decay: {}, learn: {}, dsteps: {}, tframe: {}, placement: {}, trial: {}, save: {}, exp_id: {}".format(
-                    method, world, nareas, decay, learn_decay, dec_steps, tframe, placement, i+1, save, exp_id))
+            print("Launching...method: {}, world: {}, nareas: {}, decay: {}, learn: {}, dsteps: {}, tframe: {}, placement: {}, trial: {}, save: {}".format(
+                    method, world, nareas, decay, learn_decay, dec_steps, tframe, placement, i+1, save))
             launch_nodes('int_preservation', 'mission.launch', params, logfile)
 
     elif method == 'random_decision':
         for i in range(ntrials):
-            fileresult = '{}_{}_n{}_p{}_{}_{}_exp{}'.format(method, world, nareas, placement, decay, i + 1, exp_id)
+            fileresult = '{}_{}_n{}_p{}_{}_{}'.format(method, world, nareas, placement, decay, i + 1)
             logfile = fileresult + '.txt'
             params = ['method:={}'.format(method), 'world:={}'.format(world),
                       'nareas:={}'.format(nareas), 'decay:={}'.format(decay),
                       'tframe:={}'.format(tframe), 'placement:={}'.format(placement),
                       'fileposes:={}'.format(fileposes), 'fileresult:={}'.format(fileresult), 'save:={}'.format(save)]
-            print("Launching...method: {}, world: {}, nareas: {}, decay: {}, tframe: {}, placement: {}, trial:{}, save: {}, exp_id: {}".format(
-                method, world, nareas, decay, tframe, placement, i+1, save, exp_id))
+            print("Launching...method: {}, world: {}, nareas: {}, decay: {}, tframe: {}, placement: {}, trial:{}, save: {}".format(
+                method, world, nareas, decay, tframe, placement, i+1, save))
             launch_nodes('int_preservation', 'mission.launch', params, logfile)
 
 if __name__ == '__main__':
-    os.chdir('/root/catkin_ws/src/results/int_preservation')
+    os.chdir('/home/ameldocena/.ros/int_preservation')
 
     #Sample node poses
-    # worlds = ['office', 'open', 'cluttered']
-    # nareas_list = [4, 8, 12]
-    # nplacements = 1000
+    # worlds = ['cluttered']
+    # nareas_list = [70]
+    # nplacements = 1
     # batch_sample_nodes_poses(worlds, nareas_list, nplacements)
 
     #Office
-    run_experiment(method='treebased_decision', world='office', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True, exp_id=40)
-
-    run_experiment(method='heuristic_decision', world='office', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=2, ntrials=3, save=True, exp_id=120)
-
-    run_experiment(method='heuristic_decision', world='office', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True, exp_id=140)
-
-    run_experiment(method='heuristic_decision', world='office', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=6, ntrials=3, save=True, exp_id=160)
-
-    run_experiment(method='heuristic_decision', world='office', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=8, ntrials=3, save=True, exp_id=180)
-
-    run_experiment(method='heuristic_decision', world='office', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=10, ntrials=3, save=True, exp_id=200)
-
-    run_experiment(method='heuristic_decision', world='office', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=12, ntrials=3, save=True, exp_id=220)
-
+    #Adjust acml max_range=20
+    #
+    # run_experiment(method='heuristic_decision', world='office', nareas=8, placement=2, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+    #
+    # run_experiment(method='heuristic_decision', world='office', nareas=8, placement=2, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=6, ntrials=3, save=True)
+    #
+    # run_experiment(method='heuristic_decision', world='office', nareas=8, placement=2, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=8, ntrials=3, save=True)
+    #
+    # run_experiment(method='heuristic_decision', world='office', nareas=8, placement=2, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=10, ntrials=3, save=True)
+    #
+    # run_experiment(method='heuristic_decision', world='office', nareas=8, placement=2, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=12, ntrials=3, save=True)
+    #
     #Cluttered
-    run_experiment(method='treebased_decision', world='cluttered', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True, exp_id=41)
+    #Adjust acml max_range=10
 
-    run_experiment(method='heuristic_decision', world='cluttered', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=2, ntrials=3, save=True, exp_id=121)
+    run_experiment(method='heuristic_decision', world='cluttered', nareas=70, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=75, dec_steps=10 ** 2, ntrials=1, save=True)
 
-    run_experiment(method='heuristic_decision', world='cluttered', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True, exp_id=141)
+    run_experiment(method='heuristic_decision', world='cluttered', nareas=70, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=75, dec_steps=10 ** 3, ntrials=1, save=True)
 
-    run_experiment(method='heuristic_decision', world='cluttered', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=6, ntrials=3, save=True, exp_id=161)
-
-    run_experiment(method='heuristic_decision', world='cluttered', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=8, ntrials=3, save=True, exp_id=181)
-
-    run_experiment(method='heuristic_decision', world='cluttered', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=10, ntrials=3, save=True, exp_id=201)
-
-    run_experiment(method='heuristic_decision', world='cluttered', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=12, ntrials=3, save=True, exp_id=221)
+    # run_experiment(method='treebased_decision', world='cluttered', nareas=9, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=3, ntrials=3, save=True)
+    #
+    # run_experiment(method='heuristic_decision', world='cluttered', nareas=9, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=3, ntrials=3, save=True)
+    #
+    # run_experiment(method='heuristic_decision', world='cluttered', nareas=9, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=6, ntrials=3, save=True)
+    #
+    # run_experiment(method='heuristic_decision', world='cluttered', nareas=9, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=9, ntrials=3, save=True)
+    #
+    # run_experiment(method='heuristic_decision', world='cluttered', nareas=9, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=12, ntrials=3, save=True)
 
     #Open
-    run_experiment(method='treebased_decision', world='open', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True, exp_id=42)
-
-    run_experiment(method='heuristic_decision', world='open', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=2, ntrials=3, save=True, exp_id=122)
-
-    run_experiment(method='heuristic_decision', world='open', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True, exp_id=142)
-
-    run_experiment(method='heuristic_decision', world='open', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=6, ntrials=3, save=True, exp_id=162)
-
-    run_experiment(method='heuristic_decision', world='open', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=8, ntrials=3, save=True, exp_id=182)
-
-    run_experiment(method='heuristic_decision', world='open', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=10, ntrials=3, save=True, exp_id=202)
-
-    run_experiment(method='heuristic_decision', world='open', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=12, ntrials=3, save=True, exp_id=222)
+    #Adjust acml max_range=20
+    # run_experiment(method='treebased_decision', world='open', nareas=9, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=3, ntrials=3, save=True)
+    #
+    # run_experiment(method='heuristic_decision', world='open', nareas=9, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=3, ntrials=3, save=True)
+    #
+    # run_experiment(method='heuristic_decision', world='open', nareas=9, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=6, ntrials=3, save=True)
+    #
+    # run_experiment(method='heuristic_decision', world='open', nareas=9, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=9, ntrials=3, save=True)
+    #
+    # run_experiment(method='heuristic_decision', world='open', nareas=9, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=12, ntrials=3, save=True)
