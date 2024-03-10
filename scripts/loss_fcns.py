@@ -44,6 +44,10 @@ def beta_rate(rate, rates):
     beta = rate / sum(rates)
     return beta
 
+def loss_fcn(max_fmeasure, decayed_fmeasure):
+    loss = (max_fmeasure - decayed_fmeasure)**2
+    return loss
+
 def compute_loss(max_fmeasure, decayed_fmeasure, fsafe, fcrit, rate, est_duration):
     """
     Computes loss by estimating the decayed fmeasure given the decay rate after a set duration
@@ -70,7 +74,7 @@ def compute_loss(max_fmeasure, decayed_fmeasure, fsafe, fcrit, rate, est_duratio
 
     # loss = (max_fmeasure - est_decayed_fmeasure)**2
 
-    loss = (max_fmeasure - est_decayed_fmeasure)**2
+    loss = loss_fcn(max_fmeasure, est_decayed_fmeasure)
     return float(loss)
 
 def compute_cost_fmeasures(fmeasures, fsafe, fcrit, max_fmeasure=100):

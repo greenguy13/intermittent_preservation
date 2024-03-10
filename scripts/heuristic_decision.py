@@ -361,11 +361,8 @@ class Robot:
 
     def consume_battery(self, start_area, next_area, curr_measure, noise):
         """
-        Consumes curr_battery for the duration of the operation.
+        Estimates battery consumption for the duration of the visit next_area from start_area.
         This duration includes the distance plus F-measure restoration, if any
-        :param curr_battery:
-        :param duration:
-        :return:
         """
 
         #Batt consumed in travel
@@ -374,6 +371,7 @@ class Robot:
         travel_time = (distance / self.robot_velocity)
         battery_consumed = self.batt_consumed_per_travel_time * travel_time
 
+        #Batt consumed in area restoration
         if next_area != self.charging_station:
             battery_consumed += self.batt_consumed_per_restored_f * (self.max_fmeasure - curr_measure)
 

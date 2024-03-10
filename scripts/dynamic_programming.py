@@ -72,15 +72,15 @@ class Robot:
         self.charging_station = 0
         self.curr_loc = self.charging_station #Initial location robot is the charging station
         self.battery = self.max_battery #Initialize battery at max, then gets updated by subscribed battery topic
-        self.best_decision = None
+        self.optimal_path = [] #container for the decided optimal path
         self.dist_matrix = None
+        self.graph_areas = None #TODO: Graph of connected among vertices
         self.mission_area = None
         self.robot_status = robotStatus.IDLE.value
         self.available = True
         self.curr_fmeasures = dict() #container of current F-measure of areas
         self.decay_rates_dict = dict() #dictionary for decay rates
 
-        #TODO: We are setting the (initial) prior information of the decay rates
         for area in self.areas:
             self.decay_rates_dict[area] = None
         self.decay_rates_counter = 0 #counter for stored decay rates; should be equal to number of areas
@@ -101,8 +101,6 @@ class Robot:
         rospy.wait_for_service(server)
         self.get_plan_service = rospy.ServiceProxy(server, GetPlan)
         self.debug("Getplan service: {}".format(self.get_plan_service))
-
-        # TODO: Service request to area for (F, t) when measuring/monitoring F as it goes around during deployment
 
         rospy.Subscriber('/robot_{}/battery_status'.format(self.robot_id), Int8, self.battery_status_cb)
         rospy.Subscriber('/robot_{}/battery'.format(self.robot_id), Float32, self.battery_level_cb)
@@ -209,7 +207,6 @@ class Robot:
         self.debug("Dist matrix: {}".format(self.dist_matrix))
 
     # METHODS: Send robot to area
-    # TODO: This can be an independent script of its own
     def go_to_target(self, goal_idx):
         """
         Action client to move_base to move to target goal
@@ -268,35 +265,33 @@ class Robot:
     #     submatrix = np.delete(duration_matrix, area, axis=1)
     #     return np.mean(submatrix)
 
-    def estimate_battery_params(self, decision, curr_battery, curr_loc, fmeasures, noise):
+    def consume_battery(self, start_area, next_area, curr_measure, noise):
         """
-        Measures battery consumption and feasible battery
-        :param decision:
-        :return:
+        Estimates battery consumption for the duration of the visit next_area from start_area.
+        This duration includes the distance plus F-measure restoration, if any
         """
-        # Battery consumed travel and preserve area (if not charging station)
-        battery_consumption = self.consume_battery(start_area=curr_loc, next_area=decision,
-                                                   curr_measure=fmeasures[decision],
-                                                   noise=noise)
-        # Battery consumed travel back to charging station
-        battery_consumption_backto_charging_station = self.consume_battery(start_area=decision,
-                                                                           next_area=self.charging_station,
-                                                                           curr_measure=None,
-                                                                           noise=noise)
-        total_battery_consumption = battery_consumption + battery_consumption_backto_charging_station
-        # Feasible batt = current batt - (consumption of decision + consumption to travel back to charging station)
-        feasible_battery = curr_battery - total_battery_consumption
 
-        return total_battery_consumption, feasible_battery
+        #Batt consumed in travel
+        distance = self.dist_matrix[int(start_area), int(next_area)]
+        distance += noise * distance
+        travel_time = (distance / self.robot_velocity)
+        battery_consumed = self.batt_consumed_per_travel_time * travel_time
+
+        #Batt consumed in area restoration
+        if next_area != self.charging_station:
+            battery_consumed += self.batt_consumed_per_restored_f * (self.max_fmeasure - curr_measure)
+
+        return battery_consumed
 
     #TODO: Insert the decision-making here
     # Step 0: Create a graph given distance matrix
+    # This can be an instance variable
     def create_graph(self, dist_matrix):
         """
-        Creates graph object given distance matrix
+        Creates graph among areas (excluding charging station) given distance matrix
         """
         graph = nx.Graph()
-        graph.add_nodes_from(list(range(len(dist_matrix))))
+        graph.add_nodes_from(list(range(1, len(dist_matrix)+1)))
         print("Nodes:", graph.nodes)
         edges = list()
         for i in graph.nodes:
@@ -306,7 +301,17 @@ class Robot:
                     edges.append(edge)
         graph.add_edges_from(edges)
         return graph
-    def create_spatio_temporal_DAG(self, current_loc, G, decay_rates, duration_matrix, k):
+
+    # TODO: This one is called every time we area planning from current location
+
+        #TODO: The tlapse for the root node will be the current tlapse, as well as for the other areas
+        # How? We get the current F-measures of all the areas and then invert.
+        # We can then set as the initial time for each vertex at first creation
+        # Note that we are excluding going to the charging station, since we suppose that the robot will charge up when no more feasible visit
+        # The vertices therefore are just based on the areas.
+        # Then in creating a graph, we should set this.
+
+    def create_spatio_temporal_DAG(self, current_loc, G, duration_matrix, decay_rates, tlapses_init, k):
         """
         Creates spatio temporal DAG, G', from current_location based on G for schedule length k (time window).
         The nodes of G' will have representation (G x k)
@@ -314,6 +319,7 @@ class Robot:
                 current_loc - current location of robot
                 G - graph
                 decay_rates - list of decay rates
+                tlapses_init - dict of tlapse for each area
                 duration_matrix - travel duration from one node to another
                 k - schedule length
         """
@@ -327,9 +333,8 @@ class Robot:
         # Create root node at i=0
         i = 0
         name = '{}_{}'.format(current_loc, i)
-        #TODO: The tlapse for the root node will be the current tlapse, as well as for the other areas
-        #Perhaps we can also include current battery?
-        root_node = Node(name, id=current_loc, decay_rate=decay_rates[current_loc], tlapse=0)  # Root node
+        root_node = Node(name, id=current_loc, decay_rate=decay_rates[current_loc],
+                         tlapse_init=tlapses_init[current_loc])  # Root node
         dag.add_node(root_node)
 
         # Form weighted edges for the k visits
@@ -342,15 +347,14 @@ class Robot:
                 for n in list(G.neighbors(prev_node.id)):
                     if n != prev_node.id:
                         name = '{}_{}'.format(n, i)
-                        if name not in list(stemp_nodes[i].keys()):
-                            new_node = Node(name, id=n, decay_rate=decay_rates[n],
-                                            tlapse=prev_node.tlapse + duration_matrix[prev_node.id, n])
-                            print("Tlapse: {}. Decay: {}. Loss: {}".format(new_node.tlapse, new_node.decay_rate,
-                                                                           new_node.loss))
+                        new_node = Node(name, id=n, decay_rate=decay_rates[n], tlapse_init=tlapses_init[n],
+                                        tlapse_post_init=prev_node.tlapse_post_init,
+                                        tlapse_visit=duration_matrix[prev_node.id, n])
+                        print("Tlapse: {}. Decay: {}. Loss: {}".format(new_node.tlapse, new_node.decay_rate,
+                                                                       new_node.loss))
 
-                            stemp_nodes[i][name] = new_node
-                        else:
-                            new_node = stemp_nodes[i][name]
+                        stemp_nodes[i][name] = new_node
+
                         edge = (prev_node, new_node, new_node.weight)  # weighted edge
                         stemp_edges.append(edge)
             dag.add_nodes_from(list(stemp_nodes[i].values()))
@@ -358,13 +362,9 @@ class Robot:
 
             print("i={}: {}, {}".format(i, [node.name for node in list(stemp_nodes[i].values())],
                                         [(edge[0].name, edge[1].name) for edge in stemp_edges]))
-
-        check_nodes = 1 + (nareas - 1) + (k - 1) * nareas
-        check_edges = (nareas - 1) + (nareas - 1) ** 2 + (k - 2) * nareas * (nareas - 1)
-        assert len(dag.nodes) == check_nodes, "Incorrect number of nodes"
-        assert len(dag.edges) == check_edges, "Incorrect number of edges"
         return dag
 
+    #TODO: This happens next after DAG
     def topological_sort_dag(self, dag):
         """
         Topologically sorts a DAG object
@@ -372,14 +372,14 @@ class Robot:
         ordered = list(nx.topological_sort(dag))
         return ordered
 
-    def backtrack(self, tail_node):
+    def backtrack(self, tail_node, root_name):
         """
         Back tracks the path from tail node to parent node
 
         """
         nodes_list = [tail_node]
         parent = tail_node.parent
-        while parent.tlapse != 0:
+        while parent.name != root_name:
             tail_node = parent
             nodes_list.append(tail_node)
             parent = tail_node.parent
@@ -387,34 +387,25 @@ class Robot:
         nodes_list.reverse()
         return nodes_list
 
-    # Minimal loss path
-
-    def min_loss_path(self, dag, sorted_nodes):
+    #TODO: Minimal loss path
+    def min_loss_path(self, dag, sorted_nodes, current_loc):
         """
         Returns the path that yields the minimal loss in a DAG of length k starting from the root node, which is the current location
         """
-        """
-        Regarding feasibility:
-            1. If the battery is no longer feasible, that is, almost battery reserve, return an empty path
-            2. If still feasible, ensure that the entire path is feasible. We filter those later visits if not
-        """
-
-
+        root_name = '{}_{}'.format(current_loc, 0)
         for node in sorted_nodes:
-            if node.tlapse == 0:  # root node
+            if node.name == root_name:  # root node
                 node.sum = 0
                 print("Root node: {}. sum: {}\n".format(node.name, node.sum))
             for succ in list(dag.successors(node)):
                 print("\n{} -> {}".format(node.name, succ.name))
                 print("Node {} path: {}. Succesor node: {}. Succesor in path?: {}".format(node.name, node.path, succ.id,
-
-                #TODO: Insert feasibility of the visit: current battery, then battery consumption (attribute)                                                                          succ.id in node.path))
-                #For sanity check whether the robot heads back to charging station, we can can shorten the battery
-                if succ.id not in node.path and feasible:
-                    print("Node sum: {} - Succ loss: {} < Succ sum: {} => {}".format(node.sum, succ.loss, succ.sum,
-                                                                                     node.sum + succ.loss < succ.sum))
-                    if node.sum - succ.loss < succ.sum:
-                        succ.sum = node.sum - succ.loss #We can use node.name as key to retrieve its loss
+                                                                                          succ.id in node.path))
+                if succ.id not in node.path:
+                    print("Node sum: {} - Succ loss: {} <= Succ sum: {} => {}".format(node.sum, succ.loss, succ.sum,
+                                                                                      node.sum + succ.loss <= succ.sum))
+                    if node.sum - succ.loss <= succ.sum:
+                        succ.sum = node.sum - succ.loss
                         succ.parent = node
                         succ.path = node.path.copy()
                         succ.path.append(succ.id)
@@ -426,152 +417,69 @@ class Robot:
         for node in list(dag.nodes):
             print("Min node: {}, sum: {}. Next node: {}, sum: {}".format(min_node.name, min_node.sum, node.name,
                                                                          node.sum))
-            if (node != min_node) and (not math.isinf(node.sum)) and (node.sum < min_node.sum):
+            if (node != min_node) and (not math.isinf(node.sum)) and (node.sum <= min_node.sum):
                 min_node = node
                 print("replaced")
         print("Min node: {}. sum: {}. parent: {}. path: {}".format(min_node.name, min_node.sum, min_node.parent.name,
                                                                    min_node.path))
 
         # Retrieve a path
-        path = self.backtrack(min_node)
+        path = backtrack(min_node, root_name)
         print("\nNode name path: ", [node.name for node in path])
         print("\nNode id path:", [node.id for node in path])
         return path
 
-    # def min_loss_path(self):
-    #     """
-    #
-    #     :return:
-    #     """
-    #     #Measure duration matrix
-    #     duration_matrix = self.dist_matrix/self.robot_velocity
-    #
-    #     #Measure the average duration an area decays
-    #     mean_duration_decay_dict = dict()
-    #     for area in self.areas:
-    #         mean_duration_decay_dict[area] = self.mean_duration_decay(duration_matrix, area)
-    #
-    #     #Evaluate decision
-    #     decision_array = []
-    #     for decision in self.areas:
-    #         # Battery consumption
-    #         battery_consumption, feasible_battery = self.estimate_battery_params(decision, self.battery, self.curr_loc,
-    #                                                                              self.curr_fmeasures, self.noise)
-    #         self.debug("Batt consumption: {}. Feasible batt: {}".format(battery_consumption, feasible_battery))
-    #         if not prune(self.battery, battery_consumption, self.battery_reserve) and decision != self.curr_loc:
-    #             #Immediate loss in i=1
-    #             duration = self.compute_duration(self.curr_loc, decision, self.curr_fmeasures[decision], self.restoration, self.noise)
-    #             updated_fmeasures = self.adjust_fmeasures(self.curr_fmeasures.copy(), decision, duration)  # F-measure of areas adjusted accordingly, i.e., consequence of decision
-    #             immediate_loss_decision = self.compute_net_loss(updated_fmeasures)
-    #             self.debug("Current F-measures: {}".format(self.curr_fmeasures))
-    #             self.debug("Feasible decision: {}. Duration: {}. Updated F: {}. Immediate loss: {}".format(decision, duration, updated_fmeasures, immediate_loss_decision))
-    #
-    #             #Heuristic loss for i=2...k
-    #             forecasted_loss_decision = heuristic_loss_decision(updated_fmeasures, self.decay_rates_dict, (self.fsafe, self.fcrit),
-    #                                                      self.gamma, self.dec_steps, mean_duration_decay_dict) #Main
-    #
-    #             self.debug("Discounted future losses through {} steps: {}".format(self.dec_steps, forecasted_loss_decision))
-    #             evaluated_loss_decision = immediate_loss_decision + forecasted_loss_decision
-    #             self.debug("Appending: {}".format((decision, evaluated_loss_decision, feasible_battery)))
-    #             decision_array.append((decision, evaluated_loss_decision, feasible_battery))
-    #
-    #     best_decision = self.charging_station
-    #
-    #     if len(decision_array)>0:
-    #         best_decision = self.get_best_decision(decision_array)
-    #
-    #     return best_decision
+    #I have 4hours to create this and make this happen
+    def decision_making(self):
+        """
+        Given current location, come up with optimal schedule by dynamic programming
+        :return:
+        """
 
-    # def compute_duration(self, start_area, next_area, curr_measure, restoration, noise):
-    #     """
-    #     Computes (time) duration of operation, which includes travelling distance plus restoration, if any
-    #     :param distance:
-    #     :param restoration: restore a measure (if not None) back to full measure per second
-    #     :param noise: expected noise in distance travelled
-    #     :return:
-    #     """
-    #
-    #     # Travel distance
-    #     distance = self.dist_matrix[int(start_area), int(next_area)]
-    #     distance += noise * distance #distance + noise
-    #     time = (distance / self.robot_velocity)
-    #
-    #     #If next area is not the charging station: the restoration is the f-measure; else, the restoration is the battery level
-    #     if next_area != self.charging_station:
-    #         max_restore = self.max_fmeasure
-    #     else:
-    #         max_restore = self.max_battery
-    #
-    #     #Restoration time: If there is need for restoration
-    #     if (curr_measure is not None) and (restoration is not None):
-    #         restore_time = (max_restore - curr_measure)/restoration
-    #         time += restore_time
-    #
-    #     return time
 
-    # def consume_battery(self, start_area, next_area, curr_measure, noise):
-    #     """
-    #     Consumes curr_battery for the duration of the operation.
-    #     This duration includes the distance plus F-measure restoration, if any
-    #     :param curr_battery:
-    #     :param duration:
-    #     :return:
-    #     """
-    #
-    #     #Batt consumed in travel
-    #     distance = self.dist_matrix[int(start_area), int(next_area)]
-    #     distance += noise * distance
-    #     travel_time = (distance / self.robot_velocity)
-    #     battery_consumed = self.batt_consumed_per_travel_time * travel_time
-    #
-    #     if next_area != self.charging_station:
-    #         battery_consumed += self.batt_consumed_per_restored_f * (self.max_fmeasure - curr_measure)
-    #
-    #     return battery_consumed
+        """
+        Step 1: Create a DAG from current location for length k
+            Inputs:
+                > current_loc
+                > graph_areas
+                > duration_matrix
+                > decay_rates
+                > tlapses_init, dict where areas are the keys, tlapse = get_time_given_decay(max_fmeasure, decayed_fmeasure, rate)
+                > k
+            Output: dag            
+        Step 2: Topologically sort
+            Input: dag
+            Output: sorted nodes
+        Step 3: Get the minimal feasible path
+            Inputs:
+                > dag
+                > sorted nodes
+                > current_loc
+            Output:
+                > path of length k to be taken from current loc (which means this is not included in the path)
+        
+        Ensuring feasibility:        
+        PO1: We get the minimal path. Then from current battery we can estimate the consumption of the path.
+        We then truncate those visits that are beyond estimated capacity.
+        
+        PO2: At each iteration where we pop the visits from the schedule, we check whether it is feasible. If not, we choose the charging station and reset the path.
+        >> PO2 is easier to implement but also practical
+        """
 
-    # def adjust_fmeasures(self, fmeasures, visit_area, duration):
-    #     """
-    #     Adjusts the F-measures of all areas in robot's mind. The visit area will be restored to max, while the other areas will decay for
-    #     t duration. Note that the charging station is not part of the areas to monitor. And so, if the visit_area is the
-    #     charging station, then all of the areas will decay as duration passes by.
-    #     :param fmeasures:
-    #     :param visit_area:
-    #     :param t:
-    #     :return:
-    #     """
-    #     for area in self.areas:
-    #         if area == visit_area:
-    #             fmeasures[area] = self.max_fmeasure
-    #         else:
-    #             tlapse_decay = get_time_given_decay(self.max_fmeasure, fmeasures[area], self.decay_rates_dict[area]) + duration
-    #             fmeasures[area] = decay(self.decay_rates_dict[area], tlapse_decay, self.max_fmeasure)
-    #
-    #     return fmeasures
+        #Step 1
+        duration_matrix = self.dist_matrix/self.robot_velocity
+        tlapses_init = dict()
+        for area in self.areas:
+            tlapses_init[area] = get_time_given_decay(max_fmeasure=self.max_fmeasure, decayed_fmeasure=self.curr_fmeasures[area], rate=self.decay_rates_dict[area])
+        dag = self.create_spatio_temporal_DAG(self.curr_loc, self.graph_areas, duration_matrix, self.decay_rates_dict, tlapses_init, self.dec_steps)
 
-    # def compute_net_loss(self, fmeasures):
-    #     """
-    #     Computes the net loss, (i.e., the sum of losses) of the fmeasures, which is a consequence of a decision
-    #     Steps:
-    #         1. Computes the loss for each of the F-measure of the areas
-    #         2. Sums up the losses to get the cost of the decision
-    #     :param fmeasures:
-    #     :return:
-    #     """
-    #     netloss = compute_cost_fmeasures(fmeasures, self.fsafe, self.fcrit)
-    #     return netloss
+        #Step 2
+        ordered = self.topological_sort_dag(dag)
 
-    # def get_best_decision(self, dec_arr):
-    #     """
-    #     Returns the best decision in an array by sorting forecasted_loss ascendingly first then by remaining feasible battery.
-    #     :param tree:
-    #     :return:
-    #     """
-    #     # Sort the decisions: the cost is key while the value is decision
-    #     sorted_decisions = sorted(dec_arr, key = lambda x: (x[-2], -x[-1]))
-    #     self.debug("Decisions sorted by cost: {}".format(sorted_decisions))
-    #     self.debug("Best decision (branch info): {}".format(sorted_decisions[0]))
-    #     best_decision = sorted_decisions[0][0] #pick the decision with least net loss and most available feasible battery
-    #     return best_decision
+        #Step 3
+        min_path = self.min_loss_path(dag, ordered, self.curr_loc)
+        return min_path
+
 
     #Methods: Run operation
     def run_operation(self, filename, freq=1):
@@ -585,7 +493,7 @@ class Robot:
                 self.debug("Insufficient data. Decay rates: {}/{}. Sampled nodes poses: {}/{}".format(len(self.decay_rates_counter), self.nareas,
                                                                                                       len(self.sampled_nodes_poses), self.nareas+1))
                 rate.sleep() #Data for decay rates haven't registered yet
-
+            #TODO: Ensure decay rates dict has non-empty rates
             self.debug("Sufficent data. Decay rates: {}. Sampled nodes poses: {}".format(self.decay_rates_dict, self.sampled_nodes_poses))
             self.build_dist_matrix()
             t = 0
@@ -595,12 +503,15 @@ class Robot:
                 if self.robot_status == robotStatus.IDLE.value:
                     self.debug('Robot idle')
                     if self.dist_matrix is not None:
+                        #TODO (DONE): Initialize the graph if none yet
+                        if self.graph_areas is None:
+                            self.graph_areas = self.create_graph(self.dist_matrix)
                         self.update_robot_status(robotStatus.READY)
 
                 elif self.robot_status == robotStatus.READY.value:
                     self.debug('Robot ready')
                     think_start = process_time()
-                    self.think_decisions()
+                    self.think_decisions() #TODO: Update the method here
                     think_end = process_time()
                     think_elapsed = self.time_elapsed(think_start, think_end)
                     self.process_time_counter.append(think_elapsed)
@@ -640,7 +551,8 @@ class Robot:
         Thinks of the best decision before starting mission
         :return:
         """
-        self.best_decision = self.greedy_best_decision()
+        #TODO: Update the method here
+        self.optimal_path = self.decision_making()
 
     def time_elapsed(self, think_start, think_end):
         """
@@ -663,8 +575,26 @@ class Robot:
         Sends the robot to the next area in the optimal path:
         :return:
         """
-        if self.best_decision is not None:
-            self.mission_area = self.best_decision
+        #TODO: Evaluate whether next visit decided is still feasible, otherwise send back to charging station and reset the path
+        # Use the structure from treebased_decision
+
+        """
+        if len(self.optimal_path):
+            self.mission_area = self.optimal_path.pop(0)
+            PO: Check for feasibility if visit is to restore area
+            If feasible send to popped mission_area,
+                if not, send to charging station, then reset optimal_path = []
+        """
+
+        if len(self.optimal_path):
+            self.mission_area = self.optimal_path.pop(0)
+            if self.mission_area is not self.charging_station:
+                battery_consumed = self.consume_battery(self.curr_loc, self.mission_area, self.curr_fmeasures[self.mission_area], self.noise)
+                if not is_feasible(self.battery, battery_consumed, self.battery_reserve):
+                    self.debug('Not enough battery to visit {}. Heading back to charging station and resetting schedule...'.format(self.mission_area))
+                    self.optimal_path = []
+                    self.mission_area = self.charging_station
+
             self.mission_area_pub.publish(self.mission_area)
             self.debug('Heading to: {}. {}'.format(self.mission_area, self.sampled_nodes_poses[self.mission_area]))
             self.decisions_made.append(self.mission_area) #store decisions made
@@ -751,3 +681,6 @@ if __name__ == '__main__':
     os.chdir('/home/ameldocena/.ros/int_preservation/results')
     filename = rospy.get_param('/file_data_dump')
     Robot('heuristic_decision').run_operation(filename)
+
+    #TODO: To sanity check, lessen battery to check whether it checks for feasibility and go to charging station and then resets decisions
+    # Lessen mission time? Just to eyeball whether it works, e.g., computations
