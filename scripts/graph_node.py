@@ -10,11 +10,13 @@ class Node():
   def __init__(self, name, id, decay_rate, tlapse_init, tlapse_post_init=0, tlapse_visit=0):
     self.name = name
     self.id = id
-    self.tlapse_post_init = tlapse_post_init + tlapse_visit
-    self.tlapse = tlapse_init + self.tlapse_post_init
-    self.decay_rate = decay_rate
-    self.weight = self.loss(self.tlapse)
-    self.loss = self.loss(self.tlapse)
+    self.tlapse_post_init = 0
+    if decay_rate is not None and tlapse_init is not None:
+      self.decay_rate = decay_rate
+      self.tlapse_post_init = tlapse_post_init + tlapse_visit
+      self.tlapse = tlapse_init + self.tlapse_post_init
+      self.weight = self.loss(self.tlapse)
+      self.loss = self.loss(self.tlapse)
     self.sum = float('inf')
     self.parent = None
     self.path = [] #path from start node to this node container

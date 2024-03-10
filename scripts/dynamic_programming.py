@@ -251,7 +251,7 @@ class Robot:
             if self.mission_area == self.charging_station:
                 self.update_robot_status(robotStatus.CHARGING)
             self.decisions_accomplished.append(self.mission_area)
-            self.best_decision = None
+            # self.best_decision = None
 
     # def mean_duration_decay(self, duration_matrix, area):
     #     """
@@ -291,8 +291,8 @@ class Robot:
         Creates graph among areas (excluding charging station) given distance matrix
         """
         graph = nx.Graph()
-        graph.add_nodes_from(list(range(1, len(dist_matrix)+1)))
-        print("Nodes:", graph.nodes)
+        graph.add_nodes_from(list(range(len(dist_matrix))))
+        self.debug("Nodes: {}".format(graph.nodes))
         edges = list()
         for i in graph.nodes:
             for j in graph.nodes:
@@ -333,8 +333,12 @@ class Robot:
         # Create root node at i=0
         i = 0
         name = '{}_{}'.format(current_loc, i)
-        root_node = Node(name, id=current_loc, decay_rate=decay_rates[current_loc],
-                         tlapse_init=tlapses_init[current_loc])  # Root node
+        decay_rate, tlapse_init = None, None
+        if current_loc != self.charging_station:
+            decay_rate = decay_rates[current_loc]
+            tlapse_init = tlapses_init[current_loc]
+
+        root_node = Node(name, id=current_loc, decay_rate=decay_rate, tlapse_init=tlapse_init)  # Root node
         dag.add_node(root_node)
 
         # Form weighted edges for the k visits
@@ -345,12 +349,12 @@ class Robot:
             stemp_edges = list()
             for prev_node in list(stemp_nodes[i - 1].values()):
                 for n in list(G.neighbors(prev_node.id)):
-                    if n != prev_node.id:
+                    if n != prev_node.id and n != self.charging_station:
                         name = '{}_{}'.format(n, i)
                         new_node = Node(name, id=n, decay_rate=decay_rates[n], tlapse_init=tlapses_init[n],
                                         tlapse_post_init=prev_node.tlapse_post_init,
                                         tlapse_visit=duration_matrix[prev_node.id, n])
-                        print("Tlapse: {}. Decay: {}. Loss: {}".format(new_node.tlapse, new_node.decay_rate,
+                        self.debug("Tlapse: {}. Decay: {}. Loss: {}".format(new_node.tlapse, new_node.decay_rate,
                                                                        new_node.loss))
 
                         stemp_nodes[i][name] = new_node
@@ -360,7 +364,7 @@ class Robot:
             dag.add_nodes_from(list(stemp_nodes[i].values()))
             dag.add_weighted_edges_from(stemp_edges)
 
-            print("i={}: {}, {}".format(i, [node.name for node in list(stemp_nodes[i].values())],
+            self.debug("i={}: {}, {}".format(i, [node.name for node in list(stemp_nodes[i].values())],
                                         [(edge[0].name, edge[1].name) for edge in stemp_edges]))
         return dag
 
@@ -381,7 +385,7 @@ class Robot:
         parent = tail_node.parent
         while parent.name != root_name:
             tail_node = parent
-            nodes_list.append(tail_node)
+            nodes_list.append(tail_node.id)
             parent = tail_node.parent
 
         nodes_list.reverse()
@@ -396,37 +400,38 @@ class Robot:
         for node in sorted_nodes:
             if node.name == root_name:  # root node
                 node.sum = 0
-                print("Root node: {}. sum: {}\n".format(node.name, node.sum))
+                self.debug("Root node: {}. sum: {}\n".format(node.name, node.sum))
             for succ in list(dag.successors(node)):
-                print("\n{} -> {}".format(node.name, succ.name))
-                print("Node {} path: {}. Succesor node: {}. Succesor in path?: {}".format(node.name, node.path, succ.id,
+                self.debug("\n{} -> {}".format(node.name, succ.name))
+                self.debug("Node {} path: {}. Succesor node: {}. Succesor in path?: {}".format(node.name, node.path, succ.id,
                                                                                           succ.id in node.path))
                 if succ.id not in node.path:
-                    print("Node sum: {} - Succ loss: {} <= Succ sum: {} => {}".format(node.sum, succ.loss, succ.sum,
+                    self.debug("Node sum: {} - Succ loss: {} <= Succ sum: {} => {}".format(node.sum, succ.loss, succ.sum,
                                                                                       node.sum + succ.loss <= succ.sum))
                     if node.sum - succ.loss <= succ.sum:
                         succ.sum = node.sum - succ.loss
                         succ.parent = node
                         succ.path = node.path.copy()
                         succ.path.append(succ.id)
-                        print("Updated {} sum: {}. parent: {}. path: {}".format(succ.name, succ.sum, succ.parent.name,
+                        self.debug("Updated {} sum: {}. parent: {}. path: {}".format(succ.name, succ.sum, succ.parent.name,
                                                                                 succ.path))
 
         # Search for the minimal sum among nodes in dag
         min_node = list(dag.nodes)[0]
         for node in list(dag.nodes):
-            print("Min node: {}, sum: {}. Next node: {}, sum: {}".format(min_node.name, min_node.sum, node.name,
+            self.debug("Min node: {}, sum: {}. Next node: {}, sum: {}".format(min_node.name, min_node.sum, node.name,
                                                                          node.sum))
             if (node != min_node) and (not math.isinf(node.sum)) and (node.sum <= min_node.sum):
                 min_node = node
-                print("replaced")
-        print("Min node: {}. sum: {}. parent: {}. path: {}".format(min_node.name, min_node.sum, min_node.parent.name,
+                self.debug("replaced")
+        self.debug("Min node: {}. sum: {}. parent: {}. path: {}".format(min_node.name, min_node.sum, min_node.parent.name,
                                                                    min_node.path))
 
         # Retrieve a path
-        path = backtrack(min_node, root_name)
-        print("\nNode name path: ", [node.name for node in path])
-        print("\nNode id path:", [node.id for node in path])
+        # path = self.backtrack(min_node, root_name)
+        path = min_node.path
+        self.debug("Decided path: {}".format(path))
+        # print("\nNode id path:", [node.id for node in path])
         return path
 
     #I have 4hours to create this and make this happen
@@ -515,7 +520,7 @@ class Robot:
                     think_end = process_time()
                     think_elapsed = self.time_elapsed(think_start, think_end)
                     self.process_time_counter.append(think_elapsed)
-                    self.debug('Best decision: {}. Process time: {}s'.format(self.best_decision, think_elapsed))
+                    self.debug('Best path: {}. Process time: {}s'.format(self.optimal_path, think_elapsed))
                     self.update_robot_status(robotStatus.IN_MISSION)
 
                 elif self.robot_status == robotStatus.IN_MISSION.value:
@@ -682,5 +687,6 @@ if __name__ == '__main__':
     filename = rospy.get_param('/file_data_dump')
     Robot('heuristic_decision').run_operation(filename)
 
-    #TODO: To sanity check, lessen battery to check whether it checks for feasibility and go to charging station and then resets decisions
-    # Lessen mission time? Just to eyeball whether it works, e.g., computations
+    #TODO: To sanity check, lessen battery to check whether it checks for feasibility and go to charging station and then resets decisions (DONE)
+    # TODO: Check whether it can decide a path containing the areas for length k where the current location is not the charging station
+    # Lessen mission time? Just to eyeball whether it works, e.g., computations (DONE)

@@ -97,7 +97,7 @@ def run_experiment(method, world, nareas, placement, decay, learn_decay, tframe,
     :return:
     """
     fileposes = '{}_n{}_sampled_nodes_poses_dict'.format(world, nareas)
-    if method == 'treebased_decision' or method == 'heuristic_decision':
+    if method == 'treebased_decision' or method == 'heuristic_decision' or method == 'dynamic_programming':
         for i in range(ntrials):
             fileresult = '{}_{}_n{}_p{}_{}_k{}_{}'.format(method, world, nareas, placement, decay, dec_steps, i + 1)
             logfile = fileresult + '.txt'
@@ -134,6 +134,13 @@ if __name__ == '__main__':
 
     #Office
     #Adjust acml max_range=20
+
+    run_experiment(method='dynamic_programming', world='office', nareas=9, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=3, ntrials=5, save=True)
+
+    run_experiment(method='dynamic_programming', world='office', nareas=4, placement=1, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+
     #
     # run_experiment(method='heuristic_decision', world='office', nareas=8, placement=2, decay='non_uniform',
     #                learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
@@ -152,12 +159,15 @@ if __name__ == '__main__':
     #
     #Cluttered
     #Adjust acml max_range=10
+    #TODO: Run for cluttered. Adjust max_range pls!
+    # run_experiment(method='dynamic_programming', world='cluttered', nareas=4, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=4, ntrials=1, save=True)
 
-    run_experiment(method='heuristic_decision', world='cluttered', nareas=70, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=75, dec_steps=10 ** 2, ntrials=1, save=True)
-
-    run_experiment(method='heuristic_decision', world='cluttered', nareas=70, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=75, dec_steps=10 ** 3, ntrials=1, save=True)
+    # run_experiment(method='heuristic_decision', world='cluttered', nareas=70, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=75, dec_steps=10 ** 2, ntrials=1, save=True)
+    #
+    # run_experiment(method='heuristic_decision', world='cluttered', nareas=70, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=75, dec_steps=10 ** 3, ntrials=1, save=True)
 
     # run_experiment(method='treebased_decision', world='cluttered', nareas=9, placement=1, decay='non_uniform',
     #                learn_decay=None, tframe=2100, dec_steps=3, ntrials=3, save=True)
