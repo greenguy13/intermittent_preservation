@@ -685,8 +685,5 @@ class Robot:
 if __name__ == '__main__':
     os.chdir('/home/ameldocena/.ros/int_preservation/results')
     filename = rospy.get_param('/file_data_dump')
-    Robot('heuristic_decision').run_operation(filename)
+    Robot('dynamic_programming').run_operation(filename)
 
-    #TODO: To sanity check, lessen battery to check whether it checks for feasibility and go to charging station and then resets decisions (DONE)
-    # TODO: Check whether it can decide a path containing the areas for length k where the current location is not the charging station
-    # Lessen mission time? Just to eyeball whether it works, e.g., computations (DONE)

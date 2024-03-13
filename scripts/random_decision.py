@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """
 Randomized decision making
@@ -76,7 +76,7 @@ class Robot():
         for area_coords in sampled_areas_coords['n{}_p{}'.format(self.nareas, rospy.get_param("/placement"))]:
             pose_stamped = pu.convert_coords_to_PoseStamped(area_coords)
             self.sampled_nodes_poses.append(pose_stamped)
-        rd.seed(100*self.nareas + 10*rospy.get_param("/placement"))
+        # rd.seed(100*self.nareas + 10*rospy.get_param("/placement"))
 
         self.charging_station = 0
         self.curr_loc = self.charging_station  # Initial location robot is the charging station
@@ -249,13 +249,18 @@ class Robot():
         :param: feasible_areas (list): list of feasible areas
         :return:
         """
-
+        pick = 0
         #If there are feasible areas that are in caution zone in the next decision step, pick randomly
-        if len(feasible_areas) > 0:
-            #pick randomly
-            return rd.choice(feasible_areas)
-        else: #We park at the charging station: either there are no feasible areas or all feasible areas are in safe zone
-            return self.charging_station
+        choices = np.array(feasible_areas)
+        condition = choices <= math.ceil(0.25 * self.nareas)
+        if len(choices[condition]) > 0:
+            #pick randomly by a coin flip
+            flip = rd.random()
+            if flip < 0.95:
+                pick = rd.choice(choices[condition])
+            else:
+                pick = rd.choice(feasible_areas)
+        return pick
 
     #NOTE: We can use compute_loss to find out whether an area will fall below the safe zone in the next decision step.
 
@@ -483,8 +488,8 @@ class Robot():
         kill_nodes(sleep)
 
 if __name__ == '__main__':
-    os.chdir('/root/catkin_ws/src/results/int_preservation')
+    os.chdir('/home/ameldocena/.ros/int_preservation/results')
     filename = rospy.get_param('/file_data_dump')
-    Robot('decision_making').run_operation(filename)
+    Robot('random_decision').run_operation(filename)
 
 

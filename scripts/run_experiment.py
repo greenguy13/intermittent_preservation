@@ -135,33 +135,110 @@ if __name__ == '__main__':
     #Office
     #Adjust acml max_range=20
 
-    run_experiment(method='dynamic_programming', world='office', nareas=9, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=3, ntrials=5, save=True)
-
-    run_experiment(method='dynamic_programming', world='office', nareas=4, placement=1, decay='non_uniform',
-                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
-
+    # run_experiment(method='dynamic_programming', world='office', nareas=9, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=3, ntrials=5, save=True)
     #
-    # run_experiment(method='heuristic_decision', world='office', nareas=8, placement=2, decay='non_uniform',
+    # run_experiment(method='random_decision', world='office', nareas=4, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=None, ntrials=3, save=True)
+    #
+    #
+    # run_experiment(method='random_decision', world='open', nareas=9, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=None, ntrials=3, save=True)
+
+    # Placement 2
+    # run_experiment(method='treebased_decision', world='office', nareas=4, placement=2, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+    # #
+    # run_experiment(method='heuristic_decision', world='office', nareas=4, placement=2, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+    # #
+    # run_experiment(method='dynamic_programming', world='office', nareas=4, placement=2, decay='non_uniform',
     #                learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
     #
-    # run_experiment(method='heuristic_decision', world='office', nareas=8, placement=2, decay='non_uniform',
-    #                learn_decay=None, tframe=2100, dec_steps=6, ntrials=3, save=True)
+    # # Placement 3
+    # run_experiment(method='treebased_decision', world='office', nareas=4, placement=3, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+    # #
+    # run_experiment(method='heuristic_decision', world='office', nareas=4, placement=3, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+    # #
+    # run_experiment(method='dynamic_programming', world='office', nareas=4, placement=3, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
     #
-    # run_experiment(method='heuristic_decision', world='office', nareas=8, placement=2, decay='non_uniform',
-    #                learn_decay=None, tframe=2100, dec_steps=8, ntrials=3, save=True)
+    # # Placement 4
+    # run_experiment(method='treebased_decision', world='office', nareas=4, placement=4, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+    # #
+    # run_experiment(method='heuristic_decision', world='office', nareas=4, placement=4, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+    # #
+    # run_experiment(method='dynamic_programming', world='office', nareas=4, placement=4, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
     #
-    # run_experiment(method='heuristic_decision', world='office', nareas=8, placement=2, decay='non_uniform',
-    #                learn_decay=None, tframe=2100, dec_steps=10, ntrials=3, save=True)
     #
-    # run_experiment(method='heuristic_decision', world='office', nareas=8, placement=2, decay='non_uniform',
-    #                learn_decay=None, tframe=2100, dec_steps=12, ntrials=3, save=True)
-    #
+    # # Placement 5
+    # run_experiment(method='treebased_decision', world='office', nareas=4, placement=5, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+    # #
+    # run_experiment(method='heuristic_decision', world='office', nareas=4, placement=5, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+    # #
+    # run_experiment(method='dynamic_programming', world='office', nareas=4, placement=5, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+
     #Cluttered
     #Adjust acml max_range=10
     #TODO: Run for cluttered. Adjust max_range pls!
+    # run_experiment(method='dynamic_programming', world='cluttered', nareas=9, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=3, ntrials=5, save=True)
+
+    # run_experiment(method='random_decision', world='cluttered', nareas=4, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=None, ntrials=3, save=True)
+
+
+
+    #
     # run_experiment(method='dynamic_programming', world='cluttered', nareas=4, placement=1, decay='non_uniform',
-    #                learn_decay=None, tframe=2100, dec_steps=4, ntrials=1, save=True)
+    #                learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+    #
+    run_experiment(method='treebased_decision', world='cluttered', nareas=4, placement=2, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+    #
+    run_experiment(method='heuristic_decision', world='cluttered', nareas=4, placement=2, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+    #
+    run_experiment(method='dynamic_programming', world='cluttered', nareas=4, placement=2, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+
+    # Placement 3
+    run_experiment(method='treebased_decision', world='cluttered', nareas=4, placement=3, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+    #
+    run_experiment(method='heuristic_decision', world='cluttered', nareas=4, placement=3, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+    #
+    run_experiment(method='dynamic_programming', world='cluttered', nareas=4, placement=3, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+
+    # Placement 4
+    run_experiment(method='treebased_decision', world='cluttered', nareas=4, placement=4, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+    #
+    run_experiment(method='heuristic_decision', world='cluttered', nareas=4, placement=4, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+    #
+    run_experiment(method='dynamic_programming', world='cluttered', nareas=4, placement=4, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+
+    # Placement 5
+    run_experiment(method='treebased_decision', world='cluttered', nareas=4, placement=5, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+    #
+    run_experiment(method='heuristic_decision', world='cluttered', nareas=4, placement=5, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
+    #
+    run_experiment(method='dynamic_programming', world='cluttered', nareas=4, placement=5, decay='non_uniform',
+                   learn_decay=None, tframe=2100, dec_steps=4, ntrials=3, save=True)
 
     # run_experiment(method='heuristic_decision', world='cluttered', nareas=70, placement=1, decay='non_uniform',
     #                learn_decay=None, tframe=75, dec_steps=10 ** 2, ntrials=1, save=True)
@@ -186,6 +263,9 @@ if __name__ == '__main__':
 
     #Open
     #Adjust acml max_range=20
+    # run_experiment(method='dynamic_programming', world='open', nareas=9, placement=1, decay='non_uniform',
+    #                learn_decay=None, tframe=2100, dec_steps=3, ntrials=5, save=True)
+
     # run_experiment(method='treebased_decision', world='open', nareas=9, placement=1, decay='non_uniform',
     #                learn_decay=None, tframe=2100, dec_steps=3, ntrials=3, save=True)
     #
