@@ -620,9 +620,10 @@ class Robot:
         """
         self.environment_status[area_id] = msg.data
         if msg.data == areaStatus.RESTORED_F.value:
-            if self.robot_id == 0: self.debug("Area fully restored!")
             self.available = True
             self.tlapses[area_id] = 0 #TODO: Reset the tlapse since last restored for the newly restored area
+            if self.robot_id == 0: self.debug("Area {} fully restored! tlapse reset...")
+
             if (self.inference is not None) and (self.inference is not 'oracle'):
                 self.update_robot_status(robotStatus.CONSIDER_REPLAN)
             else:
