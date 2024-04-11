@@ -1,7 +1,7 @@
 <launch>
     <arg name="world" default="office"/>
     <arg name="method" default="treebased_decision"/>
-    <arg name="inference" default="None">
+    <arg name="inference" default="None"/>
     <arg name="nrobots" default="2"/>
     <arg name="nareas" default="3"/>
     <arg name="decay" default="non_uniform"/>

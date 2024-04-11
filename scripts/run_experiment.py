@@ -150,6 +150,8 @@ if __name__ == '__main__':
 
     #Office
     #Adjust acml max_range=20
+    run_experiment('heuristic_decision_uncertainty', 'office', 4, 1, 'non_uniform', 100,
+                   inference='oracle', dec_steps=1, ntrials=1, save=False)
 
     #Cluttered
     #Adjust acml max_range=10

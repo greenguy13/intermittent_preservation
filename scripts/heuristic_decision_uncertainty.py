@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """
 Heuristic decision making under uncertainty
@@ -96,7 +96,7 @@ class Robot:
         self.available = True
         self.curr_fmeasures = dict() #container of current F-measure of areas
         self.decay_rates_dict = dict() #dictionary for decay rates
-        self.recorded_data = dict() #dictionary of recorded data collected during mission per area
+        self.recorded_f_data = dict() #dictionary of recorded data collected during mission per area
         self.recorded_decay_param = dict() #dictionary of recorded decay parameter based on data collected during mission
         self.tlapses = dict() #dictionary containing tlapse for each area since last restoration
 
@@ -114,9 +114,9 @@ class Robot:
         #Parameters under uncertainty
         self.inference = rospy.get_param("/inference")
         self.alpha = rospy.get_param("/alpha")
-        self.correlation_matrix = np.array(rospy.get_param("/correlation_matrix")).reshape((len(self.areas), len(self.areas)))
-        self.correlation_threshold = rospy.get_param("/correlation_threshold")
-        self.sensitivity_threshold = rospy.get_param("/sensitivity_threshold")
+        # self.correlation_matrix = np.array(rospy.get_param("/correlation_matrix")).reshape((len(self.areas), len(self.areas)))
+        # self.correlation_threshold = rospy.get_param("/correlation_threshold")
+        # self.sensitivity_threshold = rospy.get_param("/sensitivity_threshold")
         self.win_size = rospy.get_param("/win_size") #window size for moving average prediction
 
         #We sum this up
@@ -522,7 +522,8 @@ class Robot:
                     self.debug("Current est decay: {}. Newly measured decay: {}. Updated est decay: {}".format(current_decay_param, measured_decay_param, est))
                     self.decay_rates_dict[self.mission_area] = est #TODO: Set the decay rate by the inferred rate
                     self.update_robot_status(robotStatus.IN_MISSION) #Verified
-                self.update_tlapses_areas() #Update the tlapse per area
+                if (self.robot_status != robotStatus.IDLE.value) and (self.robot_status != robotStatus.READY.value) or (self.robot_status != robotStatus.CONSIDER_REPLAN.value):
+                    self.update_tlapses_areas() #Update the tlapse per area
                 t += 1
                 rate.sleep()
 
@@ -533,6 +534,9 @@ class Robot:
 
             #Wait before all other nodes have finished dumping their data
             if self.save:
+                if self.inference is not None:
+                    pu.dump_data((self.recorded_f_data, self.recorded_decay_param), '{}_robot{}_recorded_data'.format(filename, self.robot_id))
+
                 pu.dump_data(self.process_time_counter, '{}_robot{}_process_time'.format(filename, self.robot_id))
                 pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
                 pu.dump_data((self.decisions_accomplished, self.total_dist_travelled), '{}_robot{}_decisions_acc_travel'.format(filename, self.robot_id))
@@ -622,9 +626,9 @@ class Robot:
         if msg.data == areaStatus.RESTORED_F.value:
             self.available = True
             self.tlapses[area_id] = 0 #TODO: Reset the tlapse since last restored for the newly restored area
-            if self.robot_id == 0: self.debug("Area {} fully restored! tlapse reset...")
+            if self.robot_id == 0: self.debug("Area {} fully restored! tlapse reset...".format(area_id))
 
-            if (self.inference is not None) and (self.inference is not 'oracle'):
+            if (self.inference is not None) and (self.inference != 'oracle'):
                 self.update_robot_status(robotStatus.CONSIDER_REPLAN)
             else:
                 self.update_robot_status(robotStatus.IN_MISSION)
