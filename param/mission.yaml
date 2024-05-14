@@ -8,7 +8,7 @@ dec_steps: $(arg dsteps) #number of decision steps
 t_operation: $(arg tframe) #total duration of the operation
 file_sampled_areas: $(arg fileposes) #file name of sampled areas
 file_data_dump: $(arg fileresult) #file name for data dump
-learn_decay_param_type: $(arg learndecay) #type of heuristic for learning decay param
+inference: $(arg inference) #type of heuristic for inference on decay param
 save: $(arg save) #save data
 
 gamma: 0.25 #discount factor for future losses/rewards: [0, 1]. If gamma=0, present looking. Else if gamma=1, all future rewards are treated equally with present reward

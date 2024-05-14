@@ -99,9 +99,7 @@ class Area():
         :return:
         """
         if bool(msg.fmeasure_request) is True:
-            # self.debug("Measuring F-value of area {} (tlapse, F): {}. Est decay: {}. Act decay: {}".format(self.area, (self.tlapse, self.fmeasure),
-            #                                                                                                get_decay_rate(max_fmeasure=100, decayed_fmeasure=self.fmeasure, tlapse=self.tlapse), self.decay_rate))
-            self.debug("Measuring decay rate: {}".format(self.decay_rate))
+            self.debug("Oracle decay rate: {}".format(self.decay_rate))
             record = self.decay_rate #[self.tlapse, self.fmeasure]
             return flevelResponse(record)
 
