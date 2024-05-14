@@ -35,7 +35,7 @@ def request_fmeasure(area, msg=True):
     flevel_service = rospy.ServiceProxy("/flevel_server_" + str(area), flevel)
     request = flevelRequest(msg)
     result = flevel_service(request)
-    return result.decay_rate
+    return result.fmeasure
 
 INDEX_FOR_X = 0
 INDEX_FOR_Y = 1
@@ -99,11 +99,13 @@ class Robot:
         self.recorded_f_data = dict() #dictionary of recorded data collected during mission per area
         self.recorded_decay_param = dict() #dictionary of recorded decay parameter based on data collected during mission
         self.tlapses = dict() #dictionary containing tlapse for each area since last restoration
+        self.inferred_decay_rates = dict() #dict for inferred decay rates
 
         for area in self.areas:
             self.decay_rates_dict[area] = None
             self.recorded_f_data[area] = list()
             self.recorded_decay_param[area] = list()
+            self.inferred_decay_rates[area] = list()
             self.tlapses[area] = 0
 
         self.decay_rates_counter = 0 #counter for stored decay rates; should be equal to number of areas
@@ -272,7 +274,9 @@ class Robot:
                 data = request_fmeasure(self.curr_loc)
                 measured_f = float(data)
                 self.recorded_f_data[self.curr_loc].append(measured_f)
-                self.recorded_decay_param[self.curr_loc] = get_decay_rate(self.max_fmeasure, measured_f, self.tlapses[self.curr_loc]) #Estimate decay param based on measured data and time lapsed since last restoration
+                converted_decay = get_decay_rate(self.max_fmeasure, measured_f, self.tlapses[self.curr_loc])
+                self.debug("Inverting decay...Measured f: {}. Tlapse: {}. Converted decay: {}".format(measured_f, self.tlapses[self.curr_loc], converted_decay))
+                self.recorded_decay_param[self.curr_loc].append(converted_decay) #Estimate decay param based on measured data and time lapsed since last restoration
                 self.update_robot_status(robotStatus.RESTORING_F)
 
     def mean_duration_decay(self, duration_matrix, area):
@@ -453,17 +457,16 @@ class Robot:
         :return: Updates self.decay_rates_dict
         """
 
-        if type == 'moving_average':
-            return moving_average(self.recorded_decay_param, area, self.win_size, self.alpha) #TODO: We do moving average with prior data as well
+        return moving_average(self.recorded_decay_param, area, self.win_size, self.alpha, type)
 
-    def update_tlapses_areas(self):
+    def update_tlapses_areas(self, sim_t):
         """
         Lapses all time elapsed for each area
         :return:
         """
         for area in self.areas:
             self.tlapses[area] += 1
-        self.debug("Time elapsed since last restored: {}".format(self.tlapses))
+        self.debug("Sim t: {}. Time elapsed since last restored: {}".format(sim_t, self.tlapses))
 
     #Methods: Run operation
     def run_operation(self, filename, freq=1):
@@ -519,12 +522,14 @@ class Robot:
 
                     #TODO: Update model
                     est = self.learn_decay_param(self.mission_area, type=self.inference) #TODO: Infer the decay rate
+                    self.debug("Recorded decays: {}".format(self.recorded_decay_param[self.mission_area]))
                     self.debug("Current est decay: {}. Newly measured decay: {}. Updated est decay: {}".format(current_decay_param, measured_decay_param, est))
                     self.decay_rates_dict[self.mission_area] = est #TODO: Set the decay rate by the inferred rate
+                    self.inferred_decay_rates[self.mission_area].append(est)
                     self.update_robot_status(robotStatus.IN_MISSION) #Verified
-                if (self.robot_status != robotStatus.IDLE.value) and (self.robot_status != robotStatus.READY.value) or (self.robot_status != robotStatus.CONSIDER_REPLAN.value):
-                    self.update_tlapses_areas() #Update the tlapse per area
                 t += 1
+                if (self.robot_status != robotStatus.IDLE.value) and (self.robot_status != robotStatus.READY.value) and (self.robot_status != robotStatus.CONSIDER_REPLAN.value): #TODO: PO Insert the condition that the areas are simulating
+                    self.update_tlapses_areas(t) #Update the tlapse per area
                 rate.sleep()
 
             #Store results
@@ -535,7 +540,7 @@ class Robot:
             #Wait before all other nodes have finished dumping their data
             if self.save:
                 if self.inference is not None:
-                    pu.dump_data((self.recorded_f_data, self.recorded_decay_param), '{}_robot{}_recorded_data'.format(filename, self.robot_id))
+                    pu.dump_data((self.recorded_f_data, self.recorded_decay_param, self.inferred_decay_rates), '{}_robot{}_recorded_data'.format(filename, self.robot_id))
 
                 pu.dump_data(self.process_time_counter, '{}_robot{}_process_time'.format(filename, self.robot_id))
                 pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
