@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="fadc4beb-e099-42dc-8633-fa025145061e" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/../launch/areas/area_sim100.launch" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/../launch/areas/area_sim50.launch" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/../launch/areas/area_sim70.launch" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/area.py" beforeDir="false" afterPath="$PROJECT_DIR$/area.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/battery.py" beforeDir="false" afterPath="$PROJECT_DIR$/battery.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/heuristic_decision.py" beforeDir="false" afterPath="$PROJECT_DIR$/heuristic_decision.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/random_decision.py" beforeDir="false" afterPath="$PROJECT_DIR$/random_decision.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/run_experiment.py" beforeDir="false" afterPath="$PROJECT_DIR$/run_experiment.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/sample_area_poses.py" beforeDir="false" afterPath="$PROJECT_DIR$/sample_area_poses.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/treebased_decision.py" beforeDir="false" afterPath="$PROJECT_DIR$/treebased_decision.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../world/bitmaps/cluttered.pngZone.Identifier" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../world/bitmaps/open.pngZone.Identifier" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../world/office2.world" beforeDir="false" afterPath="$PROJECT_DIR$/../world/office2.world" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
+  </component>
+  <component name="ProjectId" id="2WEhQjP79aMTe0KGnO3N0BHlnhl" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showExcludedFiles" value="false" />
+    <option name="showLibraryContents" value="true" />
+    <option name="showMembers" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "WebServerToolWindowFactoryState": "false",
+    "last_opened_file_path": "//wsl$/Ubuntu-20.04/root/catkin_ws/src/int_preservation",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="fadc4beb-e099-42dc-8633-fa025145061e" name="Changes" comment="" />
+      <created>1696303633142</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1696303633142</updated>
+      <workItem from="1696303634392" duration="13000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+</project>

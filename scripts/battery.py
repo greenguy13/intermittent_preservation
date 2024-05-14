@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
 """
 ### Robot battery
@@ -121,6 +121,7 @@ class Battery():
         pu.log_msg('robot', self.robot_id, msg, self.debug_mode)
 
 if __name__ == '__main__':
-    os.chdir('/home/ameldocena/.ros/int_preservation/results')
+    # os.chdir('/home/ameldocena/.ros/int_preservation/results')
+    os.chdir('/root/catkin_ws/src/results/int_preservation')
     filename = rospy.get_param('/file_data_dump')
     Battery('battery').run_operation(filename)

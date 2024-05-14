@@ -26,10 +26,17 @@ from condition_trigger import *
 from condition_sensitivity import *
 
 """
-TODO: Incorporate
-1. estimate decay params
-2. condition trigger
-3. condition sensitivity
+Update to-do here:
+1. Is it possible to just have 1 script for the time-series forecasting?
+> Prediction + Inference
+> This can be an alpha (confidence level) that measures the risk appetite
+> Handling the correlation: included in the inference
+    + Manual/separate
+    + Integrated in the modelling
+> When to update: Data points collected and outdated
+
+2. Update of the noise models
+> Travel + Restoration
 """
 def request_fmeasure(area, msg=True):
     """

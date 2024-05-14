@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
 """
 Tree-based decision making
@@ -653,6 +653,7 @@ class Robot:
         kill_nodes(sleep)
 
 if __name__ == '__main__':
-    os.chdir('/home/ameldocena/.ros/int_preservation/results')
+    # os.chdir('/home/ameldocena/.ros/int_preservation/results')
+    os.chdir('/root/catkin_ws/src/results/int_preservation')
     filename = rospy.get_param('/file_data_dump')
     Robot('treebased_decision').run_operation(filename)
