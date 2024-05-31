@@ -150,8 +150,17 @@ if __name__ == '__main__':
 
     #Office
     #Adjust acml max_range=20
-    run_experiment('heuristic_decision_uncertainty', 'office', 4, 1, 'non_uniform', 100,
-                   inference='oracle', dec_steps=1, ntrials=1, save=False)
+    run_experiment('heuristic_uncertainty', 'office', 8, 1, 'non_uniform', 4000,
+                   inference='oracle', dec_steps=4, ntrials=3, save=True)
+
+    run_experiment('heuristic_uncertainty', 'office', 8, 1, 'non_uniform', 4000,
+                   inference='pessimistic', dec_steps=4, ntrials=3, save=True)
+
+    run_experiment('heuristic_uncertainty', 'office', 8, 1, 'non_uniform', 4000,
+                   inference='optimistic', dec_steps=4, ntrials=3, save=True)
+
+    ## TODO: Implement tree-based oracle
+    ## TODO: Implement UCB algo (Gaussian)
 
     #Cluttered
     #Adjust acml max_range=10

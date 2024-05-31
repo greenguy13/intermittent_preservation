@@ -513,7 +513,7 @@ class Robot:
                 elif self.robot_status == robotStatus.RESTORING_F.value:
                     self.debug('Restoring F-measure')
 
-                #TODO: Ensure the cycle of states is correct
+                #TODO: Ensure the cycle of states is correct. Note: oracle should have no replanning state
                 elif self.robot_status == robotStatus.CONSIDER_REPLAN.value:
                     self.debug('Consider re-plan...')
                     self.debug("Mission area: {}. Estimated decay rates: {}".format(self.mission_area, self.decay_rates_dict))
@@ -678,4 +678,4 @@ class Robot:
 if __name__ == '__main__':
     os.chdir('/home/ameldocena/.ros/int_preservation/results')
     filename = rospy.get_param('/file_data_dump')
-    Robot('heuristic_decision_uncertainty').run_operation(filename)
+    Robot('heuristic_uncertainty').run_operation(filename)

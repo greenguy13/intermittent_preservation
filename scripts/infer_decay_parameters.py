@@ -82,7 +82,7 @@ def proposed_heuristic(recorded_param_dict, area, alpha):
     pu.log_msg('robot', 0, 'data, mean, VaR, proposed: {}'.format((data, m, VaR, proposed)))
     return proposed
 
-def moving_average(recorded_param_dict, area, win_size, alpha):
+def moving_average(recorded_param_dict, area, win_size, alpha, type='expected'):
     """
     Forecasts the decay rate by moving average
     :param recorded_param_dict:
@@ -94,4 +94,9 @@ def moving_average(recorded_param_dict, area, win_size, alpha):
     forecast = np.mean(data[-win_size:])
     moe = margin_of_error(data[-win_size:], alpha)
     lower_b, upper_b = forecast - moe, forecast + moe
-    return forecast, (lower_b, upper_b)
+    if type == 'expected':
+        return forecast
+    elif type == 'optimistic':
+        return lower_b
+    elif type == 'pessimistic':
+        return upper_b

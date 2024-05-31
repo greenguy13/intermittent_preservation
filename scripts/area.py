@@ -38,6 +38,7 @@ class Area():
         self.robot_id = rospy.get_param("~robot_id")
         self.decay_rate = float(rospy.get_param("~decay_rate"))
         self.decay_evolution_list = eval(rospy.get_param("~decay_evolution"))
+        # self.debug("Decay evolution list: {}. {}".format(self.decay_evolution_list, type(self.decay_evolution_list)))
         self.evolving_decay = True if len(self.decay_evolution_list) > 0 else False
         self.t_operation = rospy.get_param("/t_operation") #total duration of the operation
         self.max_fmeasure = rospy.get_param("~max_fmeasure")
@@ -91,7 +92,6 @@ class Area():
         """
         self.robot_mission_area = msg.data
 
-    #TODO: For now, we are setting the as-is naming for F-level request when we modified it to give/provide the decay rate
     def report_flevel_cb(self, msg):
         """
         Callback as Service Server for F-measure
@@ -99,8 +99,7 @@ class Area():
         :return:
         """
         if bool(msg.fmeasure_request) is True:
-            self.debug("Oracle decay rate: {}".format(self.decay_rate))
-            record = self.decay_rate #[self.tlapse, self.fmeasure]
+            record = self.fmeasure
             return flevelResponse(record)
 
     def restore_delay(self):

@@ -10,13 +10,13 @@ Battery node that depletes when the robot is in mission, charges up when in char
         robot status
 
 """
-import math
 import rospy
 from std_msgs.msg import Float32, Int8
 import project_utils as pu
 import pickle
 import os
 from status import battStatus, robotStatus
+import math
 
 class Battery():
     def __init__(self, node_name):

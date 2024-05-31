@@ -7,7 +7,7 @@ from os import path
 import rospy
 import tf
 import shapely.geometry as sg
-from scipy import stats
+import scipy.stats as stats
 from sklearn.metrics import mean_squared_error
 from geometry_msgs.msg import Point, Pose, PoseStamped
 
