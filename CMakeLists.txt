@@ -8,16 +8,16 @@ project(int_preservation)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  rospy
-  std_msgs
-  geometry_msgs
-  message_generation
-  actionlib_msgs
-  visualization_msgs
+    roscpp
+    rospy
+    std_msgs
+    geometry_msgs
+    actionlib_msgs
+    visualization_msgs
+    message_generation
 )
 
-## System dependencies are found with CMake's conventions
+## message_generation System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
 
@@ -69,12 +69,12 @@ add_service_files(
 # )
 
 ## Generate added messages and services with any dependencies listed here
- generate_messages(
-  DEPENDENCIES
-   actionlib_msgs
-   std_msgs
-   geometry_msgs
-   visualization_msgs
+generate_messages(
+    DEPENDENCIES
+        actionlib_msgs
+        std_msgs
+        geometry_msgs
+        visualization_msgs
  )
 
 ################################################

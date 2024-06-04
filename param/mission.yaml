@@ -29,8 +29,8 @@ correlation_threshold: 0.70 #the strength of the spillover/correlation
 alpha: 0.05 #alpha-quantile for heuristics that measure some expected value of a distribution
 win_size: 3 #window size for the time-series forecast
 
-#[[1, 1, 1], [1, 1, 1], [1, 1, 1]]
-#[[1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1]]
+#Reinforcement learning params
+exploration: 0.4 #tunable exploration parameter
 
 #DQN parameters
 #epsilon: 0.14 #epsilon for greedy selection

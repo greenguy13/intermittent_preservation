@@ -150,17 +150,30 @@ if __name__ == '__main__':
 
     #Office
     #Adjust acml max_range=20
-    run_experiment('heuristic_uncertainty', 'office', 8, 1, 'non_uniform', 4000,
-                   inference='oracle', dec_steps=4, ntrials=3, save=True)
+    # run_experiment('heuristic_uncertainty', 'office', 8, 1, 'non_uniform', 4000,
+    #                inference='oracle', dec_steps=4, ntrials=3, save=True)
 
-    run_experiment('heuristic_uncertainty', 'office', 8, 1, 'non_uniform', 4000,
-                   inference='pessimistic', dec_steps=4, ntrials=3, save=True)
+    # run_experiment('heuristic_uncertainty', 'office', 8, 1, 'non_uniform', 4000,
+    #                inference='pessimistic', dec_steps=4, ntrials=1, save=True)
+    #
+    # run_experiment('heuristic_uncertainty', 'office', 8, 1, 'non_uniform', 4000,
+    #                inference='optimistic', dec_steps=4, ntrials=1, save=True)
 
-    run_experiment('heuristic_uncertainty', 'office', 8, 1, 'non_uniform', 4000,
-                   inference='optimistic', dec_steps=4, ntrials=3, save=True)
+    run_experiment('heuristic_decision', 'office', 8, 1, 'non_uniform', 100,
+                   inference=None, dec_steps=4, ntrials=1, save=False)
+    #
+    # run_experiment('dynamic_programming', 'office', 8, 1, 'non_uniform', 4000,
+    #                inference=None, dec_steps=4, ntrials=1, save=True)
+
+    # run_experiment('multiarmed_ucb', 'office', 8, 1, 'non_uniform', 4000,
+    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
+
+    # run_experiment('treebased_decision', 'office', 8, 1, 'non_uniform', 100,
+    #                inference='oracle', dec_steps=2, ntrials=1, save=False)
 
     ## TODO: Implement tree-based oracle
-    ## TODO: Implement UCB algo (Gaussian)
+    ## TODO: Implement UCB algo (Gaussian), and other SOTA algos: TS, Correlated Arms
+    ## TODO: Time-series forecast of F-measure or decay rate for future time steps
 
     #Cluttered
     #Adjust acml max_range=10

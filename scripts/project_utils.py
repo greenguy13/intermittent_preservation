@@ -6,9 +6,9 @@ import pickle
 from os import path
 import rospy
 import tf
-import shapely.geometry as sg
-import scipy.stats as stats
-from sklearn.metrics import mean_squared_error
+# import scipy.stats as stats
+# import shapely.geometry as sg
+# from sklearn.metrics import mean_squared_error
 from geometry_msgs.msg import Point, Pose, PoseStamped
 
 
@@ -181,16 +181,16 @@ def slope(p, q):
     return dy / dx
 
 
-def get_slope(p, q):
-    return stats.linregress([p[INDEX_FOR_Y], q[INDEX_FOR_Y]],
-                            [p[INDEX_FOR_X], p[INDEX_FOR_X]])[0]
+# def get_slope(p, q):
+#     return stats.linregress([p[INDEX_FOR_Y], q[INDEX_FOR_Y]],
+#                             [p[INDEX_FOR_X], p[INDEX_FOR_X]])[0]
 
 
-def get_line(stacked_points):
-    slope, intercept, r_value, p_value, std_err = stats.linregress(stacked_points)
-    y_predict = intercept + slope * stacked_points[:, 0]
-
-    return slope, intercept, np.sqrt(mean_squared_error(stacked_points[:, 1], y_predict))
+# def get_line(stacked_points):
+#     slope, intercept, r_value, p_value, std_err = stats.linregress(stacked_points)
+#     y_predict = intercept + slope * stacked_points[:, 0]
+#
+#     return slope, intercept, np.sqrt(mean_squared_error(stacked_points[:, 1], y_predict))
 
 
 def get_vector(p1, p2):
@@ -370,58 +370,58 @@ def in_range(point, polygon):
     return polygon[0][INDEX_FOR_X] <= x <= polygon[2][INDEX_FOR_X] and polygon[0][INDEX_FOR_Y] <= y <= polygon[2][
         INDEX_FOR_Y]
 
+#
+# def creat_polygon(leaf, parent, width, radius):
+#     x = leaf[0]
+#     y = leaf[1]
+#
+#     opp = width / 2.0
+#     adj = radius
+#     hyp = np.sqrt(opp ** 2 + adj ** 2)
+#     theta1 = theta(parent, leaf)
+#     angle_sum = (np.pi / 2) + theta1
+#     cos_val = opp * np.cos(angle_sum)
+#     sin_val = opp * np.sin(angle_sum)
+#
+#     top_left_x = x + cos_val
+#     top_left_y = y + sin_val
+#
+#     bottom_left_x = x - cos_val
+#     bottom_left_y = y - sin_val
+#
+#     lx = x + hyp * np.cos(theta1)
+#     ly = y + hyp * np.sin(theta1)
+#
+#     top_right_x = lx + cos_val
+#     top_right_y = ly + sin_val
+#
+#     bottom_right_x = lx - cos_val
+#     bottom_right_y = ly - sin_val
+#
+#     point = Point(test_point[0], test_point[1])
+#     polygon = Polygon([(bottom_left_x, bottom_left_y), (top_left_x, top_left_y), (top_right_x, top_right_y),
+#                        (bottom_right_x, bottom_right_y)])
+#     print(polygon.contains(point))
+#
+#     points = [parent, leaf, (lx, ly), (bottom_left_x, bottom_left_y), (top_left_x, top_left_y),
+#               (top_right_x, top_right_y), (bottom_right_x, bottom_right_y)]
+#     return points
 
-def creat_polygon(leaf, parent, width, radius):
-    x = leaf[0]
-    y = leaf[1]
 
-    opp = width / 2.0
-    adj = radius
-    hyp = np.sqrt(opp ** 2 + adj ** 2)
-    theta1 = theta(parent, leaf)
-    angle_sum = (np.pi / 2) + theta1
-    cos_val = opp * np.cos(angle_sum)
-    sin_val = opp * np.sin(angle_sum)
-
-    top_left_x = x + cos_val
-    top_left_y = y + sin_val
-
-    bottom_left_x = x - cos_val
-    bottom_left_y = y - sin_val
-
-    lx = x + hyp * np.cos(theta1)
-    ly = y + hyp * np.sin(theta1)
-
-    top_right_x = lx + cos_val
-    top_right_y = ly + sin_val
-
-    bottom_right_x = lx - cos_val
-    bottom_right_y = ly - sin_val
-
-    point = Point(test_point[0], test_point[1])
-    polygon = Polygon([(bottom_left_x, bottom_left_y), (top_left_x, top_left_y), (top_right_x, top_right_y),
-                       (bottom_right_x, bottom_right_y)])
-    print(polygon.contains(point))
-
-    points = [parent, leaf, (lx, ly), (bottom_left_x, bottom_left_y), (top_left_x, top_left_y),
-              (top_right_x, top_right_y), (bottom_right_x, bottom_right_y)]
-    return points
-
-
-def there_is_unknown_region(p1, p2, pixel_desc, min_ratio=4.0):
-    x_min = min([p1[INDEX_FOR_X], p2[INDEX_FOR_X]])
-    y_min = min([p1[INDEX_FOR_Y], p2[INDEX_FOR_Y]])
-    x_max = max([p1[INDEX_FOR_X], p2[INDEX_FOR_X]])
-    y_max = max([p1[INDEX_FOR_Y], p2[INDEX_FOR_Y]])
-    min_points = max([abs(x_max - x_min), abs(y_max - y_min)])
-    bbox = sg.box(x_min, y_min, x_max, y_max)
-    point_count = 0
-    for p, v in pixel_desc.items():
-        if v == UNKNOWN:
-            p = sg.Point(p[INDEX_FOR_X], p[INDEX_FOR_Y])
-            if bbox.contains(p):
-                point_count += 1
-    return point_count >= min_points
+# def there_is_unknown_region(p1, p2, pixel_desc, min_ratio=4.0):
+#     x_min = min([p1[INDEX_FOR_X], p2[INDEX_FOR_X]])
+#     y_min = min([p1[INDEX_FOR_Y], p2[INDEX_FOR_Y]])
+#     x_max = max([p1[INDEX_FOR_X], p2[INDEX_FOR_X]])
+#     y_max = max([p1[INDEX_FOR_Y], p2[INDEX_FOR_Y]])
+#     min_points = max([abs(x_max - x_min), abs(y_max - y_min)])
+#     bbox = sg.box(x_min, y_min, x_max, y_max)
+#     point_count = 0
+#     for p, v in pixel_desc.items():
+#         if v == UNKNOWN:
+#             p = sg.Point(p[INDEX_FOR_X], p[INDEX_FOR_Y])
+#             if bbox.contains(p):
+#                 point_count += 1
+#     return point_count >= min_points
 
 
 def get_robot_pose(listener, rid):
