@@ -38,6 +38,7 @@ class Area():
         self.robot_id = rospy.get_param("~robot_id")
         self.decay_rate = float(rospy.get_param("~decay_rate"))
         self.decay_evolution_list = eval(rospy.get_param("~decay_evolution"))
+        #self.decay_evolution_list = [0.5, 0.3, 0.2]
         # self.debug("Decay evolution list: {}. {}".format(self.decay_evolution_list, type(self.decay_evolution_list)))
         self.evolving_decay = True if len(self.decay_evolution_list) > 0 else False
         self.t_operation = rospy.get_param("/t_operation") #total duration of the operation
