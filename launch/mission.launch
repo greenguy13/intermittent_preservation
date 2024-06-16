@@ -1,15 +1,15 @@
 <launch>
     <arg name="world" default="office"/>
-    <arg name="method" default="treebased_decision"/>
-    <arg name="inference" default="None"/>
+    <arg name="method" default="heuristic_uncertainty"/>
+    <arg name="inference" default="pessimistic"/>
     <arg name="nrobots" default="2"/>
-    <arg name="nareas" default="3"/>
+    <arg name="nareas" default="4"/>
     <arg name="decay" default="non_uniform"/>
-    <arg name="dsteps" default="1"/>
-    <arg name="tframe" default="50"/>
+    <arg name="dsteps" default="4"/>
+    <arg name="tframe" default="100"/>
     <arg name="placement" default="1"/>
-    <arg name="fileposes" default="1"/>
-    <arg name="fileresult" default="1"/>
+    <arg name="fileposes" default="office_n4_sampled_nodes_poses_dict"/>
+    <arg name="fileresult" default="office_n8_treebased_decision_oracle"/>
     <arg name="save" default="False"/>
 
     <param name="/use_sim_time" value="true" />
@@ -28,7 +28,7 @@
         <arg name="world" value="$(arg world)"/>
     </include>
 
-    <include                                                                                                                                                                                                                   file="$(find int_preservation)/launch/areas/area_sim$(arg nareas).launch">
+    <include file="$(find int_preservation)/launch/areas/area_sim$(arg nareas).launch">
         <arg name="decay" value="$(arg decay)"/>
     </include>
 

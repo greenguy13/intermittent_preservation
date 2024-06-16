@@ -10,9 +10,6 @@ Tree-based decision making
         3. Pick the least cost
 """
 import rospy
-from time import process_time
-import pickle
-import numpy as np
 import actionlib
 from loss_fcns import *
 from pruning import *
@@ -23,6 +20,10 @@ from std_msgs.msg import Int8, Float32
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from status import areaStatus, battStatus, robotStatus
 from reset_simulation import *
+import json
+from time import process_time
+import pickle
+import numpy as np
 
 """
 Tasks
@@ -58,8 +59,13 @@ class Robot:
         self.max_fmeasure = rospy.get_param("/max_fmeasure")  # Max F-measure of an area
         self.max_battery = rospy.get_param("/max_battery") #Max battery
         self.battery_reserve = rospy.get_param("/battery_reserve") #Battery reserve
-        self.fsafe, self.fcrit = rospy.get_param("/f_thresh") #(safe, crit)
-        self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = rospy.get_param("/batt_consumed_per_time") #(travel, restoration)
+
+        f_thresh = rospy.get_param("/f_thresh")
+        self.fsafe, self.fcrit = f_thresh
+
+        batt_consumed_per_time = rospy.get_param("/batt_consumed_per_time")
+        self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = batt_consumed_per_time
+
         self.dec_steps = rospy.get_param("/dec_steps") #STAR
         self.restoration = rospy.get_param("/restoration")
         self.noise = rospy.get_param("/noise")

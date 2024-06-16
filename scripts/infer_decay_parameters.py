@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Expected decay
     > Var
@@ -12,7 +14,6 @@ import scipy.stats as stats
 import numpy as np
 import project_utils as pu
 import math
-import pandas as pd
 """
 params: alpha
 """
@@ -94,6 +95,7 @@ def moving_average(recorded_param_dict, area, win_size, alpha, type='expected'):
     forecast = np.mean(data[-win_size:])
     moe = margin_of_error(data[-win_size:], alpha)
     lower_b, upper_b = forecast - moe, forecast + moe
+    #TODO: Something here is triggering a bug when pessimistic is run. Could it be somewhere here?
     if type == 'expected':
         return forecast
     elif type == 'optimistic':

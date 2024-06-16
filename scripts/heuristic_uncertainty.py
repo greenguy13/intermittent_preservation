@@ -4,11 +4,11 @@
 Heuristic decision making under uncertainty
 
 """
+import rospy
 import math
 from time import process_time
 import pickle
 import numpy as np
-import rospy
 import actionlib
 from loss_fcns import *
 from pruning import *
@@ -22,8 +22,8 @@ from status import areaStatus, battStatus, robotStatus
 from reset_simulation import *
 from heuristic_fcns import *
 from infer_decay_parameters import *
-from condition_trigger import *
-from condition_sensitivity import *
+import json
+
 
 def request_fmeasure(area, msg=True):
     """
@@ -62,8 +62,13 @@ class Robot:
         self.max_fmeasure = rospy.get_param("/max_fmeasure")  # Max F-measure of an area
         self.max_battery = rospy.get_param("/max_battery") #Max battery
         self.battery_reserve = rospy.get_param("/battery_reserve") #Battery reserve
-        self.fsafe, self.fcrit = rospy.get_param("/f_thresh") #(safe, crit)
-        self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = rospy.get_param("/batt_consumed_per_time") #(travel, restoration)
+
+        f_thresh = rospy.get_param("/f_thresh")
+        self.fsafe, self.fcrit = f_thresh
+
+        batt_consumed_per_time = rospy.get_param("/batt_consumed_per_time")
+        self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = batt_consumed_per_time
+
         self.dec_steps = rospy.get_param("/dec_steps") #STAR
         self.restoration = rospy.get_param("/restoration")
         self.noise = rospy.get_param("/noise")
@@ -456,7 +461,6 @@ class Robot:
         Uses the self.recorded_decay_param
         :return: Updates self.decay_rates_dict
         """
-
         return moving_average(self.recorded_decay_param, area, self.win_size, self.alpha, type)
 
     def update_tlapses_areas(self, sim_t):

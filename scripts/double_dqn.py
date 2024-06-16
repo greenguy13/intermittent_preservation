@@ -1,6 +1,5 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-# !/usr/bin/env python
 # Author: Amel Docena
 
 import random

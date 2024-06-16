@@ -4,6 +4,7 @@
 Heuristic decision making
 
 """
+import json
 import rospy
 from time import process_time
 import pickle
@@ -44,8 +45,15 @@ class Robot:
         self.max_fmeasure = rospy.get_param("/max_fmeasure")  # Max F-measure of an area
         self.max_battery = rospy.get_param("/max_battery") #Max battery
         self.battery_reserve = rospy.get_param("/battery_reserve") #Battery reserve
-        self.fsafe, self.fcrit = rospy.get_param("/f_thresh") #(safe, crit)
-        self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = rospy.get_param("/batt_consumed_per_time") #(travel, restoration)
+        # self.fsafe, self.fcrit = json.loads(rospy.get_param("/f_thresh")) #(safe, crit)
+        # self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = json.loads(rospy.get_param("/batt_consumed_per_time")) #(travel, restoration)
+
+        f_thresh = rospy.get_param("/f_thresh")
+        self.fsafe, self.fcrit = f_thresh
+
+        batt_consumed_per_time = rospy.get_param("/batt_consumed_per_time")
+        self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = batt_consumed_per_time
+
         self.dec_steps = rospy.get_param("/dec_steps") #STAR
         self.restoration = rospy.get_param("/restoration")
         self.noise = rospy.get_param("/noise")

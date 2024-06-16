@@ -1,9 +1,8 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import pickle
 import os
 from reset_simulation import *
-
 
 def sample_nodes_poses(world, nareas, nplacements):
     """
@@ -125,7 +124,7 @@ def run_experiment(method, world, nareas, placement, decay, tframe, inference=No
                 print("Launching...method: {}, world: {}, nareas: {}, decay: {}, dsteps: {}, tframe: {}, placement: {}, trial: {}, save: {}".format(
                         method, world, nareas, decay, dec_steps, tframe, placement, i + 1, save))
             logfile = fileresult + '.txt'
-            launch_file = '/home/ameldocena/catkin_ws/src/intermittent_preservation/launch/mission.launch'
+            launch_file = 'mission.launch' #'/home/ameldocena/catkin_ws/src/intermittent_preservation/launch/mission.launch'
             launch_nodes('int_preservation', launch_file, params, logfile)
             #TODO: Ensure that the inference params would be included in the Python script
     else:
@@ -150,27 +149,27 @@ if __name__ == '__main__':
     # batch_sample_nodes_poses(worlds, nareas_list, nplacements)
 
     #Office
-    #Adjust acml max_range=20
-    # run_experiment('heuristic_uncertainty', 'office', 8, 1, 'non_uniform', 4000,
-    #                inference='oracle', dec_steps=4, ntrials=3, save=True)
+    #Adjust acml.launch, max_range=20
+    run_experiment('heuristic_uncertainty', 'office', 4, 1, 'non_uniform', 3100,
+                   inference='oracle', dec_steps=4, ntrials=3, save=True)
 
-    # run_experiment('heuristic_uncertainty', 'office', 8, 1, 'non_uniform', 4000,
-    #                inference='pessimistic', dec_steps=4, ntrials=1, save=True)
-    #
-    # run_experiment('heuristic_uncertainty', 'office', 8, 1, 'non_uniform', 4000,
-    #                inference='optimistic', dec_steps=4, ntrials=1, save=True)
+    run_experiment('heuristic_uncertainty', 'office', 4, 1, 'non_uniform', 3100,
+                   inference='pessimistic', dec_steps=4, ntrials=3, save=True)
 
-    # run_experiment('heuristic_decision', 'office', 8, 1, 'non_uniform', 100,
-    #                inference=None, dec_steps=4, ntrials=1, save=False)
-    #
-    # run_experiment('dynamic_programming', 'office', 8, 1, 'non_uniform', 4000,
-    #                inference=None, dec_steps=4, ntrials=1, save=True)
+    run_experiment('heuristic_uncertainty', 'office', 4, 1, 'non_uniform', 3100,
+                   inference='optimistic', dec_steps=4, ntrials=3, save=True)
 
-    run_experiment('multiarmed_ucb', 'office', 8, 1, 'non_uniform', 4000,
-                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
+    run_experiment('treebased_decision', 'office', 4, 1, 'non_uniform', 3100,
+                   inference='oracle', dec_steps=4, ntrials=3, save=True)
 
-    # run_experiment('treebased_decision', 'office', 8, 1, 'non_uniform', 100,
-    #                inference='oracle', dec_steps=2, ntrials=1, save=False)
+    run_experiment('multiarmed_ucb', 'office', 4, 1, 'non_uniform', 3100,
+                   inference='optimistic', dec_steps=4, ntrials=3, save=True)
+
+    run_experiment('heuristic_decision', 'office', 4, 1, 'non_uniform', 3100,
+                   inference=None, dec_steps=4, ntrials=3, save=True)
+
+    run_experiment('dynamic_programming', 'office', 4, 1, 'non_uniform', 3100,
+                   inference=None, dec_steps=4, ntrials=3, save=True)
 
     ## TODO: Implement tree-based oracle
     ## TODO: Implement UCB algo (Gaussian), and other SOTA algos: TS, Correlated Arms

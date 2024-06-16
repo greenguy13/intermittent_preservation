@@ -18,9 +18,10 @@ Relay of information:
 1. Action server for the robot, which asks to raise F-level
 2. Server to decision_making about current F-level
 """
-import os
-import math
 import rospy
+import os
+import json
+import math
 from std_msgs.msg import Float32, Int8
 import project_utils as pu
 import pickle
@@ -36,10 +37,15 @@ class Area():
         self.debug_mode = rospy.get_param("/debug_mode")
         self.area = rospy.get_param("~area_id")
         self.robot_id = rospy.get_param("~robot_id")
-        self.decay_rate = float(rospy.get_param("~decay_rate"))
-        self.decay_evolution_list = eval(rospy.get_param("~decay_evolution"))
-        #self.decay_evolution_list = [0.5, 0.3, 0.2]
-        # self.debug("Decay evolution list: {}. {}".format(self.decay_evolution_list, type(self.decay_evolution_list)))
+        decay_rate = rospy.get_param("~decay_rate")
+        self.decay_rate = float(decay_rate)
+
+        decay_evolution_list = rospy.get_param("~decay_evolution")
+        self.decay_evolution_list = json.loads(decay_evolution_list)
+        self.debug("Decay evolution list: {}, {}".format(self.decay_evolution_list, type(self.decay_evolution_list)))
+
+        # self.decay_evolution_list = [0.50, 0.50]
+
         self.evolving_decay = True if len(self.decay_evolution_list) > 0 else False
         self.t_operation = rospy.get_param("/t_operation") #total duration of the operation
         self.max_fmeasure = rospy.get_param("~max_fmeasure")

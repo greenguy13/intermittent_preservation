@@ -3,13 +3,16 @@
 """
 Multi-armed UCB
 
+TODO: There is a problem with the script here!
+
 """
+import rospy
+import actionlib
+import json
 import math
 from time import process_time
 import pickle
 import numpy as np
-import rospy
-import actionlib
 from loss_fcns import *
 from pruning import *
 import project_utils as pu
@@ -20,11 +23,6 @@ from nav_msgs.srv import GetPlan
 from int_preservation.srv import flevel, flevelRequest
 from status import areaStatus, battStatus, robotStatus
 from reset_simulation import *
-from heuristic_fcns import *
-from infer_decay_parameters import *
-from condition_trigger import *
-from condition_sensitivity import *
-
 
 def request_fmeasure(area, msg=True):
     """
@@ -60,15 +58,18 @@ class Robot:
         # Parameters
         self.robot_id = rospy.get_param("~robot_id")
         self.debug_mode = rospy.get_param("/debug_mode")
-        self.robot_velocity = rospy.get_param(
-            "/robot_velocity")  # Linear velocity of robot; we assume linear and angular are relatively equal
+        self.robot_velocity = rospy.get_param("/robot_velocity")  # Linear velocity of robot; we assume linear and angular are relatively equal
         self.gamma = rospy.get_param("/gamma")  # discount factor
         self.max_fmeasure = rospy.get_param("/max_fmeasure")  # Max F-measure of an area
         self.max_battery = rospy.get_param("/max_battery")  # Max battery
         self.battery_reserve = rospy.get_param("/battery_reserve")  # Battery reserve
-        self.fsafe, self.fcrit = rospy.get_param("/f_thresh")  # (safe, crit)
-        self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = rospy.get_param(
-            "/batt_consumed_per_time")  # (travel, restoration)
+
+        f_thresh = rospy.get_param("/f_thresh")
+        self.fsafe, self.fcrit = f_thresh
+
+        batt_consumed_per_time = rospy.get_param("/batt_consumed_per_time")
+        self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = batt_consumed_per_time
+
         self.dec_steps = rospy.get_param("/dec_steps")  # STAR
         self.restoration = rospy.get_param("/restoration")
         self.noise = rospy.get_param("/noise")
@@ -79,8 +80,7 @@ class Robot:
         self.save = rospy.get_param("/save")  # Whether to save data
 
         # Initialize variables
-        charging_station_coords = rospy.get_param("~initial_pose_x"), rospy.get_param(
-            "~initial_pose_y")  # rospy.get_param("/charging_station_coords")
+        charging_station_coords = rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y")  # rospy.get_param("/charging_station_coords")
         charging_pose_stamped = pu.convert_coords_to_PoseStamped(charging_station_coords)
         self.sampled_nodes_poses = [charging_pose_stamped]  # list container for sampled nodes of type PoseStamped
 
@@ -117,7 +117,7 @@ class Robot:
         self.process_time_counter = []  # container for time it took to come up with decision
 
         # Variables for UCB
-        self.inference = rospy.get_param("/inference")
+        self.inference = rospy.get_param("/inference") #TODO: This is a potential refinement. There is no need for inference? Actually, it's possible with optimistic, pessimistic
         self.exploration = rospy.get_param("/exploration")
         self.mean_losses = dict()
         self.recorded_losses = dict()
