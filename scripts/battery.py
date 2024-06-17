@@ -24,7 +24,8 @@ class Battery():
         rospy.init_node(node_name)
         self.robot_id = rospy.get_param('~robot_id')
         self.max_battery = rospy.get_param("/max_battery")
-        self.batt_depletion_travel, self.batt_depletion_restoring_f = rospy.get_param("/batt_consumed_per_time") #two types of batt depletion rate: while travelling and restoring F
+        batt_consumed_per_time = rospy.get_param("/batt_consumed_per_time")
+        self.batt_depletion_travel, self.batt_depletion_restoring_f = batt_consumed_per_time #two types of batt depletion rate: while travelling and restoring F
         self.batt_restoration = rospy.get_param("/restoration")
         self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
         self.save = rospy.get_param("/save")  # Whether to save data

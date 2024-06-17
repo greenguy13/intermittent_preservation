@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """
 Expected decay
     > Var
@@ -12,7 +14,6 @@ import scipy.stats as stats
 import numpy as np
 import project_utils as pu
 import math
-import pandas as pd
 """
 params: alpha
 """
@@ -82,7 +83,7 @@ def proposed_heuristic(recorded_param_dict, area, alpha):
     pu.log_msg('robot', 0, 'data, mean, VaR, proposed: {}'.format((data, m, VaR, proposed)))
     return proposed
 
-def moving_average(recorded_param_dict, area, win_size, alpha):
+def moving_average(recorded_param_dict, area, win_size, alpha, type='expected'):
     """
     Forecasts the decay rate by moving average
     :param recorded_param_dict:
@@ -94,4 +95,15 @@ def moving_average(recorded_param_dict, area, win_size, alpha):
     forecast = np.mean(data[-win_size:])
     moe = margin_of_error(data[-win_size:], alpha)
     lower_b, upper_b = forecast - moe, forecast + moe
-    return forecast, (lower_b, upper_b)
+    #TODO: Something here is triggering a bug when pessimistic is run. Could it be somewhere here?
+    #Yes. Turns out a math domain error occurs when the decay rate is estimated to be greater than 1
+    if type == 'expected':
+        return forecast
+    elif type == 'optimistic':
+        if lower_b <= 0.0:
+            return forecast
+        return lower_b
+    elif type == 'pessimistic':
+        if upper_b >= 1.0:
+            return forecast
+        return upper_b

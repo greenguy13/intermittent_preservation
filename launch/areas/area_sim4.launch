@@ -8,28 +8,28 @@
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="1"/>
             <arg name="decay_rate" value="0.00124"/>
-            <arg name="decay_evolution" value="[0.50]"/>
+            <arg name="decay_evolution" value="[0.50, 0.50]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="2"/>
             <arg name="decay_rate" value="0.00168"/>
-            <arg name="decay_evolution" value="[0.50]"/>
+            <arg name="decay_evolution" value="[0.50, 0.50]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="3"/>
             <arg name="decay_rate" value="0.00224"/>
-            <arg name="decay_evolution" value="[0.50]"/>
+            <arg name="decay_evolution" value="[]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="4"/>
             <arg name="decay_rate" value="0.00255"/>
-            <arg name="decay_evolution" value="[0.50]"/>
+            <arg name="decay_evolution" value="[]"/>
         </include>
     </group>
 </launch>

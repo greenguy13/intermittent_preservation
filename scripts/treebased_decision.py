@@ -10,9 +10,6 @@ Tree-based decision making
         3. Pick the least cost
 """
 import rospy
-from time import process_time
-import pickle
-import numpy as np
 import actionlib
 from loss_fcns import *
 from pruning import *
@@ -23,6 +20,10 @@ from std_msgs.msg import Int8, Float32
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from status import areaStatus, battStatus, robotStatus
 from reset_simulation import *
+import json
+from time import process_time
+import pickle
+import numpy as np
 
 """
 Tasks
@@ -58,8 +59,13 @@ class Robot:
         self.max_fmeasure = rospy.get_param("/max_fmeasure")  # Max F-measure of an area
         self.max_battery = rospy.get_param("/max_battery") #Max battery
         self.battery_reserve = rospy.get_param("/battery_reserve") #Battery reserve
-        self.fsafe, self.fcrit = rospy.get_param("/f_thresh") #(safe, crit)
-        self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = rospy.get_param("/batt_consumed_per_time") #(travel, restoration)
+
+        f_thresh = rospy.get_param("/f_thresh")
+        self.fsafe, self.fcrit = f_thresh
+
+        batt_consumed_per_time = rospy.get_param("/batt_consumed_per_time")
+        self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = batt_consumed_per_time
+
         self.dec_steps = rospy.get_param("/dec_steps") #STAR
         self.restoration = rospy.get_param("/restoration")
         self.noise = rospy.get_param("/noise")
@@ -68,6 +74,7 @@ class Robot:
         self.tolerance = rospy.get_param("/move_base_tolerance")
         self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
         self.save = rospy.get_param("/save")  # Whether to save data
+        self.inference = rospy.get_param("/inference")
 
         #Initialize variables
         charging_station_coords = rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y") #rospy.get_param("/charging_station_coords")
@@ -483,8 +490,8 @@ class Robot:
 
         if self.robot_id == 0:
             rate = rospy.Rate(freq)
-            while self.decay_rates_counter != self.nareas and len(self.sampled_nodes_poses) != self.nareas+1:
-                self.debug("Insufficient data. Decay rates: {}/{}. Sampled nodes poses: {}/{}".format(len(self.decay_rates_counter), self.nareas,
+            while self.decay_rates_counter < self.nareas and len(self.sampled_nodes_poses) != self.nareas+1:
+                self.debug("Insufficient data. Decay rates: {}/{}. Sampled nodes poses: {}/{}".format(self.decay_rates_counter, self.nareas,
                                                                                                       len(self.sampled_nodes_poses), self.nareas+1))
                 rate.sleep() #Data for decay rates haven't registered yet
 
@@ -624,6 +631,17 @@ class Robot:
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 
+    # def decay_rate_cb(self, msg, area_id):
+    #     """
+    #     Store decay rate
+    #     :param msg:
+    #     :param area_id:
+    #     :return:
+    #     """
+    # if self.decay_rates_dict[str(area_id)] == None:
+    #     if self.robot_id == 0: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
+    #     self.decay_rates_dict[str(area_id)] = msg.data
+    #     self.decay_rates_counter += 1
     def decay_rate_cb(self, msg, area_id):
         """
         Store decay rate
@@ -631,10 +649,17 @@ class Robot:
         :param area_id:
         :return:
         """
+        # Store the decay rates at instance, (prior knowledge)
         if self.decay_rates_dict[str(area_id)] == None:
             if self.robot_id == 0: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
             self.decay_rates_dict[str(area_id)] = msg.data
             self.decay_rates_counter += 1
+        else:
+            # If we are now on mission and oracle, we immediately update the decay rates for any evolution
+            if self.inference == 'oracle':
+                if self.decay_rates_dict[str(area_id)] != msg.data: self.debug(
+                    "Oracle knowledge, change in decay in area {}: {}".format(area_id, msg.data))
+                self.decay_rates_dict[str(area_id)] = msg.data  # A subscribed topic. Oracle knows exactly the decay rate happening in area
 
     def area_fmeasure_cb(self, msg, area_id):
         """

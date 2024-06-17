@@ -1,28 +1,47 @@
 #!/usr/bin/env python
 
 """
-Heuristic decision making
+Multi-armed UCB
+
+TODO: There is a problem with the script here!
 
 """
 import rospy
+import actionlib
+import json
+import math
 from time import process_time
 import pickle
 import numpy as np
-import actionlib
+from loss_fcns import *
 from pruning import *
+import project_utils as pu
 from nav_msgs.msg import Odometry
-from nav_msgs.srv import GetPlan
 from std_msgs.msg import Int8, Float32
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
+from nav_msgs.srv import GetPlan
+from int_preservation.srv import flevel, flevelRequest
 from status import areaStatus, battStatus, robotStatus
 from reset_simulation import *
-from heuristic_fcns import *
+
+def request_fmeasure(area, msg=True):
+    """
+    Service request for F-measure
+    :param msg:
+    :return: (tlapse, F) #tlapse here is time lapsed since decay model of area has been updated
+    """
+    rospy.wait_for_service("/flevel_server_" + str(area))
+    flevel_service = rospy.ServiceProxy("/flevel_server_" + str(area), flevel)
+    request = flevelRequest(msg)
+    result = flevel_service(request)
+    return result.fmeasure
 
 
 INDEX_FOR_X = 0
 INDEX_FOR_Y = 1
-SUCCEEDED = 3 #GoalStatus ID for succeeded, http://docs.ros.org/en/api/actionlib_msgs/html/msg/GoalStatus.html
+SUCCEEDED = 3  # GoalStatus ID for succeeded, http://docs.ros.org/en/api/actionlib_msgs/html/msg/GoalStatus.html
 SHUTDOWN_CODE = 99
+
 
 class Robot:
     def __init__(self, node_name):
@@ -36,68 +55,83 @@ class Robot:
 
         rospy.init_node(node_name, anonymous=True)
 
-        #Parameters
+        # Parameters
         self.robot_id = rospy.get_param("~robot_id")
         self.debug_mode = rospy.get_param("/debug_mode")
-        self.robot_velocity = rospy.get_param("/robot_velocity") #Linear velocity of robot; we assume linear and angular are relatively equal
-        self.gamma = rospy.get_param("/gamma") #discount factor
+        self.robot_velocity = rospy.get_param("/robot_velocity")  # Linear velocity of robot; we assume linear and angular are relatively equal
+        self.gamma = rospy.get_param("/gamma")  # discount factor
         self.max_fmeasure = rospy.get_param("/max_fmeasure")  # Max F-measure of an area
-        self.max_battery = rospy.get_param("/max_battery") #Max battery
-        self.battery_reserve = rospy.get_param("/battery_reserve") #Battery reserve
+        self.max_battery = rospy.get_param("/max_battery")  # Max battery
+        self.battery_reserve = rospy.get_param("/battery_reserve")  # Battery reserve
 
         f_thresh = rospy.get_param("/f_thresh")
-        self.fsafe, self.fcrit = f_thresh  # (safe, crit)
+        self.fsafe, self.fcrit = f_thresh
 
         batt_consumed_per_time = rospy.get_param("/batt_consumed_per_time")
-        self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = batt_consumed_per_time  # (travel, restoration)
+        self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = batt_consumed_per_time
 
-        self.dec_steps = rospy.get_param("/dec_steps") #STAR
+        self.dec_steps = rospy.get_param("/dec_steps")  # STAR
         self.restoration = rospy.get_param("/restoration")
         self.noise = rospy.get_param("/noise")
-        self.nareas = rospy.get_param("/nareas") #Sample nodes from voronoi equal to area count #STAR
-        self.areas = [int(i+1) for i in range(self.nareas)]  # list of int area IDs
+        self.nareas = rospy.get_param("/nareas")  # Sample nodes from voronoi equal to area count #STAR
+        self.areas = [int(i + 1) for i in range(self.nareas)]  # list of int area IDs
         self.tolerance = rospy.get_param("/move_base_tolerance")
         self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
         self.save = rospy.get_param("/save")  # Whether to save data
 
-        #Initialize variables
-        charging_station_coords = rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y") #rospy.get_param("/charging_station_coords")
+        # Initialize variables
+        charging_station_coords = rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y")  # rospy.get_param("/charging_station_coords")
         charging_pose_stamped = pu.convert_coords_to_PoseStamped(charging_station_coords)
-        self.sampled_nodes_poses = [charging_pose_stamped] #list container for sampled nodes of type PoseStamped
+        self.sampled_nodes_poses = [charging_pose_stamped]  # list container for sampled nodes of type PoseStamped
 
-        #Pickle load the sampled area poses
+        # Pickle load the sampled area poses
         with open('{}.pkl'.format(rospy.get_param("/file_sampled_areas")), 'rb') as f:
             sampled_areas_coords = pickle.load(f)
         for area_coords in sampled_areas_coords['n{}_p{}'.format(self.nareas, rospy.get_param("/placement"))]:
             pose_stamped = pu.convert_coords_to_PoseStamped(area_coords)
             self.sampled_nodes_poses.append(pose_stamped)
 
-        self.x, self.y = 0.0, 0.0 #Initialize robot pose
+        self.x, self.y = 0.0, 0.0  # Initialize robot pose
         self.charging_station = 0
-        self.curr_loc = self.charging_station #Initial location robot is the charging station
-        self.battery = self.max_battery #Initialize battery at max, then gets updated by subscribed battery topic
+        self.curr_loc = self.charging_station  # Initial location robot is the charging station
+        self.battery = self.max_battery  # Initialize battery at max, then gets updated by subscribed battery topic
         self.best_decision = None
         self.dist_matrix = None
         self.mission_area = None
         self.robot_status = robotStatus.IDLE.value
         self.available = True
-        self.curr_fmeasures = dict() #container of current F-measure of areas
-        self.decay_rates_dict = dict() #dictionary for decay rates
+        self.curr_fmeasures = dict()  # container of current F-measure of areas
+        self.decay_rates_dict = dict()  # dictionary for decay rates
+        self.recorded_fdata = dict()  # dictionary of recorded data collected during mission per area
+        self.tlapses = dict()  # dictionary containing tlapse for each area since last restoration
 
-        #TODO: We are setting the (initial) prior information of the decay rates
         for area in self.areas:
+            self.curr_fmeasures[area] = self.max_fmeasure
             self.decay_rates_dict[area] = None
-        self.decay_rates_counter = 0 #counter for stored decay rates; should be equal to number of areas
-        self.decisions_made, self.decisions_accomplished, self.status_history = [], [], [] #record of data
-        self.total_dist_travelled = 0 #total distance travelled
-        self.process_time_counter = [] #container for time it took to come up with decision
+            self.recorded_fdata[area] = list()
+            self.tlapses[area] = 0
 
-        #We sum this up
+        self.decay_rates_counter = 0  # counter for stored decay rates; should be equal to number of areas
+        self.decisions_made, self.decisions_accomplished, self.status_history = [], [], []  # record of data
+        self.total_dist_travelled = 0  # total distance travelled
+        self.process_time_counter = []  # container for time it took to come up with decision
+
+        # Variables for UCB
+        self.inference = rospy.get_param("/inference") #TODO: This is a potential refinement. There is no need for inference? Actually, it's possible with optimistic, pessimistic
+        self.exploration = rospy.get_param("/exploration")
+        self.mean_losses = dict()
+        self.recorded_losses = dict()
+        self.counts_visited = np.zeros(self.nareas)
+        for area in self.areas:
+            self.mean_losses[area] = 0.0  # Initiate at 0
+            self.recorded_losses[area] = list()
+
+        # We sum this up
         self.environment_status = dict()
-        for node in range(self.nareas+1):
+        for node in range(self.nareas + 1):
             self.environment_status[node] = 999
 
-        #Publishers/Subscribers
+        # Publishers/Subscribers
         rospy.Subscriber('/robot_{}/odom'.format(self.robot_id), Odometry, self.distance_travelled_cb, queue_size=1)
 
         # Service request to move_base to get plan : make_Plan
@@ -106,38 +140,21 @@ class Robot:
         self.get_plan_service = rospy.ServiceProxy(server, GetPlan)
         self.debug("Getplan service: {}".format(self.get_plan_service))
 
-        # TODO: Service request to area for (F, t) when measuring/monitoring F as it goes around during deployment
-
         rospy.Subscriber('/robot_{}/battery_status'.format(self.robot_id), Int8, self.battery_status_cb)
         rospy.Subscriber('/robot_{}/battery'.format(self.robot_id), Float32, self.battery_level_cb)
 
         for area in self.areas:
             rospy.Subscriber('/area_{}/decay_rate'.format(area), Float32, self.decay_rate_cb, area)
-            rospy.Subscriber('/area_{}/fmeasure'.format(area), Float32, self.area_fmeasure_cb, area) #REMARK: Here we assume that we have live measurements of the F-measures
+            rospy.Subscriber('/area_{}/fmeasure'.format(area), Float32, self.area_fmeasure_cb, area)  # REMARK: Here we assume that we have live measurements of the F-measures
             rospy.Subscriber('/area_{}/status'.format(area), Int8, self.area_status_cb, area)
 
         self.robot_status_pub = rospy.Publisher('/robot_{}/robot_status'.format(self.robot_id), Int8, queue_size=1)
         self.mission_area_pub = rospy.Publisher('/robot_{}/mission_area'.format(self.robot_id), Int8, queue_size=1)
 
-        #Action client to move_base
-        self.robot_goal_client = actionlib.SimpleActionClient('/robot_' + str(self.robot_id) + '/move_base', MoveBaseAction)
+        # Action client to move_base
+        self.robot_goal_client = actionlib.SimpleActionClient('/robot_' + str(self.robot_id) + '/move_base',
+                                                              MoveBaseAction)
         self.robot_goal_client.wait_for_server()
-
-
-        """
-        On charging:
-            Robot's mission area is 0. It then changes its status to CHARGING once it reaches the charging station.
-            The charging station, which subscribes to robot's status, charges up the battery.
-            Here, we assume there is only one charging station.
-            
-            If the robot_status is other than CHARGING, the battery status is DEPLETING.
-        
-        On area restoration:
-            Robot's mission area is a specific area. If reaches the area, it changes its status to RESTORING_F.
-            Now, the current mission area, which subscribes to both robot_status and robot_mission_area topics, will restore F; while,
-                those other areas not the mission area will have their F continually decay 
-        """
-
 
     # METHODS: Node poses and distance matrix
     def get_plan_request(self, start_pose, goal_pose, tolerance):
@@ -252,13 +269,35 @@ class Robot:
         :return:
         """
         if state == SUCCEEDED:
+            self.debug("Arrived at mision_area: {}".format(self.mission_area))
             self.curr_loc = self.mission_area
-            self.update_robot_status(robotStatus.RESTORING_F)
-
-            if self.mission_area == self.charging_station:
-                self.update_robot_status(robotStatus.CHARGING)
             self.decisions_accomplished.append(self.mission_area)
             self.best_decision = None
+            if self.mission_area == self.charging_station:
+                self.update_robot_status(robotStatus.CHARGING)
+            else:
+                data = request_fmeasure(self.curr_loc)
+                measured_f = float(data)
+                self.recorded_fdata[self.curr_loc].append(measured_f)
+                loss = loss_fcn(self.max_fmeasure, measured_f)
+                self.recorded_losses[self.curr_loc].append(loss)
+                self.counts_visited[self.curr_loc-1] += 1 #zero-indexed array
+
+                self.update_robot_status(robotStatus.RESTORING_F)
+
+    def update_mean_loss(self, area):
+        """
+        Updates the mean loss of the area (or arm) using the recorded_loss
+        :param area:
+        :param recorded_loss:
+        :return:
+        """
+        mean_loss = self.mean_losses[area]
+        new_mean_loss = np.mean(self.recorded_losses[area])
+
+        self.debug('Recorded losses: {}. Current mean: {}. New mean: {}'.format(self.recorded_losses[area], mean_loss,
+                                                                                new_mean_loss))
+        self.mean_losses[area] = new_mean_loss
 
     def mean_duration_decay(self, duration_matrix, area):
         """
@@ -293,46 +332,45 @@ class Robot:
 
         return total_battery_consumption, feasible_battery
 
+    """
+    TODO: Pull the best arm:
+        > greedy decision: pick the area/decision that has minimum loss
+        > we have to ensure feasibility though. if no actions are feasible, this goes back to the charging station
+
+    """
+
     def greedy_best_decision(self):
         """
 
         :return:
         """
-        #Measure duration matrix
-        duration_matrix = self.dist_matrix/self.robot_velocity
+        # Measure duration matrix
+        duration_matrix = self.dist_matrix / self.robot_velocity
 
-        #Measure the average duration an area decays
+        # Measure the average duration an area decays
+        # Estimates the time/duration it takes to areas
         mean_duration_decay_dict = dict()
         for area in self.areas:
             mean_duration_decay_dict[area] = self.mean_duration_decay(duration_matrix, area)
 
-        #Evaluate decision
+        # Evaluate decision
         decision_array = []
         for decision in self.areas:
             # Battery consumption
             battery_consumption, feasible_battery = self.estimate_battery_params(decision, self.battery, self.curr_loc,
                                                                                  self.curr_fmeasures, self.noise)
             self.debug("Batt consumption: {}. Feasible batt: {}".format(battery_consumption, feasible_battery))
+
             if not prune(self.battery, battery_consumption, self.battery_reserve) and decision != self.curr_loc:
-                #Immediate loss in i=1
-                duration = self.compute_duration(self.curr_loc, decision, self.curr_fmeasures[decision], self.restoration, self.noise)
-                updated_fmeasures = self.adjust_fmeasures(self.curr_fmeasures.copy(), decision, duration)  # F-measure of areas adjusted accordingly, i.e., consequence of decision
-                immediate_loss_decision = self.compute_net_loss(updated_fmeasures)
-                self.debug("Current F-measures: {}".format(self.curr_fmeasures))
-                self.debug("Feasible decision: {}. Duration: {}. Updated F: {}. Immediate loss: {}".format(decision, duration, updated_fmeasures, immediate_loss_decision))
-
-                #Heuristic loss for i=2...k
-                forecasted_loss_decision = heuristic_loss_decision(updated_fmeasures, self.decay_rates_dict, (self.fsafe, self.fcrit),
-                                                         self.gamma, self.dec_steps, mean_duration_decay_dict) #Main
-
-                self.debug("Discounted future losses through {} steps: {}".format(self.dec_steps, forecasted_loss_decision))
-                evaluated_loss_decision = immediate_loss_decision + forecasted_loss_decision
-                self.debug("Appending: {}".format((decision, evaluated_loss_decision, feasible_battery)))
-                decision_array.append((decision, evaluated_loss_decision, feasible_battery))
+                bound = np.sqrt(2 * np.log(sum(self.counts_visited) + 1) / (self.counts_visited[decision-1] + 1e-5))
+                ucb_value = self.mean_losses[decision] - self.exploration * bound
+                self.debug("Feasible decision, Mean loss, Feasible battery: {}, {}, {}".format(decision, ucb_value,
+                                                                                               feasible_battery))
+                decision_array.append((decision, ucb_value, feasible_battery))
 
         best_decision = self.charging_station
 
-        if len(decision_array)>0:
+        if len(decision_array) > 0:
             best_decision = self.get_best_decision(decision_array)
 
         return best_decision
@@ -348,35 +386,37 @@ class Robot:
 
         # Travel distance
         distance = self.dist_matrix[int(start_area), int(next_area)]
-        distance += noise * distance #distance + noise
+        distance += noise * distance  # distance + noise
         time = (distance / self.robot_velocity)
 
-        #If next area is not the charging station: the restoration is the f-measure; else, the restoration is the battery level
+        # If next area is not the charging station: the restoration is the f-measure; else, the restoration is the battery level
         if next_area != self.charging_station:
             max_restore = self.max_fmeasure
         else:
             max_restore = self.max_battery
 
-        #Restoration time: If there is need for restoration
+        # Restoration time: If there is need for restoration
         if (curr_measure is not None) and (restoration is not None):
-            restore_time = (max_restore - curr_measure)/restoration
+            restore_time = (max_restore - curr_measure) / restoration
             time += restore_time
 
         return time
 
     def consume_battery(self, start_area, next_area, curr_measure, noise):
         """
-        Estimates battery consumption for the duration of the visit next_area from start_area.
+        Consumes curr_battery for the duration of the operation.
         This duration includes the distance plus F-measure restoration, if any
+        :param curr_battery:
+        :param duration:
+        :return:
         """
 
-        #Batt consumed in travel
+        # Batt consumed in travel
         distance = self.dist_matrix[int(start_area), int(next_area)]
         distance += noise * distance
         travel_time = (distance / self.robot_velocity)
         battery_consumed = self.batt_consumed_per_travel_time * travel_time
 
-        #Batt consumed in area restoration
         if next_area != self.charging_station:
             battery_consumed += self.batt_consumed_per_restored_f * (self.max_fmeasure - curr_measure)
 
@@ -396,7 +436,8 @@ class Robot:
             if area == visit_area:
                 fmeasures[area] = self.max_fmeasure
             else:
-                tlapse_decay = get_time_given_decay(self.max_fmeasure, fmeasures[area], self.decay_rates_dict[area]) + duration
+                tlapse_decay = get_time_given_decay(self.max_fmeasure, fmeasures[area],
+                                                    self.decay_rates_dict[area]) + duration
                 fmeasures[area] = decay(self.decay_rates_dict[area], tlapse_decay, self.max_fmeasure)
 
         return fmeasures
@@ -420,13 +461,22 @@ class Robot:
         :return:
         """
         # Sort the decisions: the cost is key while the value is decision
-        sorted_decisions = sorted(dec_arr, key = lambda x: (x[-2], -x[-1]))
-        self.debug("Decisions sorted by cost: {}".format(sorted_decisions))
+        sorted_decisions = sorted(dec_arr, key=lambda x: (x[-2], -x[-1]))
+        self.debug("Decisions sorted by mean loss, feasible batt: {}".format(sorted_decisions))
         self.debug("Best decision (branch info): {}".format(sorted_decisions[0]))
-        best_decision = sorted_decisions[0][0] #pick the decision with least net loss and most available feasible battery
+        best_decision = sorted_decisions[0][0]  # pick the decision with least net loss and most available feasible battery
         return best_decision
 
-    #Methods: Run operation
+    def update_tlapses_areas(self):
+        """
+        Lapses all time elapsed for each area
+        :return:
+        """
+        for area in self.areas:
+            self.tlapses[area] += 1
+        self.debug("Time elapsed since last restored: {}".format(self.tlapses))
+
+    # Methods: Run operation
     def run_operation(self, filename, freq=1):
         """
         :return:
@@ -434,15 +484,17 @@ class Robot:
 
         if self.robot_id == 0:
             rate = rospy.Rate(freq)
-            while self.decay_rates_counter != self.nareas and len(self.sampled_nodes_poses) != self.nareas+1:
-                self.debug("Insufficient data. Decay rates: {}/{}. Sampled nodes poses: {}/{}".format(len(self.decay_rates_counter), self.nareas,
-                                                                                                      len(self.sampled_nodes_poses), self.nareas+1))
-                rate.sleep() #Data for decay rates haven't registered yet
+            while self.decay_rates_counter < self.nareas and len(self.sampled_nodes_poses) != self.nareas + 1:
+                self.debug("Insufficient data. Decay rates: {}/{}. Sampled nodes poses: {}/{}".format(
+                    self.decay_rates_counter, self.nareas,
+                    len(self.sampled_nodes_poses), self.nareas + 1))
+                rate.sleep()  # Data for decay rates haven't registered yet
 
-            self.debug("Sufficent data. Decay rates: {}. Sampled nodes poses: {}".format(self.decay_rates_dict, self.sampled_nodes_poses))
+            self.debug("Sufficent data. Decay rates: {}. Sampled nodes poses: {}".format(self.decay_rates_dict,
+                                                                                         self.sampled_nodes_poses))  # Prior knowledge of decay rates
             self.build_dist_matrix()
             t = 0
-            while not rospy.is_shutdown() and t<self.t_operation:
+            while not rospy.is_shutdown() and t < self.t_operation:
                 self.robot_status_pub.publish(self.robot_status)
                 self.status_history.append(self.robot_status)
                 if self.robot_status == robotStatus.IDLE.value:
@@ -471,19 +523,34 @@ class Robot:
                 elif self.robot_status == robotStatus.RESTORING_F.value:
                     self.debug('Restoring F-measure')
 
+                elif self.robot_status == robotStatus.CONSIDER_REPLAN.value:
+                    self.debug('Consider re-plan...')
+                    self.debug("Mission area: {}. Current mean losses: {}".format(self.mission_area,
+                                                                                  self.mean_losses))
+                    self.update_mean_loss(self.mission_area)
+                    self.update_robot_status(robotStatus.IN_MISSION)  # Verified
                 t += 1
+                if (self.robot_status != robotStatus.IDLE.value) and (
+                        self.robot_status != robotStatus.READY.value) and (
+                        self.robot_status != robotStatus.CONSIDER_REPLAN.value):
+                    self.update_tlapses_areas()  # Update the tlapse per area
                 rate.sleep()
 
-            #Store results
+            # Store results
             self.update_robot_status(robotStatus.SHUTDOWN)
             self.robot_status_pub.publish(self.robot_status)
             self.status_history.append(self.robot_status)
 
-            #Wait before all other nodes have finished dumping their data
+            # Wait before all other nodes have finished dumping their data
             if self.save:
+                if self.inference is not None:
+                    pu.dump_data((self.recorded_fdata, self.recorded_losses),
+                                 '{}_robot{}_recorded_data'.format(filename, self.robot_id))
+
                 pu.dump_data(self.process_time_counter, '{}_robot{}_process_time'.format(filename, self.robot_id))
                 pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
-                pu.dump_data((self.decisions_accomplished, self.total_dist_travelled), '{}_robot{}_decisions_acc_travel'.format(filename, self.robot_id))
+                pu.dump_data((self.decisions_accomplished, self.total_dist_travelled),
+                             '{}_robot{}_decisions_acc_travel'.format(filename, self.robot_id))
                 pu.dump_data(self.status_history, '{}_robot{}_status_history'.format(filename, self.robot_id))
                 self.debug("Dumped all data.".format(self.robot_id))
             self.shutdown(sleep=10)
@@ -493,7 +560,7 @@ class Robot:
         Thinks of the best decision before starting mission
         :return:
         """
-        self.best_decision = self.greedy_best_decision()
+        self.best_decision = self.greedy_best_decision()  # So inside here we can
 
     def time_elapsed(self, think_start, think_end):
         """
@@ -513,14 +580,14 @@ class Robot:
 
     def send2_next_area(self):
         """
-        Sends the robot to the next area in the optimal path:
+        Sends the robot to the next area in the optimal path/decision:
         :return:
         """
         if self.best_decision is not None:
             self.mission_area = self.best_decision
             self.mission_area_pub.publish(self.mission_area)
             self.debug('Heading to: {}. {}'.format(self.mission_area, self.sampled_nodes_poses[self.mission_area]))
-            self.decisions_made.append(self.mission_area) #store decisions made
+            self.decisions_made.append(self.mission_area)  # store decisions made
             self.go_to_target(self.mission_area)
             return 1
         return 0
@@ -534,8 +601,8 @@ class Robot:
         self.robot_status = status.value
 
     def distance_travelled_cb(self, msg):
-        #Updates total distance travelled
-        #Sets curr robot pose
+        # Updates total distance travelled
+        # Sets curr robot pose
         x, y = msg.pose.pose.position.x, msg.pose.pose.position.y
         self.total_dist_travelled += math.dist((self.x, self.y), (x, y))
         self.x, self.y = x, y
@@ -568,9 +635,14 @@ class Robot:
         """
         self.environment_status[area_id] = msg.data
         if msg.data == areaStatus.RESTORED_F.value:
-            if self.robot_id == 0: self.debug("Area fully restored!")
             self.available = True
-            self.update_robot_status(robotStatus.IN_MISSION)
+            self.tlapses[area_id] = 0
+            if self.robot_id == 0: self.debug("Area {} fully restored! tlapse reset...".format(area_id))
+
+            if (self.inference is not None) and (self.inference != 'oracle'):
+                self.update_robot_status(robotStatus.CONSIDER_REPLAN)
+            else:
+                self.update_robot_status(robotStatus.IN_MISSION)
 
     def decay_rate_cb(self, msg, area_id):
         """
@@ -579,11 +651,19 @@ class Robot:
         :param area_id:
         :return:
         """
-        if self.decay_rates_dict[area_id] == None:
+        # Store the decay rates at instance, (prior knowledge)
+        if self.decay_rates_dict[area_id] == None and msg.data is not None:
             if self.robot_id == 0: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
             self.decay_rates_dict[area_id] = msg.data
             self.decay_rates_counter += 1
+        else:
+            # If we are now on mission and oracle, we immediately update the decay rates for any evolution
+            if self.inference == 'oracle':
+                if self.decay_rates_dict[area_id] != msg.data: self.debug(
+                    "Oracle knowledge, change in decay in area {}: {}".format(area_id, msg.data))
+                self.decay_rates_dict[area_id] = msg.data  # A subscribed topic. Oracle knows exactly the decay rate happening in area
 
+    #TODO: Why do we still have this here? It's like oracle knowledge
     def area_fmeasure_cb(self, msg, area_id):
         """
         Updates fmeasure of area
@@ -600,8 +680,8 @@ class Robot:
         self.debug("Reached {} time operation. Shutting down...".format(self.t_operation))
         kill_nodes(sleep)
 
+
 if __name__ == '__main__':
-    # os.chdir('/home/ameldocena/.ros/int_preservation/results')
     os.chdir('/root/catkin_ws/src/results/int_preservation')
     filename = rospy.get_param('/file_data_dump')
-    Robot('heuristic_decision').run_operation(filename)
+    Robot('multiarmed_ucb').run_operation(filename)

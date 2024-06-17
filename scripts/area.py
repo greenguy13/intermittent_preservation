@@ -36,8 +36,10 @@ class Area():
         self.debug_mode = rospy.get_param("/debug_mode")
         self.area = rospy.get_param("~area_id")
         self.robot_id = rospy.get_param("~robot_id")
-        self.decay_rate = float(rospy.get_param("~decay_rate"))
-        self.decay_evolution_list = eval(rospy.get_param("~decay_evolution"))
+        decay_rate = rospy.get_param("~decay_rate")
+        self.decay_rate = float(decay_rate)
+        decay_evolution = rospy.get_param("~decay_evolution")
+        self.decay_evolution_list = eval(decay_evolution)
         self.evolving_decay = True if len(self.decay_evolution_list) > 0 else False
         self.t_operation = rospy.get_param("/t_operation") #total duration of the operation
         self.max_fmeasure = rospy.get_param("~max_fmeasure")
@@ -99,8 +101,7 @@ class Area():
         :return:
         """
         if bool(msg.fmeasure_request) is True:
-            self.debug("Oracle decay rate: {}".format(self.decay_rate))
-            record = self.decay_rate #[self.tlapse, self.fmeasure]
+            record = self.fmeasure
             return flevelResponse(record)
 
     def restore_delay(self):
