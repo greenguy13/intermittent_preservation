@@ -70,6 +70,7 @@ class Area():
         self.decay_evolve_tframe = round(self.t_operation / (len(self.decay_evolution_list) + 1))
         self.sim_t = 0
 
+
     def robot_status_cb(self, msg):
         """
         Callback for robot status. If robot is not on mission, we pause decay simulation
@@ -133,7 +134,7 @@ class Area():
             derivative = (self.max_fmeasure*(1 - self.decay_rate)**t) * math.log(1 - self.decay_rate)
         decayed_f2 = self.fmeasure + derivative
         # self.debug("Orig decay: {}. Derivative decay: {}, tlapse: {}".format(decayed_f, decayed_f2, t))
-        self.fmeasure = decayed_f2
+        self.fmeasure = max(decayed_f2, 0)
 
     def update_status(self, status):
         """
@@ -196,6 +197,7 @@ class Area():
             self.publish_fmeasure()
 
             if self.save:
+                #TODO: Dump actual decay rates data
                 pu.dump_data(f_record, '{}_area{}_fmeasure'.format(filename, self.area))
                 pu.dump_data(status_record, '{}_area{}_status'.format(filename, self.area))
             rate.sleep()

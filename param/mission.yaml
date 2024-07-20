@@ -23,8 +23,12 @@ noise: 0.25 #noise/error in navigation and restoration
 move_base_tolerance: 0.5
 
 #Uncertainty params
-alpha: 0.05 #alpha-quantile for heuristics that measure some expected value of a distribution
-win_size: 3 #window size for the time-series forecast
+win_size: 3 #window size for the moving average forecast
+ndata_thresh: 5 #threshold of data collected to trigger training/update of time-series model
+discrepancy_thresh: 0.25 #threshold of discrepancy betweeen belief decay and measured decay to trigger training/update of timeseries model
+learning_rate: 0.10 #learning rate
 
 #Reinforcement learning params
 exploration: 0.4 #tunable exploration parameter
+correlation_info: [[1, 2, 1.0], [2, 1, 1.0], [3, 4, 1.0], [4, 3, 1.0], [5, 6, 1.0], [6, 5, 1.0], [7, 8, 1.0], [8, 7, 1.0]] #correlation information among areas with their magnitude
+sigma: 1.0 #standard deviation of the normal distribution for thompson sampling

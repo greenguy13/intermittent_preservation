@@ -143,39 +143,105 @@ if __name__ == '__main__':
     os.chdir('/root/catkin_ws/src/results/int_preservation')
 
     #Sample node poses
-    # worlds = ['cluttered']
-    # nareas_list = [70]
-    # nplacements = 1
+    # worlds = ['office']
+    # nareas_list = [8]
+    # nplacements = 2000
     # batch_sample_nodes_poses(worlds, nareas_list, nplacements)
 
     #Office
     #Adjust acml.launch, max_range=20
-    # run_experiment('heuristic_uncertainty', 'office', 4, 1, 'non_uniform', 100,
+    # Sanity checker
+    # run_experiment('treebased_decision', 'office', 8, 1, 'non_uniform', 100,
+    #                inference='oracle', dec_steps=4, ntrials=1, save=False)
+    #
+    # run_experiment('heuristic_uncertainty', 'office', 8, 1, 'non_uniform', 100,
+    #                inference='pessimistic', dec_steps=4, ntrials=1, save=False)
+    #
+    # run_experiment('heuristic_uncertainty', 'office', 8, 1, 'non_uniform', 100,
+    #                inference='optimistic', dec_steps=4, ntrials=1, save=False)
+    #
+    # run_experiment('heuristic_uncertainty', 'office', 8, 1, 'non_uniform', 100,
+    #                inference='expected', dec_steps=4, ntrials=1, save=False)
+    #
+    # run_experiment('multiarmed_ucb', 'office', 8, 1, 'non_uniform', 100,
+    #                inference='optimistic', dec_steps=1, ntrials=1, save=False)
+    #
+    # run_experiment('heuristic_decision', 'office', 8, 1, 'non_uniform', 100,
+    #                inference=None, dec_steps=4, ntrials=1, save=False)
+    #
+    # run_experiment('dynamic_programming', 'office', 8, 1, 'non_uniform', 100,
+    #                inference=None, dec_steps=4, ntrials=1, save=False)
+
+    #Run
+    # run_experiment('treebased_decision', 'office', 8, 9, 'non_uniform', 3100,
     #                inference='oracle', dec_steps=4, ntrials=1, save=True)
+    #
+    # run_experiment('heuristic_uncertainty', 'office', 8, 11, 'non_uniform', 3100,
+    #                inference='expected', dec_steps=4, ntrials=1, save=True)
 
-    run_experiment('treebased_decision', 'office', 4, 1, 'non_uniform', 3100,
-                   inference='oracle', dec_steps=4, ntrials=1, save=True)
-
-    run_experiment('heuristic_uncertainty', 'office', 4, 1, 'non_uniform', 3100,
-                   inference='pessimistic', dec_steps=4, ntrials=1, save=True)
-
-    run_experiment('heuristic_uncertainty', 'office', 4, 1, 'non_uniform', 3100,
-                   inference='optimistic', dec_steps=4, ntrials=1, save=True)
-
-    run_experiment('heuristic_uncertainty', 'office', 4, 1, 'non_uniform', 3100,
-                   inference='expected', dec_steps=4, ntrials=1, save=True)
-
-    # run_experiment('multiarmed_ucb', 'office', 4, 1, 'non_uniform', 3100,
+    # placement = 13
+    # run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='oracle', dec_steps=4, ntrials=1, save=True)
+    #
+    # run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='expected', dec_steps=4, ntrials=1, save=True)
+    #
+    # run_experiment('multiarmed_ucb', 'office', 8, placement, 'non_uniform', 3100,
     #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
     #
-    # run_experiment('heuristic_decision', 'office', 4, 1, 'non_uniform', 3100,
-    #                inference=None, dec_steps=4, ntrials=1, save=True)
+    # run_experiment('correlated_thompson', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
     #
-    # run_experiment('dynamic_programming', 'office', 4, 1, 'non_uniform', 3100,
+    # run_experiment('correlated_ucb', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
+
+    #TO-RUN/fix
+    # run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
     #                inference=None, dec_steps=4, ntrials=1, save=True)
 
-    ## TODO: Implement tree-based oracle
-    ## TODO: Implement UCB algo (Gaussian), and other SOTA algos: TS, Correlated Arms
+
+    placement = 32
+    run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
+                   inference='oracle', dec_steps=4, ntrials=1, save=True)
+
+    run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 3100,
+                   inference='expected', dec_steps=4, ntrials=1, save=True)
+
+    run_experiment('multiarmed_ucb', 'office', 8, placement, 'non_uniform', 3100,
+                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
+
+    run_experiment('correlated_thompson', 'office', 8, placement, 'non_uniform', 3100,
+                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
+
+    run_experiment('correlated_ucb', 'office', 8, placement, 'non_uniform', 3100,
+                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
+
+    run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
+                   inference=None, dec_steps=4, ntrials=1, save=True)
+
+    placement = 33
+    run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
+                   inference='oracle', dec_steps=4, ntrials=1, save=True)
+
+    run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 3100,
+                   inference='expected', dec_steps=4, ntrials=1, save=True)
+
+    run_experiment('multiarmed_ucb', 'office', 8, placement, 'non_uniform', 3100,
+                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
+
+    run_experiment('correlated_thompson', 'office', 8, placement, 'non_uniform', 3100,
+                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
+
+    run_experiment('correlated_ucb', 'office', 8, placement, 'non_uniform', 3100,
+                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
+
+    run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
+                   inference=None, dec_steps=4, ntrials=1, save=True)
+
+
+
+
+    #TO-Run: See notes
     ## TODO: Time-series forecast of F-measure or decay rate for future time steps
 
     #Cluttered
