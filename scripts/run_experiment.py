@@ -31,58 +31,8 @@ def batch_sample_nodes_poses(worlds, nareas_list, nplacements):
                 sample_nodes_poses(w, n, nplacements)
 
 #Run the experiment
-def batch_experiments(method, worlds, nareas_list, nplacements, decay_category, inference_types, tframe, dec_steps=None, ntrials=1, sample_nodes=False, save=False, exp_id=None):
-    """
-    Runs a batch of experiments
-    :param method:
-    :param worlds:
-    :param nareas_list:
-    :param nplacements:
-    :param decay_category:
-    :param tframe:
-    :param dec_steps:
-    :param ntrials:
-    :return:
-    """
-    # Create file for the different placement of nodes in the world first
-    if sample_nodes:
-        batch_sample_nodes_poses(worlds, nareas_list, nplacements)
-
-    # Run experiments
-    for w in worlds:
-        for n in nareas_list:
-            fileposes = '{}_n{}_sampled_nodes_poses_dict'.format(w, n)
-            for p in range(nplacements):
-                for d in decay_category:
-                    for l in inference_types:
-                        if method == 'treebased_decision':
-                            for k in dec_steps:
-                                for i in range(ntrials):
-                                    fileresult = '{}_{}_n{}_p{}_{}_k{}_{}_exp{}'.format(method, w, n, p+1, d, k, i+1, exp_id)
-                                    logfile = fileresult + '.txt'
-                                    params = ['method:={}'.format(method),
-                                              'world:={}'.format(w), 'nareas:={}'.format(n),
-                                              'decay:={}'.format(d), 'learndecay:={}'.format(l),
-                                              'dsteps:={}'.format(k),
-                                              'tframe:={}'.format(tframe), 'placement:={}'.format(p+1),
-                                              'fileposes:={}'.format(fileposes), 'fileresult:={}'.format(fileresult),
-                                              'save:={}'.format(save)]
-                                    print("Launching...method: {}, world: {}, nareas: {}, decay: {}, learn: {}, dsteps: {}, tframe: {}, placement: {}, save: {}, exp: {}".format(method, w, n, d, l, k, tframe, p+1, save, exp_id))
-                                    launch_nodes('int_preservation', 'mission.launch', params, logfile)
-
-                        elif method == 'random_decision':
-                            for i in range(ntrials):
-                                fileresult = '{}_{}_n{}_p{}_{}_{}_exp{}'.format(method, w, n, p + 1, d, i + 1, exp_id)
-                                logfile = fileresult + '.txt'
-                                params = ['method:={}'.format(method), 'world:={}'.format(w),
-                                          'nareas:={}'.format(n), 'decay:={}'.format(d),
-                                          'tframe:={}'.format(tframe), 'placement:={}'.format(p + 1),
-                                          'fileposes:={}'.format(fileposes), 'fileresult:={}'.format(fileresult),
-                                          'save:={}'.format(save)]
-                                print("Launching...method: {}, world: {}, nareas: {}, decay: {}, tframe: {}, placement: {}, save: {}, exp: {}".format(method, w, n, d, tframe, p+1, save, exp_id))
-                                launch_nodes('int_preservation', 'mission.launch', params, logfile)
-
-def run_experiment(method, world, nareas, placement, decay, tframe, inference=None, dec_steps=1, ntrials=1, save=False):
+def run_experiment(method, world, nareas, placement, decay, tframe, inference=None, dec_steps=1, ntrials=1,
+                   history_data=None, history_decisions=None, save=False):
     """
     Runs a single experiment
     :param method:
@@ -98,9 +48,7 @@ def run_experiment(method, world, nareas, placement, decay, tframe, inference=No
     fileposes = '{}_n{}_sampled_nodes_poses_dict'.format(world, nareas)
     if method != 'random_decision':
         for i in range(ntrials):
-            #TODO: If inference is with uncertainty, we create a different save filename
             if inference is not None:
-                #TODO: insert here. Q: How to insert for different types, like oracle, expected (as of now, moving average), optimistic, pessimistic
                 fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}'.format(method, inference, world, nareas, placement, decay, dec_steps, i + 1)
                 params = ['method:={}'.format(method),
                           'inference:={}'.format(inference),
@@ -109,6 +57,10 @@ def run_experiment(method, world, nareas, placement, decay, tframe, inference=No
                           'dsteps:={}'.format(dec_steps),
                           'tframe:={}'.format(tframe), 'placement:={}'.format(placement),
                           'fileposes:={}'.format(fileposes), 'fileresult:={}'.format(fileresult), 'save:={}'.format(save)]
+                if method == 'heuristic_uncertainty' and inference == 'timeseries':
+                    assert (history_data is not None) and (history_decisions is not None), "Should have history data and decisions accomplished"
+                    params.append('history_data:={}'.format(history_data))
+                    params.append('history_decisions:={}'.format(history_decisions))
                 print(
                     "Launching...method: {}, inference: {}, world: {}, nareas: {}, decay: {}, dsteps: {}, tframe: {}, placement: {}, trial: {}, save: {}".format(
                         method, inference, world, nareas, decay, dec_steps, tframe, placement, i + 1, save))
@@ -126,7 +78,6 @@ def run_experiment(method, world, nareas, placement, decay, tframe, inference=No
             logfile = fileresult + '.txt'
             launch_file = 'mission.launch' #'/home/ameldocena/catkin_ws/src/intermittent_preservation/launch/mission.launch'
             launch_nodes('int_preservation', launch_file, params, logfile)
-            #TODO: Ensure that the inference params would be included in the Python script
     else:
         for i in range(ntrials):
             fileresult = '{}_{}_n{}_p{}_{}_{}'.format(method, world, nareas, placement, decay, i + 1)
@@ -138,6 +89,15 @@ def run_experiment(method, world, nareas, placement, decay, tframe, inference=No
             print("Launching...method: {}, world: {}, nareas: {}, decay: {}, tframe: {}, placement: {}, trial:{}, save: {}".format(
                 method, world, nareas, decay, tframe, placement, i+1, save))
             launch_nodes('int_preservation', 'mission.launch', params, logfile)
+
+def retrieve_history_data_decisions_filenames(world, method, inference, nareas, placement, dec_steps, trial):
+    """
+    Retrieves the filenames for history data and decisions accomplished
+    :return:
+    """
+    history_data_filename = '{}_{}_{}_n{}_p{}_non_uniform_k{}_{}_robot0_recorded_data.pkl'.format(method, inference, world, nareas, placement, dec_steps, trial)
+    history_decisions_filename = '{}_{}_{}_n{}_p{}_non_uniform_k{}_{}_robot0_decisions_acc_travel.pkl'.format(method, inference, world, nareas, placement, dec_steps, trial)
+    return history_data_filename, history_decisions_filename
 
 if __name__ == '__main__':
     os.chdir('/root/catkin_ws/src/results/int_preservation')
@@ -151,26 +111,10 @@ if __name__ == '__main__':
     #Office
     #Adjust acml.launch, max_range=20
     # Sanity checker
-    # run_experiment('treebased_decision', 'office', 8, 1, 'non_uniform', 100,
-    #                inference='oracle', dec_steps=4, ntrials=1, save=False)
-    #
-    # run_experiment('heuristic_uncertainty', 'office', 8, 1, 'non_uniform', 100,
-    #                inference='pessimistic', dec_steps=4, ntrials=1, save=False)
-    #
-    # run_experiment('heuristic_uncertainty', 'office', 8, 1, 'non_uniform', 100,
-    #                inference='optimistic', dec_steps=4, ntrials=1, save=False)
-    #
-    # run_experiment('heuristic_uncertainty', 'office', 8, 1, 'non_uniform', 100,
-    #                inference='expected', dec_steps=4, ntrials=1, save=False)
-    #
-    # run_experiment('multiarmed_ucb', 'office', 8, 1, 'non_uniform', 100,
-    #                inference='optimistic', dec_steps=1, ntrials=1, save=False)
-    #
-    # run_experiment('heuristic_decision', 'office', 8, 1, 'non_uniform', 100,
-    #                inference=None, dec_steps=4, ntrials=1, save=False)
-    #
-    # run_experiment('dynamic_programming', 'office', 8, 1, 'non_uniform', 100,
-    #                inference=None, dec_steps=4, ntrials=1, save=False)
+    history_data, history_decisions = retrieve_history_data_decisions_filenames(world='office', method='heuristic_uncertainty', inference='expected', nareas=8, placement=2, dec_steps=4, trial=1)
+    placement = 1
+    run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 100,
+                   inference='timeseries', dec_steps=4, ntrials=1, history_data=history_data, history_decisions=history_decisions, save=False)
 
     #Run
     # run_experiment('treebased_decision', 'office', 8, 9, 'non_uniform', 3100,
@@ -199,44 +143,44 @@ if __name__ == '__main__':
     # run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
     #                inference=None, dec_steps=4, ntrials=1, save=True)
 
-
-    placement = 32
-    run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
-                   inference='oracle', dec_steps=4, ntrials=1, save=True)
-
-    run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 3100,
-                   inference='expected', dec_steps=4, ntrials=1, save=True)
-
-    run_experiment('multiarmed_ucb', 'office', 8, placement, 'non_uniform', 3100,
-                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
-
-    run_experiment('correlated_thompson', 'office', 8, placement, 'non_uniform', 3100,
-                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
-
-    run_experiment('correlated_ucb', 'office', 8, placement, 'non_uniform', 3100,
-                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
-
-    run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
-                   inference=None, dec_steps=4, ntrials=1, save=True)
-
-    placement = 33
-    run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
-                   inference='oracle', dec_steps=4, ntrials=1, save=True)
-
-    run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 3100,
-                   inference='expected', dec_steps=4, ntrials=1, save=True)
-
-    run_experiment('multiarmed_ucb', 'office', 8, placement, 'non_uniform', 3100,
-                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
-
-    run_experiment('correlated_thompson', 'office', 8, placement, 'non_uniform', 3100,
-                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
-
-    run_experiment('correlated_ucb', 'office', 8, placement, 'non_uniform', 3100,
-                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
-
-    run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
-                   inference=None, dec_steps=4, ntrials=1, save=True)
+    #
+    # placement = 32
+    # run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='oracle', dec_steps=4, ntrials=1, save=True)
+    #
+    # run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='expected', dec_steps=4, ntrials=1, save=True)
+    #
+    # run_experiment('multiarmed_ucb', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
+    #
+    # run_experiment('correlated_thompson', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
+    #
+    # run_experiment('correlated_ucb', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
+    #
+    # run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference=None, dec_steps=4, ntrials=1, save=True)
+    #
+    # placement = 33
+    # run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='oracle', dec_steps=4, ntrials=1, save=True)
+    #
+    # run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='expected', dec_steps=4, ntrials=1, save=True)
+    #
+    # run_experiment('multiarmed_ucb', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
+    #
+    # run_experiment('correlated_thompson', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
+    #
+    # run_experiment('correlated_ucb', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
+    #
+    # run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference=None, dec_steps=4, ntrials=1, save=True)
 
 
 

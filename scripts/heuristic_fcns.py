@@ -20,10 +20,10 @@ def get_elapsed_time(max_fmeasure, fmeasures, discount_arr):
         elapsed_time_dict[area] = get_time_given_decay(max_fmeasure, fmeasures[area], discount_arr[area])
     return elapsed_time_dict
 
-def heuristic_forecast_loss(curr_fmeasures, average_duration_decay, decay_dict, fsafe, fcrit):
+def heuristic_forecast_cost(curr_fmeasures, average_duration_decay, decay_dict, fsafe, fcrit):
     """
     Forecast the fmeasures by some heuristic
-    Measure the loss of the forecasted fmeasures
+    Measure the cost of the forecasted fmeasures
     :param curr_fmeasures:
     :param forecast_time_arr:
     :param decay_arr:
@@ -40,17 +40,17 @@ def heuristic_forecast_loss(curr_fmeasures, average_duration_decay, decay_dict, 
             forecast_fmeasure = max_fmeasure
         forecasted_fmeasures[area] = forecast_fmeasure
 
-    #Measure loss
-    loss = compute_cost_fmeasures(forecasted_fmeasures, fsafe, fcrit)
+    #Measure cost
+    cost = compute_cost_fmeasures(forecasted_fmeasures, fsafe, fcrit)
 
-    #Return forecasted fmeasures and loss
-    return forecasted_fmeasures, loss
+    #Return forecasted fmeasures and cost
+    return forecasted_fmeasures, cost
 
 #Goal: Vectorized operation
 
-def heuristic_loss_decision(curr_fmeasures, decay_dict, loss_params, discount, dec_steps, average_duration_decay_dict):
+def heuristic_cost_decision(curr_fmeasures, decay_dict, loss_params, discount, dec_steps, average_duration_decay_dict):
     """
-    Measures the heuristic loss of a decision
+    Measures the heuristic cost of a decision
     :param curr_fmeasures:
     :param decay_dict:
     :param loss_params:
@@ -71,24 +71,20 @@ def heuristic_loss_decision(curr_fmeasures, decay_dict, loss_params, discount, d
     for i in range(1, dec_steps):
         # forecast_time_dict = pu.add_entries_dicts(prev_time_dict, average_duration_decay_dict)
         # forecasted_fmeasures, loss = heuristic_forecast_loss(curr_fmeasures, forecast_time_dict, decay_dict, fsafe, fcrit)
-        forecasted_fmeasures, loss = heuristic_forecast_loss(curr_fmeasures, average_duration_decay_dict, decay_dict, fsafe, fcrit)
+        forecasted_fmeasures, loss = heuristic_forecast_cost(curr_fmeasures, average_duration_decay_dict, decay_dict, fsafe, fcrit)
         loss_arr.append(loss)
         curr_fmeasures = forecasted_fmeasures
         # prev_time_dict = forecast_time_dict
 
     #Sum up discounted losses throughout the decision steps
-    loss = np.dot(discount_arr, np.array(loss_arr))
-    return loss
+    cost = np.dot(discount_arr, np.array(loss_arr))
+    return cost
 
-### Heuristic Loss under uncertainty. This is the MEAT of the decision making component!
-#TODO: Sanity check heuristic_decision and heuristic_decision_uncertainty for the changes made in heuristic_forecast_loss
-def heuristic_timeseries_forecast_loss(curr_fmeasures, forecast_time_dict, decay_dict, fsafe, fcrit):
+### Heuristic cost under uncertainty
+def heuristic_timeseries_forecast_cost(curr_fmeasures, forecast_time_dict, decay_dict, fsafe, fcrit):
     """
-        This could be dec_steps already instead of just decay_dict. What we do is we forecast the decay rate for that area using the model
-    given the number of decision steps to look ahead
-
     Forecast the fmeasures by some heuristic
-    Measure the loss of the forecasted fmeasures
+    Measure the cost of the forecasted fmeasures
     :param curr_fmeasures:
     :param forecast_time_arr:
     :param decay_arr:
@@ -99,17 +95,17 @@ def heuristic_timeseries_forecast_loss(curr_fmeasures, forecast_time_dict, decay
     for area in curr_fmeasures:
         #Case 1: Keep decaying if curr_fmeasure >= fcrit
         if curr_fmeasures[area] >= fcrit:
-            forecast_fmeasure = decay(decay_dict[area], forecast_time_dict[area], max_fmeasure) #DONE. TODO: This should be max_fmeasure, not curr_fmeasures[area] since we are decaying it by
+            forecast_fmeasure = decay(decay_dict[area], forecast_time_dict[area], max_fmeasure)
         #Case 2: Restore curr_fmeasure to max fmeasure if fcrit < curr_fmeasure
         else:
             forecast_fmeasure = max_fmeasure
         forecasted_fmeasures[area] = forecast_fmeasure
 
-    #Measure loss
-    loss = compute_cost_fmeasures(forecasted_fmeasures, fsafe, fcrit)
+    #Measure cost
+    cost = compute_cost_fmeasures(forecasted_fmeasures, fsafe, fcrit)
 
-    #Return forecasted fmeasures and loss
-    return forecasted_fmeasures, loss
+    #Return forecasted fmeasures and cost
+    return forecasted_fmeasures, cost
 
 def forecast_opportunity_cost(curr_fmeasures, tlapses, latest_obs, model, model_scale, loss_params, discount, dec_steps, average_duration_decay_dict):
     """
@@ -121,8 +117,6 @@ def forecast_opportunity_cost(curr_fmeasures, tlapses, latest_obs, model, model_
     :param average_duration_decay_dict:
     :return:
     """
-    # DONE. TODO: The average_duration_decay_dict should include noise for travel and restoration. Shall we also do a forecast here, or just use the average? Yes, just use the average noise.
-    # DONE. TODO: That is: the average travel + (restoration + noise)
     fsafe, fcrit = loss_params
 
     #Measure initial time stamp
@@ -134,13 +128,13 @@ def forecast_opportunity_cost(curr_fmeasures, tlapses, latest_obs, model, model_
     #Measure discounted loss
     loss_arr = []
     for i in range(1, dec_steps):
-        forecast_time_dict = pu.add_entries_dicts(tlapses, average_duration_decay_dict) #DONE. TODO: This is where we use updated tlapses after immediate cost
-        decay_dict = forecasted_decay.iloc[i].to_dict() #DONE. TODO: DSlice the correct forecast decision step (entire row). Check in Colab
-        forecasted_fmeasures, loss = heuristic_timeseries_forecast_loss(curr_fmeasures, forecast_time_dict, decay_dict, fsafe, fcrit) #DONE. TODO: Here we will replace the decay_dict with the forecasted decay rates per given dec_step
+        forecast_time_dict = pu.add_entries_dicts(tlapses, average_duration_decay_dict)
+        decay_dict = forecasted_decay.iloc[i].to_dict()
+        forecasted_fmeasures, loss = heuristic_timeseries_forecast_cost(curr_fmeasures, forecast_time_dict, decay_dict, fsafe, fcrit)
         loss_arr.append(loss)
-        curr_fmeasures = forecasted_fmeasures
+        curr_fmeasures = forecasted_fmeasures.copy()
         tlapses = forecast_time_dict.copy()
 
     #Sum up discounted losses throughout the decision steps
-    loss = np.dot(discount_arr, np.array(loss_arr))
-    return loss
+    cost = np.dot(discount_arr, np.array(loss_arr))
+    return cost

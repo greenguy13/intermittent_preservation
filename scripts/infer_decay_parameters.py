@@ -32,58 +32,59 @@ def margin_of_error(data, alpha):
     margin_of_error = stats.t.ppf((1 + confidence)/2, df) * std_error
     return margin_of_error
 
-def value_at_risk(data, alpha):
-    """
-    Quantile corresponding to the chosen confidence level
-    Here, the value at risk is on the right tail since we are minimizing the loss
-    :param data:
-    :param alpha:
-    :return:
-    """
-    VaR = np.percentile(data, (1-alpha)*100)
-    return VaR
+# def value_at_risk(data, alpha):
+#     """
+#     Quantile corresponding to the chosen confidence level
+#     Here, the value at risk is on the right tail since we are minimizing the loss
+#     :param data:
+#     :param alpha:
+#     :return:
+#     """
+#     VaR = np.percentile(data, (1-alpha)*100)
+#     return VaR
+#
+# def simple_average_param(recorded_param_dict, area):
+#     average = np.nanmean(recorded_param_dict[area]) #Measure the average
+#     return average
+#
+# def weighted_average_param(recorded_param_dict):
+#     pass
+#
+# def lower_bound_param(recorded_param_dict, area, alpha):
+#     data = np.array(recorded_param_dict[area])
+#     m = np.nanmean(data)
+#     moe = margin_of_error(data, alpha)
+#     lower_bound = m - moe
+#     return lower_bound
+#
+# def CVaR_param(recorded_param_dict, area, alpha):
+#     """
+#     Our objective is to minimize loss. And so the risk is values greater than average.
+#     We thus take the expected value of VaR and beyond
+#     :param recorded_param_dict:
+#     :param alpha:
+#     :return:
+#     """
+#     data = np.array(recorded_param_dict[area])
+#     VaR = value_at_risk(data, alpha)
+#     CVaR = np.nanmean([x for x in data if x >= VaR])
+#     return CVaR
+#
+# def proposed_heuristic(recorded_param_dict, area, alpha):
+#     """
+#     The expected value of VaR and the expected value
+#     :param recorded_param_dict:
+#     :return:
+#     """
+#     data = np.array(recorded_param_dict[area])
+#     m = np.nanmean(data)
+#     VaR = value_at_risk(data, alpha)
+#     proposed = np.nanmean([x for x in data if (x >= m and x < VaR)])
+#     if math.isnan(proposed): proposed = m
+#     pu.log_msg('robot', 0, 'data, mean, VaR, proposed: {}'.format((data, m, VaR, proposed)))
+#     return proposed
 
-def simple_average_param(recorded_param_dict, area):
-    average = np.nanmean(recorded_param_dict[area]) #Measure the average
-    return average
-
-def weighted_average_param(recorded_param_dict):
-    pass
-
-def lower_bound_param(recorded_param_dict, area, alpha):
-    data = np.array(recorded_param_dict[area])
-    m = np.nanmean(data)
-    moe = margin_of_error(data, alpha)
-    lower_bound = m - moe
-    return lower_bound
-
-def CVaR_param(recorded_param_dict, area, alpha):
-    """
-    Our objective is to minimize loss. And so the risk is values greater than average.
-    We thus take the expected value of VaR and beyond
-    :param recorded_param_dict:
-    :param alpha:
-    :return:
-    """
-    data = np.array(recorded_param_dict[area])
-    VaR = value_at_risk(data, alpha)
-    CVaR = np.nanmean([x for x in data if x >= VaR])
-    return CVaR
-
-def proposed_heuristic(recorded_param_dict, area, alpha):
-    """
-    The expected value of VaR and the expected value
-    :param recorded_param_dict:
-    :return:
-    """
-    data = np.array(recorded_param_dict[area])
-    m = np.nanmean(data)
-    VaR = value_at_risk(data, alpha)
-    proposed = np.nanmean([x for x in data if (x >= m and x < VaR)])
-    if math.isnan(proposed): proposed = m
-    pu.log_msg('robot', 0, 'data, mean, VaR, proposed: {}'.format((data, m, VaR, proposed)))
-    return proposed
-
+#### Moving average
 def moving_average(recorded_param_dict, area, win_size, alpha, type='expected'):
     """
     Forecasts the decay rate by moving average
@@ -107,7 +108,8 @@ def moving_average(recorded_param_dict, area, win_size, alpha, type='expected'):
             return forecast
         return upper_b
 
-def fit_model(data, order, trend, scale=None, disp=True):
+#### VARIMA time-series
+def fit_varima(data, order, trend, scale=None, disp=True):
     """
     Fit VARIMA model to data
     """
@@ -119,7 +121,7 @@ def fit_model(data, order, trend, scale=None, disp=True):
     fitted_model = model.fit(disp=disp)
     return fitted_model
 
-def forecast_decay(fitted_model, latest_obs, steps, scale=None):
+def forecast_decay_varima(fitted_model, latest_obs, steps, scale=None):
     """
     Forecast decay rates for areas given fitted_model
     :param fitted_model:
@@ -135,3 +137,6 @@ def forecast_decay(fitted_model, latest_obs, steps, scale=None):
         forecast_values = (forecast.predicted_mean)/scale + latest_obs
     forecast_values.reset_index(drop=True)
     return forecast_values
+
+
+#### LSTM Time-series

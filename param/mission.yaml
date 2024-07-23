@@ -7,6 +7,8 @@ placement: $(arg placement) #placement of areas
 dec_steps: $(arg dsteps) #number of decision steps
 t_operation: $(arg tframe) #total duration of the operation
 file_sampled_areas: $(arg fileposes) #file name of sampled areas
+history_data: $(arg history_data) #filename for history data to be used to train time-series model
+history_decisions: $(arg history_decisions) #filename for history decisions accomplished to be used to train time-series model
 file_data_dump: $(arg fileresult) #file name for data dump
 inference: $(arg inference) #type of heuristic for inference on decay param
 save: $(arg save) #save data

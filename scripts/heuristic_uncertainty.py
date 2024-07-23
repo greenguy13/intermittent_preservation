@@ -72,7 +72,7 @@ class Robot:
         batt_consumed_per_time = rospy.get_param("/batt_consumed_per_time")
         self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = batt_consumed_per_time
 
-        self.dec_steps = rospy.get_param("/dec_steps") #STAR
+        self.dec_steps = rospy.get_param("/dec_steps")
         self.restoration = rospy.get_param("/restoration")
         self.noise = rospy.get_param("/noise")
         self.nareas = rospy.get_param("/nareas") #Sample nodes from voronoi equal to area count #STAR
@@ -107,14 +107,12 @@ class Robot:
         self.recorded_f_data = dict() #dictionary of recorded data collected during mission per area
         self.recorded_decay_param = dict() #dictionary of recorded decay parameter based on data collected during mission
         self.tlapses = dict() #dictionary containing tlapse for each area since last restoration
-        self.inferred_decay_rates = dict() #dict for inferred decay rates
         self.state = list() #list of states
 
         for area in self.areas:
             self.decay_rates_dict[area] = None
             self.recorded_f_data[area] = list()
             self.recorded_decay_param[area] = list()
-            self.inferred_decay_rates[area] = list()
             self.tlapses[area] = 0
 
         self.decay_rates_counter = 0 #counter for stored decay rates; should be equal to number of areas
@@ -135,15 +133,13 @@ class Robot:
         for node in range(self.nareas+1):
             self.environment_status[node] = 999
 
-        # TODO: Data of prior survey
-        survey_filename = None #TODO: Supply filename of history data as a parameter
-        decisions_data, recorded_decay_data = self.read_history_data(placement=survey_filename[0], dec_steps=survey_filename[1])
+        self.history_data_filename = rospy.get_param("/history_data")
+        self.history_decisions_filename = rospy.get_param("/history_decisions")
+        decisions_data, recorded_decay_data = self.read_history_data()
         self.survey_data = self.build_decisions_recorded_data(decisions_data, recorded_decay_data)
         self.travel_noise = np.full((self.nareas, self.nareas), self.noise) #Initial travel noise
-        # Restoration rate is already defined above. This shall be learned
+        #Note: Restoration rate is already initialized above. This shall be learned
         self.scale, self.order, self.trend = 1e4, (1, 1), 'ct'
-
-
 
         #Publishers/Subscribers
         rospy.Subscriber('/robot_{}/odom'.format(self.robot_id), Odometry, self.distance_travelled_cb, queue_size=1)
@@ -169,17 +165,17 @@ class Robot:
         self.robot_goal_client = actionlib.SimpleActionClient('/robot_' + str(self.robot_id) + '/move_base', MoveBaseAction)
         self.robot_goal_client.wait_for_server()
 
-    def read_history_data(self, placement, dec_steps):
+    def read_history_data(self):
         """
         Reads recorded decay data and decisions for a given placement
         """
-        filename = 'heuristic_uncertainty_expected_office_n8_p{}_non_uniform_k{}_1_robot0_recorded_data.pkl'.format(placement, dec_steps)
-        with open(filename, 'rb') as f:
+        self.debug("Reading history decay data: {}".format(self.history_data_filename))
+        with open('history_data/' + self.history_data_filename, 'rb') as f:
             data = pickle.load(f)
             f.close()
 
-        filename = 'heuristic_uncertainty_expected_office_n8_p{}_non_uniform_k{}_1_robot0_decisions_acc_travel.pkl'.format(placement, dec_steps)
-        with open(filename, 'rb') as f:
+        self.debug("Reading history decisions data: {}".format(self.history_decisions_filename))
+        with open('history_data/' + self.history_decisions_filename, 'rb') as f:
             decisions_data = pickle.load(f)
             f.close()
 
@@ -192,7 +188,7 @@ class Robot:
         """
         Build a dataframe of size (decisions_made, nareas)
         """
-        # Create a matrix/data frame of size (nareas, decisions_made)
+        # Create a matrix/data frame of size (decisions_made, nareas)
         recorded_data = copy.deepcopy(recorded_decay_data)
         areas = list(recorded_data.keys())
         data_matrix = np.full((len(decisions_data), len(areas)), np.nan)
@@ -285,7 +281,6 @@ class Robot:
         self.debug("Dist matrix: {}".format(self.dist_matrix))
 
     # METHODS: Send robot to area
-    # TODO: This can be an independent script of its own
     def go_to_target(self, goal_idx):
         """
         Action client to move_base to move to target goal
@@ -306,7 +301,8 @@ class Robot:
         movebase_goal = MoveBaseGoal()
         movebase_goal.target_pose = goal
         self.available = False
-        self.start_travel_time = self.sim_t #TODO: Note time stamp prior to travel
+        self.start_travel_time = self.sim_t
+        self.debug("Sending robot to mission area: {}. Departure time: {}".format(self.mission_area, self.start_travel_time))
         action_goal_cb = (lambda state, result: self.action_send_done_cb(state, result, self.robot_id))
         self.robot_goal_client.send_goal(movebase_goal, done_cb=action_goal_cb, active_cb=self.action_send_active_cb)
 
@@ -327,22 +323,27 @@ class Robot:
         if state == SUCCEEDED:
             self.prev_loc = self.curr_loc
             self.curr_loc = self.mission_area
-            self.debug("Arrived at mision_area: {}. Current loc: {}. Prev loc: {}".format(self.mission_area, self.curr_loc, self.prev_loc))
-            #TODO: Measure actual travel time. Shall we store this data? Potentially as a tuple to decision accomplished. DONE
             self.end_travel_time = self.sim_t
-            self.record_decisions_accomplished(self.mission_area) #TODO: To-refine. DONE
+            self.debug(
+                "Arrived at mision_area: {}. Arrival time: {}. Current loc: {}. Prev loc: {}".format(self.mission_area,
+                                                                                                     self.end_travel_time,
+                                                                                                     self.curr_loc,
+                                                                                                     self.prev_loc))
+
+            self.record_decisions_accomplished(self.mission_area)
             self.best_decision = None
             if self.mission_area == self.charging_station:
                 self.update_robot_status(robotStatus.CHARGING)
             else:
                 data = request_fmeasure(self.curr_loc)
                 measured_f = float(data)
-                self.recorded_f_data[self.curr_loc].append(measured_f) #TODO: Use this to measure restored amount to measure restoration rate
+                self.recorded_f_data[self.curr_loc].append(measured_f)
                 converted_decay = get_decay_rate(self.max_fmeasure, measured_f, self.tlapses[self.curr_loc])
-                self.debug("Inverting decay...Measured f: {}. Tlapse: {}. Converted decay: {}".format(measured_f, self.tlapses[self.curr_loc], converted_decay))
+                self.debug("Collecting data...Measured f: {}. Tlapse: {}. Converted decay: {}".format(measured_f, self.tlapses[self.curr_loc], converted_decay))
 
-                self.record_decay(converted_decay, self.curr_loc) #TODO: To-refine. DONE
+                self.record_decay(converted_decay, self.curr_loc)
                 self.start_restore_time = self.sim_t
+                self.debug("Restoring F-measure. Sim time: {}".format(self.start_restore_time))
                 self.update_robot_status(robotStatus.RESTORING_F)
 
     def mean_duration_decay(self, duration_matrix, area):
@@ -357,22 +358,13 @@ class Robot:
         submatrix = np.delete(duration_matrix, area, axis=1)
         return np.mean(submatrix)
 
-    #TODO: Upnext. Identify the methods that need be adjusted for noise in travel and restoration
-    #TODO: Forecasting F-measure by forecasting decay rates
-    # Immediate opportunity cost
-    # Forecasted opportunity cost
-
     def estimate_battery_params(self, decision, curr_battery, curr_loc, fmeasures, noise):
         """
-        #TODO: Edit here. DONE
-        #Resolution: Keep as is. Just provide self.noise_matrix[curr_loc, decision] as the noise parameter where this is being called
-
         Measures battery consumption and feasible battery
         :param decision:
         :return:
         """
         # Battery consumed travel and preserve area (if not charging station)
-        # DONE. TODO: The noise here can be a matrix with start_area and next_area
         battery_consumption = self.consume_battery(start_area=curr_loc, next_area=decision,
                                                    curr_measure=fmeasures[decision],
                                                    noise=noise)
@@ -401,15 +393,12 @@ class Robot:
                 updated_tlapses[area] += duration
         return updated_tlapses
 
-    #TODO: Identify where to insert forecasting for each area for given decision steps to look ahead
-    #TODO: Identify where to use the learned noise for each location pairs
     def greedy_best_decision(self):
         """
-        #TODO: Edit this
         :return:
         """
         #Measure duration matrix adjusting for noise
-        duration_matrix = (self.dist_matrix/self.robot_velocity) + self.noise_matrix
+        duration_matrix = (self.dist_matrix/self.robot_velocity) * (1 + self.travel_noise)
 
         # Measure the average duration an area decays
         #Estimates the time/duration it takes to areas
@@ -422,29 +411,25 @@ class Robot:
         for decision in self.areas:
             # Battery consumption
             battery_consumption, feasible_battery = self.estimate_battery_params(decision, self.battery, self.curr_loc,
-                                                                                 self.curr_fmeasures, self.noise_matrix[self.curr_loc, decision]) #TODO: DONE. The noise here should be between self.curr_loc and decision
+                                                                                 self.curr_fmeasures, self.travel_noise[self.curr_loc, decision])
             self.debug("Batt consumption: {}. Feasible batt: {}".format(battery_consumption, feasible_battery))
             if not prune(self.battery, battery_consumption, self.battery_reserve) and decision != self.curr_loc:
                 #Immediate loss in i=1
-                duration = self.compute_duration(self.curr_loc, decision, self.curr_fmeasures[decision], self.restoration, self.noise[self.curr_loc, decision]) #TODO: DONE! Respective noise
-
-                #TODO: The tlapse should use the state data on tlapse
+                duration = self.compute_duration(self.curr_loc, decision, self.curr_fmeasures[decision], self.restoration, self.travel_noise[self.curr_loc, decision])
                 updated_fmeasures = self.adjust_fmeasures(self.curr_fmeasures.copy(), decision, duration)  # F-measure of areas adjusted accordingly, i.e., consequence of decision
-                immediate_loss_decision = self.compute_net_loss(updated_fmeasures)
+                immediate_cost_decision = self.compute_opportunity_cost(updated_fmeasures) #immediate opportunity cost
                 self.debug("Current F-measures: {}".format(self.curr_fmeasures))
-                self.debug("Feasible decision: {}. Duration: {}. Updated F: {}. Immediate loss: {}".format(decision, duration, updated_fmeasures, immediate_loss_decision))
+                self.debug("Feasible decision: {}. Duration: {}. Updated F: {}. Immediate loss: {}".format(decision, duration, updated_fmeasures, immediate_cost_decision))
 
                 #Heuristic loss for i=2...k
-                #TODO: Insert Time series forecast for future steps in heuristic_loss_decision
-                #TODO: Compute the tlapse for each of the areas. For the computed duration, add that up to all other areas except the decided area. We then feed this as input into next method
-                updated_tlapses = self.simulate_tlapses(self.tlapses, decision, duration)
-                forecasted_loss_decision = forecast_opportunity_cost(updated_fmeasures, updated_tlapses, self.survey_data, self.model, self.scale, (self.fsafe, self.fcrit),
-                                                         self.gamma, self.dec_steps, mean_duration_decay_dict) #Main
+                updated_tlapses = self.simulate_tlapses(self.tlapses.copy(), decision, duration)
+                forecasted_cost_decision = forecast_opportunity_cost(updated_fmeasures, updated_tlapses, self.survey_data.iloc[-1], self.model, self.scale, (self.fsafe, self.fcrit),
+                                                         self.gamma, self.dec_steps, mean_duration_decay_dict) #forecasted opportunity cost
 
-                self.debug("Discounted future losses through {} steps: {}".format(self.dec_steps, forecasted_loss_decision))
-                evaluated_loss_decision = immediate_loss_decision + forecasted_loss_decision
-                self.debug("Appending: {}".format((decision, evaluated_loss_decision, feasible_battery)))
-                decision_array.append((decision, evaluated_loss_decision, feasible_battery))
+                self.debug("Discounted future losses through {} steps: {}".format(self.dec_steps, forecasted_cost_decision))
+                evaluated_cost_decision = immediate_cost_decision + forecasted_cost_decision
+                self.debug("Appending: {}".format((decision, evaluated_cost_decision, feasible_battery)))
+                decision_array.append((decision, evaluated_cost_decision, feasible_battery))
 
         best_decision = self.charging_station
 
@@ -455,20 +440,16 @@ class Robot:
 
     def compute_duration(self, start_area, next_area, curr_measure, restoration, noise):
         """
-        #TODO: Edit this. No
-        #Resoln: Just make sure the noise is from self.matrix and the correct restoration rate when this method is called, both are being learned
-
         Computes (time) duration of operation, which includes travelling distance plus restoration, if any
         :param distance:
         :param restoration: restore a measure (if not None) back to full measure per second
-        :param noise: expected noise in distance travelled
+        :param noise: expected noise in duration of distance travelled
         :return:
         """
 
         # Travel distance
         distance = self.dist_matrix[int(start_area), int(next_area)]
-        distance += noise * distance #distance + noise #DONE. TODO: Adjust the noise here
-        time = (distance / self.robot_velocity)
+        time = (distance / self.robot_velocity) * (1 + noise)
 
         #If next area is not the charging station: the restoration is the f-measure; else, the restoration is the battery level
         if next_area != self.charging_station:
@@ -485,9 +466,6 @@ class Robot:
 
     def consume_battery(self, start_area, next_area, curr_measure, noise):
         """
-        #DONE. TODO: Edit this? No need. But the noise needs to be re-adjusted/scaled. Here it is a percentage.
-        #Resoln: Okay, we can settle with percentage. Growth rate formula
-
         Consumes curr_battery for the duration of the operation.
         This duration includes the distance plus F-measure restoration, if any
         :param curr_battery:
@@ -497,8 +475,7 @@ class Robot:
 
         #Batt consumed in travel
         distance = self.dist_matrix[int(start_area), int(next_area)]
-        distance += noise * distance
-        travel_time = (distance / self.robot_velocity)
+        travel_time = (distance / self.robot_velocity) * (1 + noise)
         battery_consumed = self.batt_consumed_per_travel_time * travel_time
 
         if next_area != self.charging_station:
@@ -508,9 +485,6 @@ class Robot:
 
     def adjust_fmeasures(self, tlapses, visit_area, duration):
         """
-        #DONE. TODO: Edit this. Yes. Based on tlapse
-        #Make sure that duration accounts for the travel noise and restoration, if need be
-
         Adjusts the F-measures of all areas in robot's mind. The visit area will be restored to max, while the other areas will decay for
         t duration. Note that the charging station is not part of the areas to monitor. And so, if the visit_area is the
         charging station, then all of the areas will decay as duration passes by.
@@ -529,7 +503,7 @@ class Robot:
 
         return fmeasures
 
-    def compute_net_loss(self, fmeasures):
+    def compute_opportunity_cost(self, fmeasures):
         """
         Computes the net loss, (i.e., the sum of losses) of the fmeasures, which is a consequence of a decision
         Steps:
@@ -570,6 +544,7 @@ class Robot:
         """
         self.ndata = 0
         self.temp_recorded_decay = list()
+        self.debug("Temp for recorded data has been reset")
 
     def update_temp_data(self, new_entry):
         """
@@ -589,23 +564,23 @@ class Robot:
         """
         entry = list()
         forecast = forecast_decay(self.model, self.survey_data.iloc[-1], forecast_steps, self.scale)
-        for i in self.areas:
-            if i == mission_area:
+        for j in self.areas:
+            if j == mission_area:
                 entry.append(decay_rate)
             else:
-                entry.append(forecast[-1][i]) #latest forecast, area
+                entry.append(forecast[-1][j]) #latest forecast, area
         return entry
 
     def record_decay(self, decay_rate, area):
         """
-        Records decay parameter
+        Records decay parameter for data dump
         :return:
         """
-        self.recorded_decay_param[area].append(decay_rate)  # Estimate decay param based on measured data and time lapsed since last restoration
+        self.recorded_decay_param[area].append(decay_rate)
 
     def record_decisions_accomplished(self):
         """
-        Record decisions accomplished
+        Record decisions accomplished for data dump
         :return:
         """
 
@@ -653,7 +628,7 @@ class Robot:
     #Methods: Run operation
     def run_operation(self, filename, freq=1):
         """
-        #TODO: Edit this
+        Finite states of robot
         :return:
         """
 
@@ -669,17 +644,18 @@ class Robot:
                     rate.sleep() #Data for decay rates haven't registered yet
                 self.debug("Sufficent data. Decay rates: {}. Sampled nodes poses: {}".format(self.decay_rates_dict, self.sampled_nodes_poses)) #Prior knowledge of decay rates
             else:
-                #TODO: Train forecast model here. DONE
                 self.debug("Fitting initial model on survey data...")
+                train_start = process_time()
                 self.model = fit_model(self.survey_data, order=self.order, trend=self.trend, scale=self.scale)
+                train_end = process_time()
+                train_elapsed = self.time_elapsed(train_start, train_end)
+                self.debug('Done training model. Elapsed time: {}'.format(train_elapsed))
                 self.forecast_step = 1
-                #TODO: Ensure this is a decay rate. Can we have a method instead that says forecast decay rates. DONE
-                self.decay_rates_dict = self.forecast_decay_rates_dict(self.forecast_step) #TODO: Survey_data and recorded_decay_params should be handled together for appending. DONE
-                #Initialize placeholders for collected data on decay and decisions made prior to training model
-                self.reset_temp_data()
+                self.decay_rates_dict = self.forecast_decay_rates_dict(self.forecast_step)
+                self.reset_temp_data() #Initialize placeholders for collected data on decay and decisions made prior to training model
 
             self.build_dist_matrix()
-            assert self.dist_matrix.shape == self.trave_noise.shape, 'Incongruent self.dist_matrix and self.travel_noise!'
+            assert self.dist_matrix.shape == self.travel_noise.shape, 'Incongruent self.dist_matrix and self.travel_noise!'
             self.sim_t = 0 #simulation time
 
             while not rospy.is_shutdown() and self.sim_t < self.t_operation:
@@ -711,34 +687,31 @@ class Robot:
                 elif self.robot_status == robotStatus.RESTORING_F.value:
                     self.debug('Restoring F-measure')
 
-                #TODO: Ensure the cycle of states is correct. Note: oracle should have no replanning state
                 elif self.robot_status == robotStatus.CONSIDER_REPLAN.value:
                     self.debug('Consider re-plan...')
                     self.debug("Mission area: {}. Estimated decay rates: {}".format(self.mission_area, self.decay_rates_dict))
 
                     belief_decay = self.decay_rates_dict[self.curr_loc]
-                    measured_decay = self.recorded_decay_param[self.curr_loc][-1] #TODO: Make sure this is updated timely for each recorded F
+                    measured_decay = self.recorded_decay_param[self.curr_loc][-1]
 
                     #Process the newly recorded data: Store actual data for area visited while impute for all other areas by forecasting using timeseries model
-                    new_entry = self.record_and_impute_decay(self.curr_loc, measured_decay, self.forecast_step) #
+                    new_entry = self.record_and_impute_decay(self.curr_loc, measured_decay, self.forecast_step)
                     self.update_temp_data(new_entry)
 
                     #Update the model
-                    if self.ndata >= self.ndata_thresh and self.discrepancy(belief_decay, measured_decay) >= self.discrepancy_thresh:
-                        #TODO: Append recorded data to survey data
-                        ## Need to append recorded data to survey data, a data frame
-
-                        #TODO: Redo building recorded data
-                        #S1: We can build a list of lists for the recorded data
-                        #S2: We then have a method to update survey data. Here we transform recorded data into data frame where the columns are the areas
-                        #S3: We then append recorded data to survey_data
-
+                    if self.ndata >= self.ndata_thresh and self.discrepancy(measured_decay, belief_decay) >= self.discrepancy_thresh:
+                        #Update survey data
                         self.update_survey_data()
 
-                        #TODO: Fit model using survey data
+                        #Fit model using survey data
+                        self.debug("Model update conditions met. Updating timeseries model...")
+                        train_start = process_time()
                         self.model = fit_model(self.survey_data, order=self.order, trend=self.trend, scale=self.scale)
+                        train_end = process_time()
+                        train_elapsed = self.time_elapsed(train_start, train_end)
+                        self.debug('Done training model. Elapsed time: {}'.format(train_elapsed))
 
-                        #TODO: Reset temp data
+                        #Reset temp data
                         self.reset_temp_data()
                         self.forecast_step = 0
 
@@ -746,16 +719,15 @@ class Robot:
                     self.forecast_step += 1
                     self.decay_rates_dict = self.forecast_decay_rates_dict(self.forecast_step)
 
-
-                    #TODO: Learn/update noise models for travel and restoration
-                    #PO: We have a timer that is a function of sim_t we constantly reset
+                    #Learn/update noise models for travel and restoration
+                    #Measure actual noise. Update current noise model
                     actual_travel_time = self.end_travel_time - self.start_travel_time
                     est_travel_time = (self.dist_matrix[self.prev_loc, self.curr_loc] / self.robot_velocity) #Note: Should just be solely on dist_matrix / robot velocity as the estimation
                     travel_noise = measure_travel_noise(actual_travel_time, est_travel_time)
                     self.update_noise_model('travel_noise', travel_noise) #This will need tuple of previous and current loctions
 
-                    #We can then measure the actual travel time and restoration times
-                    restored_amount = self.recorded_f_data[self.curr_loc][-1]
+                    #Measure actual restoration rate. Update current restoration model
+                    restored_amount = self.max_fmeasure - self.recorded_f_data[self.curr_loc][-1]
                     restoration_rate = measure_restoration_rate(restored_amount, self.end_restore_time, self.start_restore_time)
                     self.update_noise_model('restoration_rate', restoration_rate)
 
@@ -763,13 +735,14 @@ class Robot:
                     self.travel_noise_data.append(travel_noise)
                     self.restoration_data.append(restoration_rate)
 
-                    self.update_robot_status(robotStatus.IN_MISSION)  # Verified
+                    self.update_robot_status(robotStatus.IN_MISSION)
 
+                self.state.append((self.sim_t, self.curr_loc, self.battery, self.tlapses, self.decay_rates_dict))
                 self.sim_t += 1
-                self.state.append((self.sim_t, self.curr_loc, self.battery, self.tlapses, self.decay_rates_dict)) #TODO: We can insert the state here
 
-                if (self.robot_status != robotStatus.IDLE.value) and (self.robot_status != robotStatus.READY.value) and (self.robot_status != robotStatus.CONSIDER_REPLAN.value): #TODO: PO Insert the condition that the areas are simulating
-                    self.update_tlapses_areas(self.sim_t) #Update the tlapse per area
+                #Update tlapse for each area
+                if (self.robot_status != robotStatus.IDLE.value) and (self.robot_status != robotStatus.READY.value) and (self.robot_status != robotStatus.CONSIDER_REPLAN.value):
+                    self.update_tlapses_areas(self.sim_t)
                 rate.sleep()
 
             #Store results
@@ -780,24 +753,22 @@ class Robot:
             #Wait before all other nodes have finished dumping their data
             if self.save:
                 if self.inference is not None:
-                    pu.dump_data((self.recorded_f_data, self.recorded_decay_param, self.inferred_decay_rates), '{}_robot{}_recorded_data'.format(filename, self.robot_id))
+                    pu.dump_data((self.recorded_f_data, self.recorded_decay_param), '{}_robot{}_recorded_data'.format(filename, self.robot_id))
                 pu.dump_data(self.state, '{}_environment_state'.format(filename))
                 pu.dump_data(self.process_time_counter, '{}_robot{}_process_time'.format(filename, self.robot_id))
                 pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
                 pu.dump_data((self.decisions_accomplished, self.total_dist_travelled), '{}_robot{}_decisions_acc_travel'.format(filename, self.robot_id))
-                #TODO: Potentially, store actual travel time and restoration rates
                 pu.dump_data({'travel_noise': self.travel_noise_data, 'restoration': self.restoration_data}, '{}_robot{}_noise_data'.format(filename, self.robot_id))
                 pu.dump_data(self.status_history, '{}_robot{}_status_history'.format(filename, self.robot_id))
                 self.debug("Dumped all data.".format(self.robot_id))
             self.shutdown(sleep=10)
-
 
     def think_decisions(self):
         """
         Thinks of the best decision before starting mission
         :return:
         """
-        self.best_decision = self.greedy_best_decision() #So inside here we can
+        self.best_decision = self.greedy_best_decision()
 
     def time_elapsed(self, think_start, think_end):
         """
@@ -875,7 +846,7 @@ class Robot:
             self.available = True
             self.tlapses[area_id] = 0 #Reset the tlapse since last restored for the newly restored area
             self.end_restore_time = self.sim_t
-            if self.robot_id == 0: self.debug("Area {} fully restored! tlapse reset...".format(area_id))
+            if self.robot_id == 0: self.debug("Area {} fully restored! Sim time when restored: {}. Tlapse reset...".format(area_id, self.end_restore_time))
 
             if (self.inference is not None) and (self.inference != 'oracle'):
                 self.update_robot_status(robotStatus.CONSIDER_REPLAN)

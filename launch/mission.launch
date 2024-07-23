@@ -10,6 +10,8 @@
     <arg name="placement" default="1"/>
     <arg name="fileposes" default="1"/>
     <arg name="fileresult" default="1"/>
+    <arg name="history_data" default="None"/>
+    <arg name="history_decisions" default="None"/>
     <arg name="save" default="False"/>
 
     <param name="/use_sim_time" value="true" />

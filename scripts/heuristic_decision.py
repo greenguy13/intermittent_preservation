@@ -317,18 +317,18 @@ class Robot:
                 #Immediate loss in i=1
                 duration = self.compute_duration(self.curr_loc, decision, self.curr_fmeasures[decision], self.restoration, self.noise)
                 updated_fmeasures = self.adjust_fmeasures(self.curr_fmeasures.copy(), decision, duration)  # F-measure of areas adjusted accordingly, i.e., consequence of decision
-                immediate_loss_decision = self.compute_net_loss(updated_fmeasures)
+                immediate_cost_decision = self.compute_opportunity_cost(updated_fmeasures) #immediate opportunity cost
                 self.debug("Current F-measures: {}".format(self.curr_fmeasures))
-                self.debug("Feasible decision: {}. Duration: {}. Updated F: {}. Immediate loss: {}".format(decision, duration, updated_fmeasures, immediate_loss_decision))
+                self.debug("Feasible decision: {}. Duration: {}. Updated F: {}. Immediate loss: {}".format(decision, duration, updated_fmeasures, immediate_cost_decision))
 
                 #Heuristic loss for i=2...k
-                forecasted_loss_decision = heuristic_loss_decision(updated_fmeasures, self.decay_rates_dict, (self.fsafe, self.fcrit),
-                                                         self.gamma, self.dec_steps, mean_duration_decay_dict) #Main
+                forecasted_cost_decision = heuristic_cost_decision(updated_fmeasures, self.decay_rates_dict, (self.fsafe, self.fcrit),
+                                                         self.gamma, self.dec_steps, mean_duration_decay_dict) #forecasted opportunity cost
 
-                self.debug("Discounted future losses through {} steps: {}".format(self.dec_steps, forecasted_loss_decision))
-                evaluated_loss_decision = immediate_loss_decision + forecasted_loss_decision
-                self.debug("Appending: {}".format((decision, evaluated_loss_decision, feasible_battery)))
-                decision_array.append((decision, evaluated_loss_decision, feasible_battery))
+                self.debug("Discounted future losses through {} steps: {}".format(self.dec_steps, forecasted_cost_decision))
+                evaluated_cost_decision = immediate_cost_decision + forecasted_cost_decision #total forecasted opportunity cost
+                self.debug("Appending: {}".format((decision, evaluated_cost_decision, feasible_battery)))
+                decision_array.append((decision, evaluated_cost_decision, feasible_battery))
 
         best_decision = self.charging_station
 
@@ -401,7 +401,7 @@ class Robot:
 
         return fmeasures
 
-    def compute_net_loss(self, fmeasures):
+    def compute_opportunity_cost(self, fmeasures):
         """
         Computes the net loss, (i.e., the sum of losses) of the fmeasures, which is a consequence of a decision
         Steps:
