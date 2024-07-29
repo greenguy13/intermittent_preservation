@@ -115,7 +115,7 @@ class Robot:
         self.process_time_counter = []  # container for time it took to come up with decision
 
         # Variables for UCB
-        self.inference = rospy.get_param("/inference") #TODO: We can use classical UCB or Thompson sampling
+        self.inference = rospy.get_param("/inference")
         self.exploration = rospy.get_param("/exploration")
         self.mean_losses = dict()
         self.recorded_losses = dict()
@@ -449,6 +449,7 @@ class Robot:
             mean_duration_decay_dict[area] = self.mean_duration_decay(duration_matrix, area)
 
         # Evaluate decision
+        # TODO: Diminishing exploration
         decision_array = []
         for decision in competitive_arms: #TODO: for decision among competitive arms
             # Battery consumption
@@ -457,7 +458,6 @@ class Robot:
             self.debug("Batt consumption: {}. Feasible batt: {}".format(battery_consumption, feasible_battery))
 
             if not prune(self.battery, battery_consumption, self.battery_reserve) and decision != self.curr_loc:
-                #TODO: We can potentially add have a trigger for classical or thompson sampling
                 bound = np.sqrt(2 * np.log(sum(self.counts_visited) + 1) / (self.counts_visited[decision-1] + 1e-5))
                 ucb_value = self.mean_losses[decision] - self.exploration * bound
                 self.debug("Feasible decision, Mean loss, Feasible battery: {}, {}, {}".format(decision, ucb_value,
@@ -625,11 +625,14 @@ class Robot:
                                                                                   self.mean_losses))
                     self.update_mean_loss(self.mission_area)
                     self.update_robot_status(robotStatus.IN_MISSION)  # Verified
-                t += 1
-                if (self.robot_status != robotStatus.IDLE.value) and (
+
+                if len(self.decisions_made)>0 or (self.robot_status != robotStatus.IDLE.value) and (
                         self.robot_status != robotStatus.READY.value) and (
                         self.robot_status != robotStatus.CONSIDER_REPLAN.value):
                     self.update_tlapses_areas()  # Update the tlapse per area
+                    self.compute_curr_fmeasures()
+                    #TODO: PO, diminish exploration rate
+                t += 1
                 rate.sleep()
 
             # Store results
@@ -759,7 +762,6 @@ class Robot:
                     "Oracle knowledge, change in decay in area {}: {}".format(area_id, msg.data))
                 self.decay_rates_dict[area_id] = msg.data  # A subscribed topic. Oracle knows exactly the decay rate happening in area
 
-    #TODO: Why do we still have this here? It's like oracle knowledge
     def area_fmeasure_cb(self, msg, area_id):
         """
         Updates fmeasure of area
@@ -767,7 +769,18 @@ class Robot:
         :param area_id:
         :return:
         """
-        self.curr_fmeasures[area_id] = msg.data
+        if self.inference == 'oracle':
+            self.curr_fmeasures[area_id] = msg.data
+
+    def compute_curr_fmeasures(self):
+        """
+        Computes current fmeasures based on tlapse and decay rates
+        :return:
+        """
+        for area in self.areas:
+           self.curr_fmeasures[area] = decay(self.decay_rates_dict[area], self.tlapses[area], self.max_fmeasure)
+        self.debug("Used for computation. Tlapses: {}. Decay rates: {}".format(self.tlapses, self.decay_rates_dict))
+        self.debug("Computed current f-measures: {}".format(self.curr_fmeasures))
 
     def debug(self, msg):
         pu.log_msg('robot', self.robot_id, msg, self.debug_mode)

@@ -31,7 +31,7 @@ def get_decay_rate(max_fmeasure, decayed_fmeasure, tlapse):
     :param time:
     :return:
     """
-    rate = 1 - (decayed_fmeasure/max_fmeasure)**(1/tlapse)
+    rate = 1 - (decayed_fmeasure/max_fmeasure)**(1/(tlapse + 1e-10))
     return rate
 
 def beta_rate(rate, rates):

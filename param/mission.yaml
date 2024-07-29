@@ -21,14 +21,14 @@ battery_reserve: 20 #battery reserve
 f_thresh: [80, 50] #(safe, crit)
 batt_consumed_per_time: [0.10, 0.10] #(travel, restoration)
 restoration: 25 #F-measure/battery.py units per second restored
-noise: 0.25 #noise/error in navigation and restoration
+noise: 0.25 #noise/error in navigation and restoration #TODO: Can we start with 0.0?
 move_base_tolerance: 0.5
 
 #Uncertainty params
-win_size: 3 #window size for the moving average forecast
-ndata_thresh: 5 #threshold of data collected to trigger training/update of time-series model
-discrepancy_thresh: 0.25 #threshold of discrepancy betweeen belief decay and measured decay to trigger training/update of timeseries model
-learning_rate: 0.10 #learning rate
+win_size: 3 #window size for the moving average forecast. TODO: This can be just a hyper-parameter in moving average script
+nvisits_thresh: 2 #threshold of data collected to trigger training/update of time-series model
+discrepancy_thresh: 0.05 #threshold of discrepancy betweeen belief decay and measured decay to trigger training/update of timeseries model
+learning_rate: 0.75 #learning rate
 
 #Reinforcement learning params
 exploration: 0.4 #tunable exploration parameter

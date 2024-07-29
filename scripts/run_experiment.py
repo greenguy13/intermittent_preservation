@@ -112,12 +112,16 @@ if __name__ == '__main__':
     #Adjust acml.launch, max_range=20
     # Sanity checker
     history_data, history_decisions = retrieve_history_data_decisions_filenames(world='office', method='heuristic_uncertainty', inference='expected', nareas=8, placement=2, dec_steps=4, trial=1)
+
     placement = 1
-    run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 100,
-                   inference='timeseries', dec_steps=4, ntrials=1, history_data=history_data, history_decisions=history_decisions, save=False)
+    run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 150,
+                   inference='timeseries', dec_steps=3, ntrials=1, history_data=history_data, history_decisions=history_decisions, save=False)
+
+    # run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 100,
+    #                inference=None, dec_steps=1, ntrials=1, save=False)
 
     #Run
-    # run_experiment('treebased_decision', 'office', 8, 9, 'non_uniform', 3100,
+    # run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
     #                inference='oracle', dec_steps=4, ntrials=1, save=True)
     #
     # run_experiment('heuristic_uncertainty', 'office', 8, 11, 'non_uniform', 3100,
@@ -139,9 +143,10 @@ if __name__ == '__main__':
     # run_experiment('correlated_ucb', 'office', 8, placement, 'non_uniform', 3100,
     #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
 
-    #TO-RUN/fix
     # run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
     #                inference=None, dec_steps=4, ntrials=1, save=True)
+
+
 
     #
     # placement = 32

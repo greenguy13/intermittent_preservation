@@ -350,7 +350,7 @@ class Robot:
                 self.debug("Feasible decision: {}. Duration: {}. Updated F: {}. Immediate loss: {}".format(decision, duration, updated_fmeasures, immediate_loss_decision))
 
                 #Heuristic loss for i=2...k
-                forecasted_loss_decision = heuristic_loss_decision(updated_fmeasures, self.decay_rates_dict, (self.fsafe, self.fcrit),
+                forecasted_loss_decision = heuristic_cost_decision(updated_fmeasures, self.decay_rates_dict, (self.fsafe, self.fcrit),
                                                          self.gamma, self.dec_steps, mean_duration_decay_dict) #Main
 
                 self.debug("Discounted future losses through {} steps: {}".format(self.dec_steps, forecasted_loss_decision))

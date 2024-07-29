@@ -84,7 +84,7 @@ class Area():
             self.update_status(areaStatus.DECAYING)
         elif (robot_status == robotStatus.RESTORING_F.value and self.robot_mission_area == self.area) and (self.fmeasure < self.max_fmeasure):
             self.update_status(areaStatus.RESTORING_F)
-        self.debug('robot status: {}. area {} status: {} fmeasure: {} tlapse: {}, sim_t: {}'.format(robot_status, self.area, self.status, self.fmeasure, self.tlapse, self.sim_t))
+        self.debug('robot status: {}. area {} status: {}, decay: {}, fmeasure: {} tlapse: {}, sim_t: {}'.format(robot_status, self.area, self.status, self.decay_rate, self.fmeasure, self.tlapse, self.sim_t))
 
     def mission_area_cb(self, msg):
         """

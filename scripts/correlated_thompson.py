@@ -126,7 +126,7 @@ class Robot:
         self.counts_visited = np.zeros(self.nareas) #array of counts of number times area has been visited; zero-indexed
         self.taus = np.ones(self.nareas)
 
-        self.competitive_arms = [] #TODO: Why is this here?
+        self.competitive_arms = []
         self.correlation_info = rospy.get_param("/correlation_info")
         self.correlation_matrix = self.build_correlation_matrix()  # Initialize correlation matrix.
 
@@ -613,7 +613,7 @@ class Robot:
                 elif self.robot_status == robotStatus.READY.value:
                     self.debug('Robot ready')
                     think_start = process_time()
-                    self.think_decisions()
+                    self.think_decisions() #TODO: Insert exploration here
                     think_end = process_time()
                     think_elapsed = self.time_elapsed(think_start, think_end)
                     self.process_time_counter.append(think_elapsed)
@@ -637,11 +637,14 @@ class Robot:
                                                                                   self.mean_losses))
                     self.update_mean_loss(self.mission_area) #TODO: Update model
                     self.update_robot_status(robotStatus.IN_MISSION)  # Verified
-                t += 1
-                if (self.robot_status != robotStatus.IDLE.value) and (
+
+                if len(self.decisions_made)>0 or (self.robot_status != robotStatus.IDLE.value) and (
                         self.robot_status != robotStatus.READY.value) and (
                         self.robot_status != robotStatus.CONSIDER_REPLAN.value):
                     self.update_tlapses_areas()  # Update the tlapse per area
+                    self.compute_curr_fmeasures()
+                    #TODO: Here we diminish the exploration rate
+                t += 1
                 rate.sleep()
 
             # Store results
@@ -771,7 +774,6 @@ class Robot:
                     "Oracle knowledge, change in decay in area {}: {}".format(area_id, msg.data))
                 self.decay_rates_dict[area_id] = msg.data  # A subscribed topic. Oracle knows exactly the decay rate happening in area
 
-    #TODO: Why do we still have this here? It's like oracle knowledge
     def area_fmeasure_cb(self, msg, area_id):
         """
         Updates fmeasure of area
@@ -779,7 +781,19 @@ class Robot:
         :param area_id:
         :return:
         """
-        self.curr_fmeasures[area_id] = msg.data
+        if self.inference == 'oracle':
+            self.curr_fmeasures[area_id] = msg.data
+
+    def compute_curr_fmeasures(self):
+        """
+        Computes current fmeasures based on tlapse and decay rates
+        :return:
+        """
+        for area in self.areas:
+           self.curr_fmeasures[area] = decay(self.decay_rates_dict[area], self.tlapses[area], self.max_fmeasure)
+        self.debug("Used for computation. Tlapses: {}. Decay rates: {}".format(self.tlapses, self.decay_rates_dict))
+        self.debug("Computed current f-measures: {}".format(self.curr_fmeasures))
+
 
     def debug(self, msg):
         pu.log_msg('robot', self.robot_id, msg, self.debug_mode)
