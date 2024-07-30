@@ -134,9 +134,9 @@ class Robot:
         for node in range(self.nareas+1):
             self.environment_status[node] = 999
 
-        self.history_data_filename = rospy.get_param("/history_data")
-        self.history_decisions_filename = rospy.get_param("/history_decisions")
-        decisions_data, recorded_decay_data = self.read_history_data()
+        # self.history_data_filename = rospy.get_param("/history_data")
+        # self.history_decisions_filename = rospy.get_param("/history_decisions")
+        # decisions_data, recorded_decay_data = self.read_history_data()
         # self.survey_data = self.build_decisions_recorded_data(decisions_data, recorded_decay_data)
         #Note: Restoration rate is already initialized above. This shall be learned
 

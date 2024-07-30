@@ -230,7 +230,6 @@ class Robot:
         self.debug("Dist matrix: {}".format(self.dist_matrix))
 
     # METHODS: Send robot to area
-    # TODO: This can be an independent script of its own
     def go_to_target(self, goal_idx):
         """
         Action client to move_base to move to target goal
@@ -359,16 +358,6 @@ class Robot:
                 most_visited.append(area)
         return most_visited
 
-    # def get_max_empirical_mean(self, most_visited):
-    #     """
-    #     Returns max empirical mean
-    #     """
-    #     max_arm = most_visited[0]
-    #     for area in most_visited:
-    #         if area != max_arm and (self.mean_losses[area] > self.mean_losses[max_arm]):
-    #             max_arm = area
-    #     return max_arm
-
     def get_max_empirical_mean(self, most_visited):
         """
         Returns max empirical mean among the most visited areas
@@ -387,10 +376,6 @@ class Robot:
         return reward
 
     def greedy_best_decision(self):
-        """
-        TODO
-        :return:
-        """
         """
         Part 1: Find the competitive arms
         #1. Find set S, most visited areas
@@ -414,12 +399,15 @@ class Robot:
                     append j in A
         #5. Sanity check: A should never be non-empty            
         """
+
+        """
+        Part 1: Find competitive arms
+        """
         most_visited_areas = self.get_most_visited_areas()
-        #Just a note: Should we do min or max? Note we are trying to minimize the loss
-        max_empirical_mean = self.get_max_empirical_mean(most_visited_areas) #TODO: Here actually, it should be min_empirical_mean?
+        max_empirical_mean = self.get_max_empirical_mean(most_visited_areas)
         self.debug("Counts of areas visited: {}".format(self.counts_visited))
         self.debug("Most visited arms: {}. Max empirical mean: {}".format(most_visited_areas, max_empirical_mean))
-        competitive_arms = list() #TODO: We can potentially add here the area with max empirical mean. What if it is the only competitive arm? Unless the correlation matrix likewise correlates with own arm
+        competitive_arms = list()
 
         for area in self.areas:
             pseudo_rewards_list = list()
@@ -432,12 +420,11 @@ class Robot:
                     self.debug("Area: {}. Min pseudo-reward: {}. <= max mean: {}".format(area, max_z, max_z <= max_empirical_mean))
                     if max_z <= max_empirical_mean:
                         competitive_arms.append(area)
-                #TODO: Check the contents of competitive arms. Should always be non-empty
         competitive_arms = list(set(competitive_arms))
         self.debug("Competitive arms: {}".format(competitive_arms))
 
         """
-        Part 2: Apply UCB among the competitive arms
+        Part 2: Apply UCB among the competitive arms, picking the one with least mean loss
         """
         # Measure duration matrix
         duration_matrix = self.dist_matrix / self.robot_velocity
@@ -448,10 +435,9 @@ class Robot:
         for area in self.areas:
             mean_duration_decay_dict[area] = self.mean_duration_decay(duration_matrix, area)
 
-        # Evaluate decision
-        # TODO: Diminishing exploration
+        # Evaluate decision among competitive arms
         decision_array = []
-        for decision in competitive_arms: #TODO: for decision among competitive arms
+        for decision in competitive_arms:
             # Battery consumption
             battery_consumption, feasible_battery = self.estimate_battery_params(decision, self.battery, self.curr_loc,
                                                                                  self.curr_fmeasures, self.noise)
@@ -631,7 +617,6 @@ class Robot:
                         self.robot_status != robotStatus.CONSIDER_REPLAN.value):
                     self.update_tlapses_areas()  # Update the tlapse per area
                     self.compute_curr_fmeasures()
-                    #TODO: PO, diminish exploration rate
                 t += 1
                 rate.sleep()
 
@@ -793,4 +778,4 @@ class Robot:
 if __name__ == '__main__':
     os.chdir('/root/catkin_ws/src/results/int_preservation')
     filename = rospy.get_param('/file_data_dump')
-    Robot('multiarmed_ucb').run_operation(filename)
+    Robot('correlated_ucb').run_operation(filename)

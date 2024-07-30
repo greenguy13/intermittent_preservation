@@ -57,8 +57,7 @@ def run_experiment(method, world, nareas, placement, decay, tframe, inference=No
                           'dsteps:={}'.format(dec_steps),
                           'tframe:={}'.format(tframe), 'placement:={}'.format(placement),
                           'fileposes:={}'.format(fileposes), 'fileresult:={}'.format(fileresult), 'save:={}'.format(save)]
-                if method == 'heuristic_uncertainty' and inference == 'timeseries':
-                    assert (history_data is not None) and (history_decisions is not None), "Should have history data and decisions accomplished"
+                if (method == 'heuristic_uncertainty' and inference == 'timeseries') and (history_data is not None and history_decisions is not None):
                     params.append('history_data:={}'.format(history_data))
                     params.append('history_decisions:={}'.format(history_decisions))
                 print(
@@ -111,40 +110,31 @@ if __name__ == '__main__':
     #Office
     #Adjust acml.launch, max_range=20
     # Sanity checker
-    history_data, history_decisions = retrieve_history_data_decisions_filenames(world='office', method='heuristic_uncertainty', inference='expected', nareas=8, placement=2, dec_steps=4, trial=1)
+    # history_data, history_decisions = retrieve_history_data_decisions_filenames(world='office', method='heuristic_uncertainty', inference='expected', nareas=8, placement=2, dec_steps=4, trial=1)
+
+    # placement = 1
+    # run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 20,
+    #                inference='timeseries', dec_steps=1, ntrials=1, save=False)
+
 
     placement = 1
-    run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 150,
-                   inference='timeseries', dec_steps=3, ntrials=1, history_data=history_data, history_decisions=history_decisions, save=False)
+    run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
+                   inference='oracle', dec_steps=4, ntrials=1, save=True)
 
-    # run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 100,
-    #                inference=None, dec_steps=1, ntrials=1, save=False)
+    run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 3100,
+                   inference='timeseries', dec_steps=4, ntrials=1, save=True)
 
-    #Run
-    # run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference='oracle', dec_steps=4, ntrials=1, save=True)
-    #
-    # run_experiment('heuristic_uncertainty', 'office', 8, 11, 'non_uniform', 3100,
-    #                inference='expected', dec_steps=4, ntrials=1, save=True)
+    run_experiment('multiarmed_ucb', 'office', 8, placement, 'non_uniform', 3100,
+                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
 
-    # placement = 13
-    # run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference='oracle', dec_steps=4, ntrials=1, save=True)
-    #
-    # run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference='expected', dec_steps=4, ntrials=1, save=True)
-    #
-    # run_experiment('multiarmed_ucb', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
-    #
-    # run_experiment('correlated_thompson', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
-    #
-    # run_experiment('correlated_ucb', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
+    run_experiment('correlated_thompson', 'office', 8, placement, 'non_uniform', 3100,
+                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
 
-    # run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference=None, dec_steps=4, ntrials=1, save=True)
+    run_experiment('correlated_ucb', 'office', 8, placement, 'non_uniform', 3100,
+                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
+
+    run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
+                   inference=None, dec_steps=4, ntrials=1, save=True)
 
 
 
@@ -187,11 +177,6 @@ if __name__ == '__main__':
     # run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
     #                inference=None, dec_steps=4, ntrials=1, save=True)
 
-
-
-
-    #TO-Run: See notes
-    ## TODO: Time-series forecast of F-measure or decay rate for future time steps
 
     #Cluttered
     #Adjust acml max_range=10

@@ -2,9 +2,6 @@
 
 """
 Multi-armed UCB
-
-TODO: There is a problem with the script here!
-
 """
 import rospy
 import actionlib
@@ -230,7 +227,6 @@ class Robot:
         self.debug("Dist matrix: {}".format(self.dist_matrix))
 
     # METHODS: Send robot to area
-    # TODO: This can be an independent script of its own
     def go_to_target(self, goal_idx):
         """
         Action client to move_base to move to target goal
@@ -332,13 +328,6 @@ class Robot:
 
         return total_battery_consumption, feasible_battery
 
-    """
-    TODO: Pull the best arm:
-        > greedy decision: pick the area/decision that has minimum loss
-        > we have to ensure feasibility though. if no actions are feasible, this goes back to the charging station
-
-    """
-
     def greedy_best_decision(self):
         """
 
@@ -371,7 +360,7 @@ class Robot:
         best_decision = self.charging_station
 
         if len(decision_array) > 0:
-            best_decision = self.get_best_decision(decision_array)
+            best_decision = self.get_best_decision(decision_array) #Here, we pick the arm with least mean loss
 
         return best_decision
 
