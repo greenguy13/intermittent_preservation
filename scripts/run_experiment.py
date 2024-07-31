@@ -118,23 +118,26 @@ if __name__ == '__main__':
 
 
     placement = 1
-    run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
-                   inference='oracle', dec_steps=4, ntrials=1, save=True)
+    # run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='oracle', dec_steps=4, ntrials=1, save=True)
+    #
+    # run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='timeseries', dec_steps=4, ntrials=1, save=True)
 
     run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 3100,
-                   inference='timeseries', dec_steps=4, ntrials=1, save=True)
+                   inference='timeseries', dec_steps=1, ntrials=1, save=True)
 
-    run_experiment('multiarmed_ucb', 'office', 8, placement, 'non_uniform', 3100,
-                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
-
-    run_experiment('correlated_thompson', 'office', 8, placement, 'non_uniform', 3100,
-                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
-
-    run_experiment('correlated_ucb', 'office', 8, placement, 'non_uniform', 3100,
-                   inference='optimistic', dec_steps=1, ntrials=1, save=True)
-
-    run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
-                   inference=None, dec_steps=4, ntrials=1, save=True)
+    # run_experiment('multiarmed_ucb', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
+    #
+    # run_experiment('correlated_thompson', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
+    #
+    # run_experiment('correlated_ucb', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
+    #
+    # run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference=None, dec_steps=4, ntrials=1, save=True)
 
 
 
