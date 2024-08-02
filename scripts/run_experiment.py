@@ -103,51 +103,37 @@ if __name__ == '__main__':
 
     #Sample node poses
     # worlds = ['office']
-    # nareas_list = [8]
+    # nareas_list = [12]
+    # nplacements = 2000
+    # batch_sample_nodes_poses(worlds, nareas_list, nplacements)
+    #
+    # worlds = ['cluttered']
+    # nareas_list = [8, 12]
     # nplacements = 2000
     # batch_sample_nodes_poses(worlds, nareas_list, nplacements)
 
+
     #Office
-    #Adjust acml.launch, max_range=20
+    #Adjust acml.launch, laser_max_range=20
     # Sanity checker
     # history_data, history_decisions = retrieve_history_data_decisions_filenames(world='office', method='heuristic_uncertainty', inference='expected', nareas=8, placement=2, dec_steps=4, trial=1)
 
     # placement = 1
-    # run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 20,
+    # run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 150,
     #                inference='timeseries', dec_steps=1, ntrials=1, save=False)
 
+    # #TODO: We can potentially set discount and exploration rates as parameter to run_experiment
 
     placement = 1
+    #
     # run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
     #                inference='oracle', dec_steps=4, ntrials=1, save=True)
     #
-    # run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference='timeseries', dec_steps=4, ntrials=1, save=True)
-
     run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 3100,
-                   inference='timeseries', dec_steps=1, ntrials=1, save=True)
-
-    # run_experiment('multiarmed_ucb', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
-    #
-    # run_experiment('correlated_thompson', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
-    #
-    # run_experiment('correlated_ucb', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
-    #
-    # run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference=None, dec_steps=4, ntrials=1, save=True)
-
-
-
-    #
-    # placement = 32
-    # run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference='oracle', dec_steps=4, ntrials=1, save=True)
+                   inference='timeseries', dec_steps=4, ntrials=1, save=True)
     #
     # run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference='expected', dec_steps=4, ntrials=1, save=True)
+    #                inference='timeseries', dec_steps=1, ntrials=1, save=True)
     #
     # run_experiment('multiarmed_ucb', 'office', 8, placement, 'non_uniform', 3100,
     #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
@@ -160,29 +146,39 @@ if __name__ == '__main__':
     #
     # run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
     #                inference=None, dec_steps=4, ntrials=1, save=True)
-    #
-    # placement = 33
-    # run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference='oracle', dec_steps=4, ntrials=1, save=True)
-    #
-    # run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference='expected', dec_steps=4, ntrials=1, save=True)
-    #
-    # run_experiment('multiarmed_ucb', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
-    #
-    # run_experiment('correlated_thompson', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
-    #
-    # run_experiment('correlated_ucb', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
-    #
-    # run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
-    #                inference=None, dec_steps=4, ntrials=1, save=True)
+
+
+    #Latest in previous runs: 33
 
 
     #Cluttered
-    #Adjust acml max_range=10
+    #Adjust acml laser_max_range=10
+
+    #TODO: Run slower, inverted correlated areas
+
+    # placement = 1
+    #
+    # run_experiment('treebased_decision', 'cluttered', 8, placement, 'non_uniform', 3100,
+    #                inference='oracle', dec_steps=4, ntrials=1, save=True)
+    #
+    # run_experiment('heuristic_uncertainty', 'cluttered', 8, placement, 'non_uniform', 3100,
+    #                inference='timeseries', dec_steps=4, ntrials=1, save=True)
+    #
+    # run_experiment('heuristic_uncertainty', 'cluttered', 8, placement, 'non_uniform', 3100,
+    #                inference='timeseries', dec_steps=1, ntrials=1, save=True)
+    #
+    # run_experiment('multiarmed_ucb', 'cluttered', 8, placement, 'non_uniform', 3100,
+    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
+    #
+    # run_experiment('correlated_thompson', 'cluttered', 8, placement, 'non_uniform', 3100,
+    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
+    #
+    # run_experiment('correlated_ucb', 'cluttered', 8, placement, 'non_uniform', 3100,
+    #                inference='optimistic', dec_steps=1, ntrials=1, save=True)
+    #
+    # run_experiment('dynamic_programming', 'cluttered', 8, placement, 'non_uniform', 3100,
+    #                inference=None, dec_steps=4, ntrials=1, save=True)
+
 
     #Open
-    #Adjust acml max_range=20
+    #Adjust acml laser_max_range=20

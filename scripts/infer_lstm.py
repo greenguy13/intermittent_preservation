@@ -102,6 +102,8 @@ def forecast_decay_lstm(model, data, steps):
   # Inverse transform to get the actual decay rates
   predicted_data = scaler.inverse_transform(np.concatenate(predictions, axis=0))
 
+  #TODO: We can potentially enforce a max(predicted, 0) for the prediction
+
   # Convert to data frame
   predicted_data = pd.DataFrame(predicted_data, columns=data.columns)
 

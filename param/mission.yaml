@@ -13,7 +13,7 @@ file_data_dump: $(arg fileresult) #file name for data dump
 inference: $(arg inference) #type of heuristic for inference on decay param
 save: $(arg save) #save data
 
-gamma: 0.25 #discount factor for future losses/rewards: [0, 1]. If gamma=0, present looking. Else if gamma=1, all future rewards are treated equally with present reward
+gamma: 0.75 #0.25 #discount factor for future losses/rewards: [0, 1]. If gamma=0, present looking. Else if gamma=1, all future rewards are treated equally with present reward
 robot_velocity: 1.0 #Linear velocity of robot; we assume linear and angular are relatively equal
 max_fmeasure: 100 # Max F-measure of an area
 max_battery: 100 #Max battery, 100

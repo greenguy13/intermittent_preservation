@@ -129,6 +129,11 @@ class Robot:
         self.nvisits_thresh = rospy.get_param("/nvisits_thresh")
         self.discrepancy_thresh = rospy.get_param("/discrepancy_thresh")
 
+        # Exploration
+        self.exploration = rospy.get_param("/exploration")
+        self.toggle_exploration = True if self.exploration > 0.0 else False
+        self.risk = 0  # Risk of decay rate growing
+
         #We sum this up
         self.environment_status = dict()
         for node in range(self.nareas+1):
@@ -432,7 +437,7 @@ class Robot:
                 #   There is some problem it seems to have greedy that exploits the current learned model.
                 """
 
-                #TODO: Presently, this uses the current self.decay_rates_dict. Which is correct, right? YES!
+                #TODO: To insert risk/exploration we may need to have a toggle
                 updated_fmeasures = self.adjust_fmeasures(self.tlapses.copy(), decision, duration)  # F-measure of areas adjusted accordingly, i.e., consequence of decision
                 immediate_cost_decision = self.compute_opportunity_cost(updated_fmeasures) #immediate opportunity cost
                 self.debug("Current F-measures: {}".format(self.curr_fmeasures))
@@ -521,13 +526,34 @@ class Robot:
         """
         fmeasures = dict()
         self.debug("Computation given tlapse: {}".format(tlapses))
+
+        #TODO: We can use a scalar for exploration. If self.exploration > 0: self.toggle_exploration = True
+        #   Okay what to do?
+        decay_rates = self.decay_rates_dict.copy()
+        if self.toggle_exploration is True:
+            #TODO: Add the ratio of tlapse and time it takes to get there
+
+            # rates = np.array(list(self.decay_rates_dict.values())) * (1 + self.risk)
+            # motivation_arr = list()
+
+            for area in self.decay_rates_dict:
+                adj_decay_rate = decay_rates[area] * (1 + self.risk)
+                time_to_crit = get_time_given_decay(self.max_fmeasure, self.fcrit, adj_decay_rate)
+                motivation = (tlapses[area] / time_to_crit) * self.risk
+                decay_rates[area] *= (1 + self.exploration * motivation)
+                self.debug("Area: {}, Decay rate: {}, Risk={} decay rate: {}, Time to crit: {}, Motivation: {}, Adj decay rate: {}".format(area, self.decay_rates_dict[area], self.risk, adj_decay_rate, time_to_crit, motivation, decay_rates[area]))
+
+            # decay_rates = dict(zip(self.decay_rates_dict.keys(), rates)) #TODO: Ensure that the decay rates area multiplied
+
+            self.debug("Motivating exploration. Risk factor: {}. Adjusted decay rates: {}".format(self.risk, decay_rates))
+
         for area in self.areas:
             if area == visit_area:
                 fmeasures[area] = self.max_fmeasure
                 self.debug("Visit area: {}. F: {}".format(visit_area, fmeasures[area]))
             else:
                 tlapse = tlapses[area] + duration
-                fmeasures[area] = decay(self.decay_rates_dict[area], tlapse, self.max_fmeasure) #TODO: This one here needs to be reviewed in the new. Should be forecasted
+                fmeasures[area] = decay(decay_rates[area], tlapse, self.max_fmeasure) #TODO: This one here needs to be reviewed in the new. Should be forecasted
                 self.debug("Other area: {}. Tlapse: {}. New tlapse: {}. F: {}".format(area, tlapses[area], tlapse, fmeasures[area]))
 
         return fmeasures
@@ -711,15 +737,6 @@ class Robot:
                     wait_registry = False
             self.debug("Sufficent data. Decay rates: {}. Sampled nodes poses: {}".format(self.decay_rates_dict, self.sampled_nodes_poses)) #Prior knowledge of decay rates
 
-            """
-            PO: We can supply a history data for it to know the initial decay rates
-            Without bias about future trends, we just supply it with fixed data
-            Our supply of data would be per time step. Can you check whether this is more robust/stable than per decision step?
-            
-            #TODO: The forecast should also be by time step. Here it is still by decision steps
-            """
-            #TODO: Insert here the padding of data
-
             self.survey_data = self.pad_sample_data(self.decay_rates_dict, 40)
 
             self.debug("Fitting initial model on survey data...")
@@ -779,7 +796,7 @@ class Robot:
                     self.debug("Mission area: {}. Current estimated decay rates: {}".format(self.mission_area, self.decay_rates_dict))
 
                     actual_travel_time = self.end_travel_time - self.start_travel_time
-                    self.forecast_step += actual_travel_time #TODO: Introduce travel time here
+                    self.forecast_step += actual_travel_time
 
                     belief_decay = self.decay_rates_dict[self.curr_loc]
                     measured_decay = self.recorded_decay_param[self.curr_loc][-1]
@@ -797,8 +814,13 @@ class Robot:
                     discrepancy = self.discrepancy(measured_decay, belief_decay)
                     self.debug("Replan stats: nvisits {}, measured decay {}, belief {}, discrepancy {}".format(self.nvisits, measured_decay, belief_decay, discrepancy))
 
+                    #TODO: Update risk to the largest growth in decay rate
+                    if self.toggle_exploration and discrepancy > self.risk:
+                        self.risk = discrepancy
+                        self.debug("Risk of decay growth updated: {}".format(self.risk))
+
                     #Update the model
-                    if self.nvisits >= self.nvisits_thresh and self.discrepancy(measured_decay, belief_decay) >= self.discrepancy_thresh:
+                    if self.nvisits >= self.nvisits_thresh and discrepancy >= self.discrepancy_thresh:
                         #Update survey data
                         self.update_survey_data() #This thing concats temps data and survey data
                         # #Actually this should coincide on the last exploration
@@ -1014,8 +1036,3 @@ if __name__ == '__main__':
     filename = rospy.get_param('/file_data_dump')
     Robot('heuristic_uncertainty').run_operation(filename)
 
-    """
-    TODO: Fri, July 26
-        1. Deal with the supplication of self.fmeasures_cb. It should not be!
-        We can only use this to ensure that robots dont fully deplete of battery. No! There should be none.
-    """
