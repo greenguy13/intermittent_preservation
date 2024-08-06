@@ -31,7 +31,7 @@ def batch_sample_nodes_poses(worlds, nareas_list, nplacements):
                 sample_nodes_poses(w, n, nplacements)
 
 #Run the experiment
-def run_experiment(method, world, nareas, placement, decay, tframe, inference=None, dec_steps=1, ntrials=1, discount=None, exploration=None, nvisits=None,
+def run_experiment(method, world, nareas, placement, decay, tframe, inference=None, dec_steps=1, ntrials=(0, 1), discount=None, exploration=None, nvisits=None,
                    history_data=None, history_decisions=None, save=False):
     """
     Runs a single experiment
@@ -47,7 +47,7 @@ def run_experiment(method, world, nareas, placement, decay, tframe, inference=No
     """
     fileposes = '{}_n{}_sampled_nodes_poses_dict'.format(world, nareas)
     if method != 'random_decision':
-        for i in range(ntrials):
+        for i in range(*ntrials):
             if inference is not None:
                 params = ['method:={}'.format(method),
                           'inference:={}'.format(inference),
@@ -166,35 +166,17 @@ if __name__ == '__main__':
     #                inference=None, dec_steps=4, ntrials=1, save=True)
 
     """
-    TODO: Aug 5 
+    TODO: Aug 6
     Grid search parameters over e = [0.30, 0.60, 0.90]. For discount 0.0, means k=1
-        Fine-tune exploration for reinfocement learning UCB
-        Fine-tune exploration for our method for k=4, with equivalent discount as with oracle
-        Fine-tune k, discount, exploration
+        Fine-tune exploration for reinfocement learning UCB. To re-run: e = 0.90
+        Fine-tune exploration for our method for k=4, with equivalent discount as with oracle, to re-run: e = 0.00, 0.30, 0.60
+        Fine-tune k, discount, exploration. PENDING
+        
+        Oracle, trial = 0, 1, 2
     """
-    # TODO: Search for exploration for heur counter part, k=4, disc=0.75
-    # e= 0.30, 0.60, 0.90
+    # e= 0.00, 0.30, 0.60, 0.90 params for our proposed method
 
     #For fine-tuning
-    #UCB tune exploration
-    run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 50,
-                   inference='optimistic', dec_steps=1, exploration=0.30, ntrials=1, save=True)
-
-    run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 50,
-                   inference='optimistic', dec_steps=1, exploration=0.60, ntrials=1, save=True)
-
-    run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 50,
-                   inference='optimistic', dec_steps=1, exploration=0.90, ntrials=1, save=True)
-
-    run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 50,
-                   inference='optimistic', dec_steps=1, exploration=0.30, ntrials=1, save=True)
-
-    run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 50,
-                   inference='optimistic', dec_steps=1, exploration=0.60, ntrials=1, save=True)
-
-    run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 50,
-                   inference='optimistic', dec_steps=1, exploration=0.90, ntrials=1, save=True)
-
     #Heuristic tune dec_steps
     # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 50,
     #                inference='timeseries', dec_steps=1, discount=0.00, exploration=0.30, nvisits=2, ntrials=1, save=True)
@@ -205,17 +187,36 @@ if __name__ == '__main__':
     # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 50,
     #                inference='timeseries', dec_steps=6, discount=0.75, exploration=0.30, nvisits=2, ntrials=1, save=True)
 
+    run_experiment('treebased_decision', 'office', 12, placement, 'non_uniform', 2100,
+                   inference='oracle', dec_steps=4, discount=0.75, ntrials=3, save=True)
 
+    run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+                   inference='timeseries', dec_steps=4, discount=0.75, exploration=0.00, nvisits=2, ntrials=3, save=True)
 
+    run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+                   inference='timeseries', dec_steps=4, discount=0.75, exploration=0.30, nvisits=2, ntrials=3, save=True)
 
-    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
-    #                inference='timeseries', dec_steps=4, discount=0.75, exploration=0.30, nvisits=2, ntrials=1, save=True)
+    run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+                   inference='timeseries', dec_steps=4, discount=0.75, exploration=0.60, nvisits=2, ntrials=3, save=True)
+
+    #UCB tune exploration
+    # run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='optimistic', dec_steps=1, exploration=0.30, ntrials=1, save=True)
     #
-    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
-    #                inference='timeseries', dec_steps=4, discount=0.75, exploration=0.60, nvisits=2, ntrials=1, save=True)
+    # run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='optimistic', dec_steps=1, exploration=0.60, ntrials=1, save=True)
     #
-    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
-    #                inference='timeseries', dec_steps=4, discount=0.75, exploration=0.90, nvisits=2, ntrials=1, save=True)
+    run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 2100,
+                   inference='optimistic', dec_steps=1, exploration=0.90, ntrials=2, save=True)
+    #
+    # run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='optimistic', dec_steps=1, exploration=0.30, ntrials=1, save=True)
+    #
+    # run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='optimistic', dec_steps=1, exploration=0.60, ntrials=1, save=True)
+    #
+    run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 2100,
+                   inference='optimistic', dec_steps=1, exploration=0.90, ntrials=2, save=True)
 
 
     #Full trials

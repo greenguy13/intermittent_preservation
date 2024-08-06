@@ -137,6 +137,7 @@ def forecast_opportunity_cost(curr_fmeasures, tlapses, data, model, loss_params,
     # debug("Init decayed F for future forecast: {}".format(curr_fmeasures))
 
     #TODO: We do the forecasting first. We then just index/look them up. In this case, this is linear. A
+    #   What we do is we take the max number of forecast time steps by assuming the max duration times decsteps
 
     #Measure discounted loss
     loss_arr = []
