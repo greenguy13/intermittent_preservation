@@ -152,7 +152,7 @@ class Robot:
         server = '/robot_' + str(self.robot_id) + '/move_base_node/make_plan'
         rospy.wait_for_service(server)
         self.get_plan_service = rospy.ServiceProxy(server, GetPlan)
-        self.debug("Getplan service: {}".format(self.get_plan_service))
+        # self.debug("Getplan service: {}".format(self.get_plan_service))
 
         rospy.Subscriber('/robot_{}/battery_status'.format(self.robot_id), Int8, self.battery_status_cb)
         rospy.Subscriber('/robot_{}/battery'.format(self.robot_id), Float32, self.battery_level_cb)
@@ -173,12 +173,12 @@ class Robot:
         """
         Reads recorded decay data and decisions for a given placement
         """
-        self.debug("Reading history decay data: {}".format(self.history_data_filename))
+        # self.debug("Reading history decay data: {}".format(self.history_data_filename))
         with open('history_data/' + self.history_data_filename, 'rb') as f:
             data = pickle.load(f)
             f.close()
 
-        self.debug("Reading history decisions data: {}".format(self.history_decisions_filename))
+        # self.debug("Reading history decisions data: {}".format(self.history_decisions_filename))
         with open('history_data/' + self.history_decisions_filename, 'rb') as f:
             decisions_data = pickle.load(f)
             f.close()
@@ -282,7 +282,7 @@ class Robot:
                     dist = self.compute_dist_bet_areas(area_i, area_j, self.tolerance)
                     self.dist_matrix[i, j] = dist
 
-        self.debug("Dist matrix: {}".format(self.dist_matrix))
+        # self.debug("Dist matrix: {}".format(self.dist_matrix))
 
     def build_noise_matrix(self):
         """
@@ -313,7 +313,7 @@ class Robot:
         movebase_goal.target_pose = goal
         self.available = False
         self.start_travel_time = self.sim_t
-        self.debug("Sending robot to mission area: {}. Departure time: {}".format(self.mission_area, self.start_travel_time))
+        # self.debug("Sending robot to mission area: {}. Departure time: {}".format(self.mission_area, self.start_travel_time))
         action_goal_cb = (lambda state, result: self.action_send_done_cb(state, result, self.robot_id))
         self.robot_goal_client.send_goal(movebase_goal, done_cb=action_goal_cb, active_cb=self.action_send_active_cb)
 
@@ -335,11 +335,11 @@ class Robot:
             self.prev_loc = self.curr_loc
             self.curr_loc = self.mission_area
             self.end_travel_time = self.sim_t
-            self.debug(
-                "Arrived at mision_area: {}. Arrival time: {}. Current loc: {}. Prev loc: {}".format(self.mission_area,
-                                                                                                     self.end_travel_time,
-                                                                                                     self.curr_loc,
-                                                                                                     self.prev_loc))
+            # self.debug(
+            #     "Arrived at mision_area: {}. Arrival time: {}. Current loc: {}. Prev loc: {}".format(self.mission_area,
+            #                                                                                          self.end_travel_time,
+            #                                                                                          self.curr_loc,
+            #                                                                                          self.prev_loc))
 
             self.record_decisions_accomplished()
             self.best_decision = None
@@ -350,11 +350,11 @@ class Robot:
                 measured_f = float(data)
                 self.recorded_f_data[self.curr_loc].append(measured_f)
                 converted_decay = get_decay_rate(self.max_fmeasure, measured_f, self.tlapses[self.curr_loc])
-                self.debug("Collecting data...Measured f: {}. Tlapse: {}. Converted decay: {}".format(measured_f, self.tlapses[self.curr_loc], converted_decay))
+                # self.debug("Collecting data...Measured f: {}. Tlapse: {}. Converted decay: {}".format(measured_f, self.tlapses[self.curr_loc], converted_decay))
 
                 self.record_decay(converted_decay, self.curr_loc)
                 self.start_restore_time = self.sim_t
-                self.debug("Restoring F-measure. Sim time: {}".format(self.start_restore_time))
+                # self.debug("Restoring F-measure. Sim time: {}".format(self.start_restore_time))
                 self.update_robot_status(robotStatus.RESTORING_F)
 
     def mean_duration_decay(self, duration_matrix, area):
@@ -426,7 +426,7 @@ class Robot:
             # PO: Will we record the actual recorded fmeasure for that self.curr_fmeasures? Hmm. We restore it back to full measure right, i.e. the tlapse=0?
             battery_consumption, feasible_battery = self.estimate_battery_params(decision, self.battery, self.curr_loc,
                                                                                  self.curr_fmeasures, self.travel_noise[self.curr_loc, decision])
-            self.debug("Batt consumption: {}. Feasible batt: {}".format(battery_consumption, feasible_battery))
+            # self.debug("Batt consumption: {}. Feasible batt: {}".format(battery_consumption, feasible_battery))
             if not prune(self.battery, battery_consumption, self.battery_reserve) and decision != self.curr_loc:
                 #Immediate loss in i=1
                 duration = self.compute_duration(self.curr_loc, decision, self.curr_fmeasures[decision], self.restoration, self.travel_noise[self.curr_loc, decision])
@@ -440,21 +440,21 @@ class Robot:
                 #TODO: To insert risk/exploration we may need to have a toggle
                 updated_fmeasures = self.adjust_fmeasures(self.tlapses.copy(), decision, duration)  # F-measure of areas adjusted accordingly, i.e., consequence of decision
                 immediate_cost_decision = self.compute_opportunity_cost(updated_fmeasures) #immediate opportunity cost
-                self.debug("Current F-measures: {}".format(self.curr_fmeasures))
-                self.debug("Feasible decision: {}. Duration: {}. Updated F: {}. Immediate loss: {}".format(decision, duration, updated_fmeasures, immediate_cost_decision))
+                # self.debug("Current F-measures: {}".format(self.curr_fmeasures))
+                # self.debug("Feasible decision: {}. Duration: {}. Updated F: {}. Immediate loss: {}".format(decision, duration, updated_fmeasures, immediate_cost_decision))
 
                 #Heuristic loss for i=2...k
-                self.debug("Current record tlapse: {}".format(self.tlapses))
+                # self.debug("Current record tlapse: {}".format(self.tlapses))
                 updated_tlapses = self.simulate_tlapses(self.tlapses.copy(), decision, duration)
-                self.debug("Simulated tlapse: {}".format(updated_tlapses))
+                # self.debug("Simulated tlapse: {}".format(updated_tlapses))
 
                 #TODO: Here we are forecasting future decay rates. We should use forecast_step as we will be adding it as base for future decision steps
                 forecasted_cost_decision = forecast_opportunity_cost(updated_fmeasures, updated_tlapses, self.survey_data, self.model, (self.fsafe, self.fcrit),
                                                          self.gamma, self.dec_steps, mean_duration_decay_dict, self.forecast_step+duration) #forecasted opportunity cost
 
-                self.debug("Immediate cost: {}. Discounted future losses through {} steps: {}".format(immediate_cost_decision, self.dec_steps, forecasted_cost_decision))
+                # self.debug("Immediate cost: {}. Discounted future losses through {} steps: {}".format(immediate_cost_decision, self.dec_steps, forecasted_cost_decision))
                 evaluated_cost_decision = immediate_cost_decision + forecasted_cost_decision
-                self.debug("Appending: {}".format((decision, evaluated_cost_decision, feasible_battery)))
+                # self.debug("Appending: {}".format((decision, evaluated_cost_decision, feasible_battery)))
                 decision_array.append((decision, evaluated_cost_decision, feasible_battery))
 
         best_decision = self.charging_station
@@ -489,7 +489,7 @@ class Robot:
             restore_time = int(math.ceil((max_restore - curr_measure)/restoration))
             time += restore_time
 
-        self.debug("Travel time by dist: {}. Noise: {}. Restoration: {}. Total: {}".format(distance/self.robot_velocity, (distance/self.robot_velocity)*noise, restore_time, time))
+        # self.debug("Travel time by dist: {}. Noise: {}. Restoration: {}. Total: {}".format(distance/self.robot_velocity, (distance/self.robot_velocity)*noise, restore_time, time))
 
         return time
 
@@ -525,7 +525,7 @@ class Robot:
         :return:
         """
         fmeasures = dict()
-        self.debug("Computation given tlapse: {}".format(tlapses))
+        # self.debug("Computation given tlapse: {}".format(tlapses))
 
         #TODO: We can use a scalar for exploration. If self.exploration > 0: self.toggle_exploration = True
         #   Okay what to do?
@@ -541,20 +541,20 @@ class Robot:
                 time_to_crit = get_time_given_decay(self.max_fmeasure, self.fcrit, adj_decay_rate)
                 motivation = (tlapses[area] / time_to_crit) * self.risk
                 decay_rates[area] *= (1 + self.exploration * motivation)
-                self.debug("Area: {}, Decay rate: {}, Risk={} decay rate: {}, Time to crit: {}, Motivation: {}, Adj decay rate: {}".format(area, self.decay_rates_dict[area], self.risk, adj_decay_rate, time_to_crit, motivation, decay_rates[area]))
+                # self.debug("Area: {}, Decay rate: {}, Risk={} decay rate: {}, Time to crit: {}, Motivation: {}, Adj decay rate: {}".format(area, self.decay_rates_dict[area], self.risk, adj_decay_rate, time_to_crit, motivation, decay_rates[area]))
 
             # decay_rates = dict(zip(self.decay_rates_dict.keys(), rates)) #TODO: Ensure that the decay rates area multiplied
 
-            self.debug("Motivating exploration. Risk factor: {}. Adjusted decay rates: {}".format(self.risk, decay_rates))
+            # self.debug("Motivating exploration. Risk factor: {}. Adjusted decay rates: {}".format(self.risk, decay_rates))
 
         for area in self.areas:
             if area == visit_area:
                 fmeasures[area] = self.max_fmeasure
-                self.debug("Visit area: {}. F: {}".format(visit_area, fmeasures[area]))
+                # self.debug("Visit area: {}. F: {}".format(visit_area, fmeasures[area]))
             else:
                 tlapse = tlapses[area] + duration
                 fmeasures[area] = decay(decay_rates[area], tlapse, self.max_fmeasure) #TODO: This one here needs to be reviewed in the new. Should be forecasted
-                self.debug("Other area: {}. Tlapse: {}. New tlapse: {}. F: {}".format(area, tlapses[area], tlapse, fmeasures[area]))
+                # self.debug("Other area: {}. Tlapse: {}. New tlapse: {}. F: {}".format(area, tlapses[area], tlapse, fmeasures[area]))
 
         return fmeasures
 
@@ -578,8 +578,8 @@ class Robot:
         """
         # Sort the decisions: the cost is key while the value is decision
         sorted_decisions = sorted(dec_arr, key = lambda x: (x[-2], -x[-1]))
-        self.debug("Decisions sorted by cost: {}".format(sorted_decisions))
-        self.debug("Best decision (branch info): {}".format(sorted_decisions[0]))
+        # self.debug("Decisions sorted by cost: {}".format(sorted_decisions))
+        # self.debug("Best decision (branch info): {}".format(sorted_decisions[0]))
         best_decision = sorted_decisions[0][0] #pick the decision with least net loss and most available feasible battery
         return best_decision
 
@@ -590,7 +590,7 @@ class Robot:
         """
         for area in self.areas:
             self.tlapses[area] += 1
-        self.debug("Sim t: {}. Time elapsed since last restored: {}".format(sim_t, self.tlapses))
+        # self.debug("Sim t: {}. Time elapsed since last restored: {}".format(sim_t, self.tlapses))
 
     # TODO: Measure tlapses
     def estimate_curr_fmeasures(self):
@@ -608,7 +608,7 @@ class Robot:
         """
         self.nvisits = 0
         self.temp_recorded_decay = pd.DataFrame(columns=self.areas)
-        self.debug("Temp for recorded data has been reset")
+        # self.debug("Temp for recorded data has been reset")
 
     def update_temp_data(self, new_entry, nsamples):
         """
@@ -618,9 +618,9 @@ class Robot:
         """
         #TODO: This has to be concat since we self.temp_recorded_decay will now be a DataFrame
         pd_entry = self.pad_sample_data(new_entry, nsamples=max(40, nsamples))
-        self.debug("Padded sample data: {}".format(pd_entry))
+        # self.debug("Padded sample data: {}".format(pd_entry))
         self.temp_recorded_decay = pd.concat([self.temp_recorded_decay, pd_entry], ignore_index=True)
-        self.debug("Temp data: {}".format(self.temp_recorded_decay))
+        # self.debug("Temp data: {}".format(self.temp_recorded_decay))
         self.nvisits += 1 #TODO: This will be nvisits
 
     def record_and_impute_decay(self, mission_area, decay_rate, forecast_steps):
@@ -680,7 +680,7 @@ class Robot:
             learned = (1-self.learning_rate)*curr_entry + self.learning_rate*new_entry
             self.restoration = learned
 
-        self.debug("Current {}: {}. Newly measured: {}. Learned: {}".format(noise_model, curr_entry, new_entry, learned))
+        # self.debug("Current {}: {}. Newly measured: {}. Learned: {}".format(noise_model, curr_entry, new_entry, learned))
 
     def forecast_decay_rates_dict(self, forecast_steps):
         """
@@ -720,7 +720,7 @@ class Robot:
 
         if self.robot_id == 0:
             rate = rospy.Rate(freq)
-            self.debug("Waiting for nodes to register...")
+            # self.debug("Waiting for nodes to register...")
             rospy.sleep(15)  # Wait for nodes to register
 
             wait_registry = True
@@ -730,22 +730,22 @@ class Robot:
                     if self.decay_rates_dict[area] is None:
                         na_count += 1
                 if na_count > 0:
-                    self.debug("Insufficient data. Decay rates: {}/{}. Sampled nodes poses: {}/{}".format(na_count, self.nareas,
-                                                                                                          len(self.sampled_nodes_poses), self.nareas+1))
+                    # self.debug("Insufficient data. Decay rates: {}/{}. Sampled nodes poses: {}/{}".format(na_count, self.nareas,
+                    #                                                                                       len(self.sampled_nodes_poses), self.nareas+1))
                     rate.sleep() #Data for decay rates haven't registered yet
                 else:
                     wait_registry = False
-            self.debug("Sufficent data. Decay rates: {}. Sampled nodes poses: {}".format(self.decay_rates_dict, self.sampled_nodes_poses)) #Prior knowledge of decay rates
+            # self.debug("Sufficent data. Decay rates: {}. Sampled nodes poses: {}".format(self.decay_rates_dict, self.sampled_nodes_poses)) #Prior knowledge of decay rates
 
             self.survey_data = self.pad_sample_data(self.decay_rates_dict, 40)
 
-            self.debug("Fitting initial model on survey data...")
+            # self.debug("Fitting initial model on survey data...")
             train_start = process_time()
             self.model = train_model_lstm(self.survey_data)
             train_end = process_time()
             train_elapsed = self.time_elapsed(train_start, train_end)
             self.training_time_counter.append(train_elapsed )
-            self.debug('Done training model. Elapsed time: {}'.format(train_elapsed))
+            # self.debug('Done training model. Elapsed time: {}'.format(train_elapsed))
             self.forecast_step = 1
             self.decay_rates_dict = self.forecast_decay_rates_dict(self.forecast_step)
 
@@ -753,7 +753,7 @@ class Robot:
 
             self.build_dist_matrix()
             self.build_noise_matrix()
-            self.debug("Dist matrix shape: {}. Noise matrix shape: {}".format(self.dist_matrix.shape, self.travel_noise.shape))
+            # self.debug("Dist matrix shape: {}. Noise matrix shape: {}".format(self.dist_matrix.shape, self.travel_noise.shape))
             assert self.dist_matrix.shape == self.travel_noise.shape, 'Incongruent self.dist_matrix and self.travel_noise!'
             self.sim_t = 0 #simulation time
 
@@ -793,7 +793,7 @@ class Robot:
 
                 elif self.robot_status == robotStatus.CONSIDER_REPLAN.value:
                     self.debug('Consider re-plan...')
-                    self.debug("Mission area: {}. Current estimated decay rates: {}".format(self.mission_area, self.decay_rates_dict))
+                    # self.debug("Mission area: {}. Current estimated decay rates: {}".format(self.mission_area, self.decay_rates_dict))
 
                     actual_travel_time = self.end_travel_time - self.start_travel_time
                     self.forecast_step += actual_travel_time
@@ -803,7 +803,7 @@ class Robot:
 
                     #Process the newly recorded data: Store actual data for area visited while impute for all other areas by forecasting using timeseries model
                     new_entry = self.record_and_impute_decay(self.curr_loc, measured_decay, self.forecast_step) #TODO: Verify whether this is based on time step. HERE UPNEXT. SOUNDS GOOD
-                    self.debug("Imputed data entry at forecast time step, {}: {}".format(self.forecast_step, new_entry))
+                    # self.debug("Imputed data entry at forecast time step, {}: {}".format(self.forecast_step, new_entry))
                     """
                     1. Init temp_data as dataframe
                     2. Update temp_data: Pad new entry and concat with temp_data. Increase nvisits += 1
@@ -812,12 +812,12 @@ class Robot:
                     self.update_temp_data(new_entry, actual_travel_time)
 
                     discrepancy = self.discrepancy(measured_decay, belief_decay)
-                    self.debug("Replan stats: nvisits {}, measured decay {}, belief {}, discrepancy {}".format(self.nvisits, measured_decay, belief_decay, discrepancy))
+                    # self.debug("Replan stats: nvisits {}, measured decay {}, belief {}, discrepancy {}".format(self.nvisits, measured_decay, belief_decay, discrepancy))
 
                     #TODO: Update risk to the largest growth in decay rate
                     if self.toggle_exploration and discrepancy > self.risk:
                         self.risk = discrepancy
-                        self.debug("Risk of decay growth updated: {}".format(self.risk))
+                        # self.debug("Risk of decay growth updated: {}".format(self.risk))
 
                     #Update the model
                     if self.nvisits >= self.nvisits_thresh and discrepancy >= self.discrepancy_thresh:
@@ -834,7 +834,7 @@ class Robot:
                         train_end = process_time()
                         train_elapsed = self.time_elapsed(train_start, train_end)
                         self.training_time_counter.append(train_elapsed)
-                        self.debug('Done training model. Elapsed time: {}'.format(train_elapsed))
+                        # self.debug('Done training model. Elapsed time: {}'.format(train_elapsed))
 
                         #Reset temp data
                         self.reset_temp_data()
@@ -842,19 +842,19 @@ class Robot:
 
                     #Forecast decay rates after one decision was made
                     self.decay_rates_dict = self.forecast_decay_rates_dict(self.forecast_step)
-                    self.debug("Updated estimated decay rates at forecast time step, {}: {}".format(self.forecast_step, self.decay_rates_dict))
+                    # self.debug("Updated estimated decay rates at forecast time step, {}: {}".format(self.forecast_step, self.decay_rates_dict))
 
                     #Learn/update noise models for travel and restoration
                     #Measure actual noise. Update current noise model
                     est_travel_time = (self.dist_matrix[self.prev_loc, self.curr_loc] / self.robot_velocity) #Note: Should just be solely on dist_matrix / robot velocity as the estimation
                     travel_noise = measure_travel_noise(actual_travel_time, est_travel_time)
-                    self.debug("Est travel time: {}. Actual: {}. Noise: {}".format(est_travel_time, actual_travel_time, travel_noise))
+                    # self.debug("Est travel time: {}. Actual: {}. Noise: {}".format(est_travel_time, actual_travel_time, travel_noise))
                     self.update_noise_model('travel_noise', travel_noise) #This will need tuple of previous and current loctions
 
                     #Measure actual restoration rate. Update current restoration model
                     restored_amount = self.max_fmeasure - self.recorded_f_data[self.curr_loc][-1]
                     restoration_rate = measure_restoration_rate(restored_amount, self.end_restore_time, self.start_restore_time)
-                    self.debug("Area {} Fmeasure prior restoration: {}. Restored amount: {}. Restoration time: {}".format(self.curr_loc, self.recorded_f_data[self.curr_loc][-1], restored_amount, self.end_restore_time-self.start_restore_time))
+                    # self.debug("Area {} Fmeasure prior restoration: {}. Restored amount: {}. Restoration time: {}".format(self.curr_loc, self.recorded_f_data[self.curr_loc][-1], restored_amount, self.end_restore_time-self.start_restore_time))
                     self.update_noise_model('restoration_rate', restoration_rate)
 
                     #Store actual travel noise and restoration rate for data dump
@@ -923,7 +923,7 @@ class Robot:
         if self.best_decision is not None:
             self.mission_area = self.best_decision
             self.mission_area_pub.publish(self.mission_area)
-            self.debug('Heading to: {}. {}'.format(self.mission_area, self.sampled_nodes_poses[self.mission_area]))
+            # self.debug('Heading to: {}. {}'.format(self.mission_area, self.sampled_nodes_poses[self.mission_area]))
             self.decisions_made.append(self.mission_area) #store decisions made
             self.go_to_target(self.mission_area)
             return 1
@@ -960,7 +960,7 @@ class Robot:
         """
         self.environment_status[self.charging_station] = msg.data
         if msg.data == battStatus.FULLY_CHARGED.value:
-            if self.robot_id == 0: self.debug("Fully charged!")
+            # if self.robot_id == 0: self.debug("Fully charged!")
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 
@@ -975,7 +975,7 @@ class Robot:
             self.available = True
             self.tlapses[area_id] = 0 #Reset the tlapse since last restored for the newly restored area
             self.end_restore_time = self.sim_t
-            if self.robot_id == 0: self.debug("Area {} fully restored! Sim time when restored: {}. Tlapse reset...".format(area_id, self.end_restore_time))
+            # if self.robot_id == 0: self.debug("Area {} fully restored! Sim time when restored: {}. Tlapse reset...".format(area_id, self.end_restore_time))
 
             if (self.inference is not None) and (self.inference != 'oracle'):
                 self.update_robot_status(robotStatus.CONSIDER_REPLAN)
@@ -993,7 +993,7 @@ class Robot:
         #Store the decay rates at instance, (prior knowledge as oracle)
         if self.decay_rates_dict[area_id] == None:
             # We store the prior decay rate data as first input to the recorded decay rates data
-            if self.robot_id == 0: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
+            # if self.robot_id == 0: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
             self.decay_rates_dict[area_id] = msg.data
             if len(self.recorded_decay_param[area_id]) == 0:
                 self.recorded_decay_param[area_id].append(self.decay_rates_dict[area_id])
@@ -1001,7 +1001,7 @@ class Robot:
         else:
             #If we are now on mission and oracle, we immediately update the decay rates for any evolution
             if self.inference == 'oracle':
-                if self.decay_rates_dict[area_id] != msg.data: self.debug("Oracle knowledge, change in decay in area {}: {}".format(area_id, msg.data))
+                # if self.decay_rates_dict[area_id] != msg.data: self.debug("Oracle knowledge, change in decay in area {}: {}".format(area_id, msg.data))
                 self.decay_rates_dict[area_id] = msg.data #A subscribed topic. Oracle knows exactly the decay rate happening in area
 
     def area_fmeasure_cb(self, msg, area_id):
@@ -1021,8 +1021,8 @@ class Robot:
         """
         for area in self.areas:
            self.curr_fmeasures[area] = decay(self.decay_rates_dict[area], self.tlapses[area], self.max_fmeasure)
-        self.debug("Used for computation. Tlapses: {}. Decay rates: {}".format(self.tlapses, self.decay_rates_dict))
-        self.debug("Computed current f-measures: {}".format(self.curr_fmeasures))
+        # self.debug("Used for computation. Tlapses: {}. Decay rates: {}".format(self.tlapses, self.decay_rates_dict))
+        # self.debug("Computed current f-measures: {}".format(self.curr_fmeasures))
 
     def debug(self, msg):
         pu.log_msg('robot', self.robot_id, msg, self.debug_mode)

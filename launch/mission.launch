@@ -6,6 +6,9 @@
     <arg name="nareas" default="3"/>
     <arg name="decay" default="non_uniform"/>
     <arg name="dsteps" default="1"/>
+    <arg name="discount" default="None"/>
+    <arg name="exploration" default="None"/>
+    <arg name="nvisits" default="None"/>
     <arg name="tframe" default="50"/>
     <arg name="placement" default="1"/>
     <arg name="fileposes" default="1"/>

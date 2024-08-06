@@ -100,11 +100,11 @@ def heuristic_timeseries_forecast_cost(curr_fmeasures, forecast_time_dict, decay
         else:
             forecast_fmeasure = max_fmeasure
         forecasted_fmeasures[area] = forecast_fmeasure
-        debug("Area: {}. Fmeasure: {} Forecasted fmeasure: {}".format(area, curr_fmeasures[area], forecasted_fmeasures[area]))
+        # debug("Area: {}. Fmeasure: {} Forecasted fmeasure: {}".format(area, curr_fmeasures[area], forecasted_fmeasures[area]))
 
     #Measure cost
     cost = compute_cost_fmeasures(forecasted_fmeasures, fsafe, fcrit)
-    debug("Computed cost: {}".format(cost))
+    # debug("Computed cost: {}".format(cost))
 
     #Return forecasted fmeasures and cost
     return forecasted_fmeasures, cost
@@ -133,20 +133,22 @@ def forecast_opportunity_cost(curr_fmeasures, tlapses, data, model, loss_params,
 
     # debug('Forecasted decay: {}'.format(forecasted_decay.to_numpy()))
     forecast_timesteps = np.array([forecast_tstep]*len(curr_fmeasures)).astype(int)
-    debug("Init forecast timesteps: {}".format(forecast_timesteps))
-    debug("Init decayed F for future forecast: {}".format(curr_fmeasures))
+    # debug("Init forecast timesteps: {}".format(forecast_timesteps))
+    # debug("Init decayed F for future forecast: {}".format(curr_fmeasures))
+
+    #TODO: We do the forecasting first. We then just index/look them up. In this case, this is linear. A
 
     #Measure discounted loss
     loss_arr = []
     for i in range(1, dec_steps):
         #Forecast the decay rates at this time step
         decay_dict = forecast_decay_timesteps(model, data, forecast_timesteps)  # Update decay_dict here
-        debug("Forecasted decay rate in step {}: {}".format(i, decay_dict))
+        # debug("Forecasted decay rate in step {}: {}".format(i, decay_dict))
 
         #Estimate the average duration areas are decaying for one decision step
         forecast_time_dict = pu.add_entries_dicts(tlapses, average_duration_decay_dict)
-        debug("Forecast future step: {}. Tlapses: {}. Average duration: {}".format(i, tlapses, average_duration_decay_dict))
-        debug("Forecasted time: {}".format(forecast_time_dict))
+        # debug("Forecast future step: {}. Tlapses: {}. Average duration: {}".format(i, tlapses, average_duration_decay_dict))
+        # debug("Forecasted time: {}".format(forecast_time_dict))
         # decay_dict = forecasted_decay.iloc[i].to_dict() #TODO: Forecast the respective decay per area by supplying respective decision step
 
         #Forecast the opportunity cost at this decision step
@@ -155,15 +157,15 @@ def forecast_opportunity_cost(curr_fmeasures, tlapses, data, model, loss_params,
         #Update counters and looped variables
         loss_arr.append(loss)
         curr_fmeasures = forecasted_fmeasures.copy()
-        debug("Forecasted fmeasures: {}. Loss: {}".format(curr_fmeasures, loss))
+        # debug("Forecasted fmeasures: {}. Loss: {}".format(curr_fmeasures, loss))
         tlapses = forecast_time_dict.copy()
 
         forecast_timesteps += np.array(list(average_duration_decay_dict.values())).astype(int)
-        debug("Updated forecast timesteps: {}".format(forecast_timesteps))
+        # debug("Updated forecast timesteps: {}".format(forecast_timesteps))
 
     #Sum up discounted losses throughout the decision steps
     cost = np.dot(discount_arr, np.array(loss_arr))
-    debug("Discount: {}. Costs: {}".format(discount_arr, loss_arr))
+    # debug("Discount: {}. Costs: {}".format(discount_arr, loss_arr))
     return cost
 
 def forecast_decay_timesteps(model, data, forecast_timesteps):

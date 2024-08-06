@@ -8,7 +8,7 @@
            <arg name="robot_id" value="0"/>
            <arg name="area_id" value="1"/>
            <arg name="decay_rate" value="0.00120"/>
-           <arg name="decay_evolution" value="[0.15, 0.15, 0.15, 0.15]"/>
+           <arg name="decay_evolution" value="[0.15, 0.15]"/>
        </include>
 
 
@@ -16,7 +16,7 @@
            <arg name="robot_id" value="0"/>
            <arg name="area_id" value="2"/>
            <arg name="decay_rate" value="0.00122"/>
-           <arg name="decay_evolution" value="[0.15, 0.15, 0.15, 0.15]"/>
+           <arg name="decay_evolution" value="[0.15, 0.15]"/>
        </include>
 
 
@@ -24,7 +24,7 @@
            <arg name="robot_id" value="0"/>
            <arg name="area_id" value="3"/>
            <arg name="decay_rate" value="0.00167"/>
-           <arg name="decay_evolution" value="[0.15, 0.15, 0.15, 0.15]"/>
+           <arg name="decay_evolution" value="[0.15, 0.15]"/>
        </include>
 
 
@@ -32,7 +32,7 @@
            <arg name="robot_id" value="0"/>
            <arg name="area_id" value="4"/>
            <arg name="decay_rate" value="0.00165"/>
-           <arg name="decay_evolution" value="[0.15, 0.15, 0.15, 0.15]"/>
+           <arg name="decay_evolution" value="[0.15, 0.15, 0.15]"/>
        </include>
 
 

@@ -31,7 +31,7 @@ def batch_sample_nodes_poses(worlds, nareas_list, nplacements):
                 sample_nodes_poses(w, n, nplacements)
 
 #Run the experiment
-def run_experiment(method, world, nareas, placement, decay, tframe, inference=None, dec_steps=1, ntrials=1,
+def run_experiment(method, world, nareas, placement, decay, tframe, inference=None, dec_steps=1, ntrials=1, discount=None, exploration=None, nvisits=None,
                    history_data=None, history_decisions=None, save=False):
     """
     Runs a single experiment
@@ -49,20 +49,38 @@ def run_experiment(method, world, nareas, placement, decay, tframe, inference=No
     if method != 'random_decision':
         for i in range(ntrials):
             if inference is not None:
-                fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}'.format(method, inference, world, nareas, placement, decay, dec_steps, i + 1)
                 params = ['method:={}'.format(method),
                           'inference:={}'.format(inference),
                           'world:={}'.format(world), 'nareas:={}'.format(nareas),
                           'decay:={}'.format(decay),
                           'dsteps:={}'.format(dec_steps),
                           'tframe:={}'.format(tframe), 'placement:={}'.format(placement),
-                          'fileposes:={}'.format(fileposes), 'fileresult:={}'.format(fileresult), 'save:={}'.format(save)]
-                if (method == 'heuristic_uncertainty' and inference == 'timeseries') and (history_data is not None and history_decisions is not None):
-                    params.append('history_data:={}'.format(history_data))
-                    params.append('history_decisions:={}'.format(history_decisions))
+                          'fileposes:={}'.format(fileposes), 'save:={}'.format(save)]
+                fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}'.format(method, inference, world, nareas, placement, decay, dec_steps, i + 1)
+
+                if method == 'treebased_decision':
+                    params.append('discount:={}'.format(discount))
+
+                elif (method == 'heuristic_uncertainty' and inference == 'timeseries') or method == 'heuristic_decision':
+                    fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_disc{}_exp{}_nvisits{}'.format(method, inference, world, nareas, placement, decay,
+                                                                     dec_steps, i + 1, discount, exploration, nvisits)
+                    params.append('discount:={}'.format(discount))
+                    params.append('exploration:={}'.format(exploration))
+                    params.append('nvisits:={}'.format(nvisits))
+                    if (history_data is not None and history_decisions is not None):
+                        params.append('history_data:={}'.format(history_data))
+                        params.append('history_decisions:={}'.format(history_decisions))
+
+                elif method == 'multiarmed_ucb' or method == 'correlated_ucb':
+                    fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_exp{}'.format(method, inference, world,
+                                                                                            nareas, placement, decay,
+                                                                                            dec_steps, i + 1, exploration)
+                    params.append('exploration:={}'.format(exploration))
+
+                params.append('fileresult:={}'.format(fileresult))
                 print(
-                    "Launching...method: {}, inference: {}, world: {}, nareas: {}, decay: {}, dsteps: {}, tframe: {}, placement: {}, trial: {}, save: {}".format(
-                        method, inference, world, nareas, decay, dec_steps, tframe, placement, i + 1, save))
+                    "Launching...method: {}, inference: {}, world: {}, nareas: {}, decay: {}, dsteps: {}, discount: {}, exploration: {}, nvisits: {}, tframe: {}, placement: {}, trial: {}, save: {}".format(
+                        method, inference, world, nareas, decay, dec_steps, discount, exploration, nvisits, tframe, placement, i + 1, save))
             else:
                 fileresult = '{}_{}_n{}_p{}_{}_k{}_{}'.format(method, world, nareas, placement, decay, dec_steps, i + 1)
                 params = ['method:={}'.format(method),
@@ -129,8 +147,8 @@ if __name__ == '__main__':
     # run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
     #                inference='oracle', dec_steps=4, ntrials=1, save=True)
     #
-    run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 3100,
-                   inference='timeseries', dec_steps=4, ntrials=1, save=True)
+    # run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 3100,
+    #                inference='timeseries', dec_steps=4, ntrials=1, save=True)
     #
     # run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 3100,
     #                inference='timeseries', dec_steps=1, ntrials=1, save=True)
@@ -147,6 +165,74 @@ if __name__ == '__main__':
     # run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
     #                inference=None, dec_steps=4, ntrials=1, save=True)
 
+    """
+    TODO: Aug 5 
+    Grid search parameters over e = [0.30, 0.60, 0.90]. For discount 0.0, means k=1
+        Fine-tune exploration for reinfocement learning UCB
+        Fine-tune exploration for our method for k=4, with equivalent discount as with oracle
+        Fine-tune k, discount, exploration
+    """
+    # TODO: Search for exploration for heur counter part, k=4, disc=0.75
+    # e= 0.30, 0.60, 0.90
+
+    #For fine-tuning
+    #UCB tune exploration
+    run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 50,
+                   inference='optimistic', dec_steps=1, exploration=0.30, ntrials=1, save=True)
+
+    run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 50,
+                   inference='optimistic', dec_steps=1, exploration=0.60, ntrials=1, save=True)
+
+    run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 50,
+                   inference='optimistic', dec_steps=1, exploration=0.90, ntrials=1, save=True)
+
+    run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 50,
+                   inference='optimistic', dec_steps=1, exploration=0.30, ntrials=1, save=True)
+
+    run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 50,
+                   inference='optimistic', dec_steps=1, exploration=0.60, ntrials=1, save=True)
+
+    run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 50,
+                   inference='optimistic', dec_steps=1, exploration=0.90, ntrials=1, save=True)
+
+    #Heuristic tune dec_steps
+    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 50,
+    #                inference='timeseries', dec_steps=1, discount=0.00, exploration=0.30, nvisits=2, ntrials=1, save=True)
+    #
+    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 50,
+    #                inference='timeseries', dec_steps=2, discount=0.00, exploration=0.30, nvisits=2, ntrials=1, save=True)
+    #
+    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 50,
+    #                inference='timeseries', dec_steps=6, discount=0.75, exploration=0.30, nvisits=2, ntrials=1, save=True)
+
+
+
+
+    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='timeseries', dec_steps=4, discount=0.75, exploration=0.30, nvisits=2, ntrials=1, save=True)
+    #
+    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='timeseries', dec_steps=4, discount=0.75, exploration=0.60, nvisits=2, ntrials=1, save=True)
+    #
+    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='timeseries', dec_steps=4, discount=0.75, exploration=0.90, nvisits=2, ntrials=1, save=True)
+
+
+    #Full trials
+    # run_experiment('treebased_decision', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=4, discount=0.75, ntrials=5, save=True) #3100
+    #
+    # run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='optimistic', dec_steps=1, ntrials=5, save=True)
+    #
+    # run_experiment('correlated_thompson', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='optimistic', dec_steps=1, ntrials=5, save=True) #3100
+    #
+    # run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='optimistic', dec_steps=1, ntrials=5, save=True)
+    #
+    # run_experiment('dynamic_programming', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference=None, dec_steps=4, ntrials=5, save=True) #3100
 
     #Latest in previous runs: 33
 

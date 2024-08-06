@@ -13,7 +13,7 @@ file_data_dump: $(arg fileresult) #file name for data dump
 inference: $(arg inference) #type of heuristic for inference on decay param
 save: $(arg save) #save data
 
-gamma: 0.75 #0.25 #discount factor for future losses/rewards: [0, 1]. If gamma=0, present looking. Else if gamma=1, all future rewards are treated equally with present reward
+gamma: $(arg discount) #0.25 #discount factor for future losses/rewards: [0, 1]. If gamma=0, present looking. Else if gamma=1, all future rewards are treated equally with present reward
 robot_velocity: 1.0 #Linear velocity of robot; we assume linear and angular are relatively equal
 max_fmeasure: 100 # Max F-measure of an area
 max_battery: 100 #Max battery, 100
@@ -26,11 +26,11 @@ move_base_tolerance: 0.5
 
 #Uncertainty params
 win_size: 3 #window size for the moving average forecast. TODO: This can be just a hyper-parameter in moving average script
-nvisits_thresh: 2 #threshold of data collected to trigger training/update of time-series model
+nvisits_thresh: $(arg nvisits) #threshold of data collected to trigger training/update of time-series model
 discrepancy_thresh: 0.05 #threshold of discrepancy betweeen belief decay and measured decay to trigger training/update of timeseries model
 learning_rate: 0.75 #learning rate
 
 #Reinforcement learning params
-exploration: 0.4 #tunable exploration parameter
+exploration: $(arg exploration) #tunable exploration parameter
 correlation_info: [[1, 2, 1.0], [2, 1, 1.0], [3, 4, 1.0], [4, 3, 1.0], [5, 6, 1.0], [6, 5, 1.0], [7, 8, 1.0], [8, 7, 1.0]] #correlation information among areas with their magnitude
 sigma: 1.0 #standard deviation of the normal distribution for thompson sampling
