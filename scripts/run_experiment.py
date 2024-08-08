@@ -181,23 +181,24 @@ if __name__ == '__main__':
     # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 50,
     #                inference='timeseries', dec_steps=1, discount=0.00, exploration=0.30, nvisits=2, ntrials=1, save=True)
     #
-    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 50,
-    #                inference='timeseries', dec_steps=2, discount=0.00, exploration=0.30, nvisits=2, ntrials=1, save=True)
+    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 150,
+    #                inference='timeseries', dec_steps=12, discount=0.50, exploration=0.30, nvisits=2, ntrials=(0, 1), save=False)
     #
     # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 50,
     #                inference='timeseries', dec_steps=6, discount=0.75, exploration=0.30, nvisits=2, ntrials=1, save=True)
 
-    run_experiment('treebased_decision', 'office', 12, placement, 'non_uniform', 2100,
-                   inference='oracle', dec_steps=4, discount=0.75, ntrials=3, save=True)
-
-    run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
-                   inference='timeseries', dec_steps=4, discount=0.75, exploration=0.00, nvisits=2, ntrials=3, save=True)
-
-    run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
-                   inference='timeseries', dec_steps=4, discount=0.75, exploration=0.30, nvisits=2, ntrials=3, save=True)
-
-    run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
-                   inference='timeseries', dec_steps=4, discount=0.75, exploration=0.60, nvisits=2, ntrials=3, save=True)
+    #Heuristic fine tune of exploration rate
+    # run_experiment('treebased_decision', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=4, discount=0.75, ntrials=(0,3), save=True)
+    #
+    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='timeseries', dec_steps=4, discount=0.75, exploration=0.00, nvisits=2, ntrials=(0,3), save=True)
+    #
+    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='timeseries', dec_steps=4, discount=0.75, exploration=0.30, nvisits=2, ntrials=(0,3), save=True)
+    #
+    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='timeseries', dec_steps=4, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0,3), save=True)
 
     #UCB tune exploration
     # run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 2100,
@@ -206,8 +207,8 @@ if __name__ == '__main__':
     # run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 2100,
     #                inference='optimistic', dec_steps=1, exploration=0.60, ntrials=1, save=True)
     #
-    run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 2100,
-                   inference='optimistic', dec_steps=1, exploration=0.90, ntrials=2, save=True)
+    # run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='optimistic', dec_steps=1, exploration=0.90, ntrials=(0,2), save=True)
     #
     # run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 2100,
     #                inference='optimistic', dec_steps=1, exploration=0.30, ntrials=1, save=True)
@@ -215,13 +216,15 @@ if __name__ == '__main__':
     # run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 2100,
     #                inference='optimistic', dec_steps=1, exploration=0.60, ntrials=1, save=True)
     #
-    run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 2100,
-                   inference='optimistic', dec_steps=1, exploration=0.90, ntrials=2, save=True)
+    # run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='optimistic', dec_steps=1, exploration=0.90, ntrials=(0,2), save=True)
 
 
     #Full trials
-    # run_experiment('treebased_decision', 'office', 12, placement, 'non_uniform', 2100,
-    #                inference='oracle', dec_steps=4, discount=0.75, ntrials=5, save=True) #3100
+
+    run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+                   inference='timeseries', dec_steps=4, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0,5), save=True)
+
     #
     # run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 2100,
     #                inference='optimistic', dec_steps=1, ntrials=5, save=True)
@@ -229,11 +232,23 @@ if __name__ == '__main__':
     # run_experiment('correlated_thompson', 'office', 12, placement, 'non_uniform', 2100,
     #                inference='optimistic', dec_steps=1, ntrials=5, save=True) #3100
     #
-    # run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 2100,
-    #                inference='optimistic', dec_steps=1, ntrials=5, save=True)
+    run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 2100,
+                   inference='optimistic', dec_steps=1, exploration=0.60, ntrials=(0, 5), save=True)
     #
     # run_experiment('dynamic_programming', 'office', 12, placement, 'non_uniform', 2100,
     #                inference=None, dec_steps=4, ntrials=5, save=True) #3100
+
+    run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+                   inference='timeseries', dec_steps=1, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0, 3),
+                   save=True)
+
+    run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+                   inference='timeseries', dec_steps=8, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0, 3),
+                   save=True)
+
+    run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+                   inference='timeseries', dec_steps=12, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0, 3),
+                   save=True)
 
     #Latest in previous runs: 33
 

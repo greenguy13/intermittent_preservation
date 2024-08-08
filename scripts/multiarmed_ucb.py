@@ -135,7 +135,7 @@ class Robot:
         server = '/robot_' + str(self.robot_id) + '/move_base_node/make_plan'
         rospy.wait_for_service(server)
         self.get_plan_service = rospy.ServiceProxy(server, GetPlan)
-        self.debug("Getplan service: {}".format(self.get_plan_service))
+        # self.debug("Getplan service: {}".format(self.get_plan_service))
 
         rospy.Subscriber('/robot_{}/battery_status'.format(self.robot_id), Int8, self.battery_status_cb)
         rospy.Subscriber('/robot_{}/battery'.format(self.robot_id), Float32, self.battery_level_cb)
@@ -291,8 +291,8 @@ class Robot:
         mean_loss = self.mean_losses[area]
         new_mean_loss = np.mean(self.recorded_losses[area])
 
-        self.debug('Recorded losses: {}. Current mean: {}. New mean: {}'.format(self.recorded_losses[area], mean_loss,
-                                                                                new_mean_loss))
+        # self.debug('Recorded losses: {}. Current mean: {}. New mean: {}'.format(self.recorded_losses[area], mean_loss,
+        #                                                                         new_mean_loss))
         self.mean_losses[area] = new_mean_loss
 
     def mean_duration_decay(self, duration_matrix, area):
@@ -348,13 +348,13 @@ class Robot:
             # Battery consumption
             battery_consumption, feasible_battery = self.estimate_battery_params(decision, self.battery, self.curr_loc,
                                                                                  self.curr_fmeasures, self.noise)
-            self.debug("Batt consumption: {}. Feasible batt: {}".format(battery_consumption, feasible_battery))
+            # self.debug("Batt consumption: {}. Feasible batt: {}".format(battery_consumption, feasible_battery))
 
             if not prune(self.battery, battery_consumption, self.battery_reserve) and decision != self.curr_loc:
                 bound = np.sqrt(2 * np.log(sum(self.counts_visited) + 1) / (self.counts_visited[decision-1] + 1e-5))
                 ucb_value = self.mean_losses[decision] - self.exploration * bound
-                self.debug("Feasible decision, Mean loss, Feasible battery: {}, {}, {}".format(decision, ucb_value,
-                                                                                               feasible_battery))
+                # self.debug("Feasible decision, Mean loss, Feasible battery: {}, {}, {}".format(decision, ucb_value,
+                #                                                                                feasible_battery))
                 decision_array.append((decision, ucb_value, feasible_battery))
 
         best_decision = self.charging_station
@@ -451,8 +451,8 @@ class Robot:
         """
         # Sort the decisions: the cost is key while the value is decision
         sorted_decisions = sorted(dec_arr, key=lambda x: (x[-2], -x[-1]))
-        self.debug("Decisions sorted by mean loss, feasible batt: {}".format(sorted_decisions))
-        self.debug("Best decision (branch info): {}".format(sorted_decisions[0]))
+        # self.debug("Decisions sorted by mean loss, feasible batt: {}".format(sorted_decisions))
+        # self.debug("Best decision (branch info): {}".format(sorted_decisions[0]))
         best_decision = sorted_decisions[0][0]  # pick the decision with least net loss and most available feasible battery
         return best_decision
 
@@ -671,8 +671,8 @@ class Robot:
         """
         for area in self.areas:
            self.curr_fmeasures[area] = decay(self.decay_rates_dict[area], self.tlapses[area], self.max_fmeasure)
-        self.debug("Used for computation. Tlapses: {}. Decay rates: {}".format(self.tlapses, self.decay_rates_dict))
-        self.debug("Computed current f-measures: {}".format(self.curr_fmeasures))
+        # self.debug("Used for computation. Tlapses: {}. Decay rates: {}".format(self.tlapses, self.decay_rates_dict))
+        # self.debug("Computed current f-measures: {}".format(self.curr_fmeasures))
 
     def debug(self, msg):
         pu.log_msg('robot', self.robot_id, msg, self.debug_mode)

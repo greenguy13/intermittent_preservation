@@ -118,7 +118,7 @@ class Robot:
         server = '/robot_' + str(self.robot_id) + '/move_base_node/make_plan'
         rospy.wait_for_service(server)
         self.get_plan_service = rospy.ServiceProxy(server, GetPlan)
-        self.debug("Getplan service: {}".format(self.get_plan_service))
+        # self.debug("Getplan service: {}".format(self.get_plan_service))
 
         rospy.Subscriber('/robot_{}/battery_status'.format(self.robot_id), Int8, self.battery_status_cb)
         rospy.Subscriber('/robot_{}/battery'.format(self.robot_id), Float32, self.battery_level_cb)
@@ -295,7 +295,7 @@ class Robot:
         to_grow = list()  #container for branches still being grown/expanded
         nodes = [self.charging_station]
         nodes.extend(self.areas)
-        self.debug("Nodes: {}".format(nodes))
+        # self.debug("Nodes: {}".format(nodes))
 
         #Start at the current location as the root node.
         #Scenario 1
@@ -304,7 +304,7 @@ class Robot:
         path = [self.curr_loc]
         battery = self.battery
         cost = 0 #Initialize cost of path
-        if self.robot_id==0: self.debug("Areas: {}. Fmeasures: {}. Battery: {}".format(self.areas, fmeasures, battery))
+        # if self.robot_id==0: self.debug("Areas: {}. Fmeasures: {}. Battery: {}".format(self.areas, fmeasures, battery))
 
         #Initial feasible battery level
         feasible_battery_consumption = self.consume_battery(start_area=self.curr_loc, next_area=self.charging_station, curr_measure=None, noise=noise)
@@ -315,11 +315,11 @@ class Robot:
 
         #Succeeding decision steps:
         while k < dec_steps:
-            self.debug("\nDec step: {}".format(k))
+            # self.debug("\nDec step: {}".format(k))
             consider_branches = to_grow.copy()
             to_grow = list() #At the end of the iterations, to-grow will be empty while branches must be complete
             for branch in consider_branches:
-                self.debug("Branch to grow: {}".format(branch))
+                # self.debug("Branch to grow: {}".format(branch))
                 considered_growing = 0 #Indicators whether the branch has been considered for growing
                 for i in range(len(nodes)):
                     # Hypothetical: What if we travel to this node, what will the consumed battery be and the updated F-fmeasures?
@@ -345,11 +345,11 @@ class Robot:
                     battery_consumption_backto_charging_station = self.consume_battery(start_area=next_area, next_area=self.charging_station, curr_measure=None, noise=noise) #Battery consumed travel back to charging station
                     feasible_battery_consumption = battery_consumption + battery_consumption_backto_charging_station
 
-                    self.debug("Next area: {}, Batt level: {}, TLapsed decay: {}, Duration: {}, Decayed fmeasure: {}, Batt consumption: {}".format(next_area, battery, tlapse_decay, duration, decayed_fmeasure, battery_consumption))
+                    # self.debug("Next area: {}, Batt level: {}, TLapsed decay: {}, Duration: {}, Decayed fmeasure: {}, Batt consumption: {}".format(next_area, battery, tlapse_decay, duration, decayed_fmeasure, battery_consumption))
 
                     # If branch is not to be pruned and length still less than dec_steps, then we continue to grow that branch
                     cond1 = prune(battery, feasible_battery_consumption, self.battery_reserve)
-                    self.debug("Prune: {}".format(cond1))
+                    # self.debug("Prune: {}".format(cond1))
                     if cond1 is False and start_area != next_area:
                         #PO condition: If next node is charging station + one of the areas is decaying if we travel to that area + battery is safe or 100 (given when in charging station?)
                         path.append(next_area) #append next area as part of the path at depth k+1. #This is where the additional or overwriting happens. We need to make dummy list/container
@@ -360,8 +360,8 @@ class Robot:
                         feasible_battery = battery - feasible_battery_consumption  # battery available after taking into account battery to go back to charging station from current location. Note: if location is charging station, feasible_battery = max_battery
                         updated_fmeasures = self.adjust_fmeasures(fmeasures, next_area, duration) #F-measure of areas adjusted accordingly, i.e., consequence of decision
                         cost += (self.gamma**k)*self.compute_cost(updated_fmeasures) #Discounted cost of this decision
-                        self.debug("Resultant F-measures: {}".format(updated_fmeasures))
-                        self.debug("Branch to grow appended (path, batt, upd_fmeasures, cost, feas_batt): {}, {}, {}, {}, {}".format(path, battery, updated_fmeasures, cost, feasible_battery))
+                        # self.debug("Resultant F-measures: {}".format(updated_fmeasures))
+                        # self.debug("Branch to grow appended (path, batt, upd_fmeasures, cost, feas_batt): {}, {}, {}, {}, {}".format(path, battery, updated_fmeasures, cost, feasible_battery))
                         to_grow.append((path, battery, updated_fmeasures, cost, feasible_battery)) #Branch: (path, battery, updated_fmeasures, cost, feasible battery)
                         considered_growing += 1
 
@@ -371,7 +371,7 @@ class Robot:
                     # 3.) And branch not yet in branches.
                     else:
                         if (is_feasible(battery, feasible_battery_consumption, self.battery_reserve) is True) and (i == len(nodes)-1 and considered_growing == 0) and (branch not in branches):
-                            self.debug("Branch appended to tree: {}".format(branch))
+                            # self.debug("Branch appended to tree: {}".format(branch))
                             branches.append(branch)
             k += 1 #We are done with k depth, so move on to the next depth
 
@@ -379,7 +379,7 @@ class Robot:
         for branch in to_grow:
             if branch not in branches:
                 branches.append(branch)
-        self.debug("Arrived at last dec. step. Number of branches: {}".format(len(branches)))
+        # self.debug("Arrived at last dec. step. Number of branches: {}".format(len(branches)))
         return branches
 
     def compute_duration(self, start_area, next_area, curr_measure, restoration, noise):
@@ -474,9 +474,9 @@ class Robot:
         # Sort the branches: the cost is key while the value is branch
         sorted_branches = sorted(tree, key = lambda x: (x[-2], -x[-1])) #sorted by cost, x[-2] increasing; then sorted by feasible battery x[-1] decreasing
         #Debug
-        self.debug("Branches sorted by cost:")
-        for branch in sorted_branches:
-            self.debug("Branch: {}".format(branch))
+        # self.debug("Branches sorted by cost:")
+        # for branch in sorted_branches:
+        #     self.debug("Branch: {}".format(branch))
         self.debug("Optimal branch (branch info + cost): {}".format(sorted_branches[0]))
         optimal_path = sorted_branches[0][0] #pick the branch with least cost and most available feasible battery
         optimal_path.pop(0) #we pop out the first element of the path, which is the current location, which is not needed in current mission

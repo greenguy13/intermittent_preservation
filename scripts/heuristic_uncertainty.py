@@ -122,6 +122,7 @@ class Robot:
         self.travel_noise_data = [] #container for actual travel noise
         self.restoration_data = [] #container for actual restoration rate
         self.training_time_counter = [] #container for time it takes to train time-series model
+        self.forecast_time_counter = [] #container for process time in forecasting decay data
 
         #Parameters under uncertainty
         self.inference = rospy.get_param("/inference")
@@ -133,6 +134,7 @@ class Robot:
         self.exploration = rospy.get_param("/exploration")
         self.toggle_exploration = True if self.exploration > 0.0 else False
         self.risk = 0  # Risk of decay rate growing
+        self.recorded_risks = [] #Container for all recorded risks
 
         #We sum this up
         self.environment_status = dict()
@@ -417,7 +419,23 @@ class Robot:
         for area in self.areas:
             mean_duration_decay_dict[area] = self.mean_duration_decay(duration_matrix, area)
 
+        #TODO: Estimate max forecast time steps here
+        #We forecast decay dict beforehand
+        #We then feed this to forecast_opportunity_cost
+        max_forecast_timesteps = int(self.forecast_step + (np.max(duration_matrix) * self.dec_steps))
+        forecast_start = process_time()
+        forecast_decay_dict = forecast_decay_lstm(self.model, self.survey_data, max_forecast_timesteps)
+        forecast_end = process_time()
+        forecast_process_time = self.time_elapsed(forecast_start, forecast_end)
+        self.forecast_time_counter.append(forecast_process_time)  # Store process time in forecasting
+
+        debug("Max forecast tsteps: {}. Process time: {}".format(max_forecast_timesteps, forecast_process_time))
+        # debug("Forecasted decay data {}:".format(forecast_decay_dict))
+
         #Evaluate decision
+
+        decision_start = process_time()
+
         decision_array = []
         for decision in self.areas:
             # Battery consumption
@@ -427,6 +445,8 @@ class Robot:
             battery_consumption, feasible_battery = self.estimate_battery_params(decision, self.battery, self.curr_loc,
                                                                                  self.curr_fmeasures, self.travel_noise[self.curr_loc, decision])
             # self.debug("Batt consumption: {}. Feasible batt: {}".format(battery_consumption, feasible_battery))
+
+
             if not prune(self.battery, battery_consumption, self.battery_reserve) and decision != self.curr_loc:
                 #Immediate loss in i=1
                 duration = self.compute_duration(self.curr_loc, decision, self.curr_fmeasures[decision], self.restoration, self.travel_noise[self.curr_loc, decision])
@@ -449,7 +469,7 @@ class Robot:
                 # self.debug("Simulated tlapse: {}".format(updated_tlapses))
 
                 #TODO: Here we are forecasting future decay rates. We should use forecast_step as we will be adding it as base for future decision steps
-                forecasted_cost_decision = forecast_opportunity_cost(updated_fmeasures, updated_tlapses, self.survey_data, self.model, (self.fsafe, self.fcrit),
+                forecasted_cost_decision = forecast_opportunity_cost(updated_fmeasures, updated_tlapses, forecast_decay_dict, (self.fsafe, self.fcrit),
                                                          self.gamma, self.dec_steps, mean_duration_decay_dict, self.forecast_step+duration) #forecasted opportunity cost
 
                 # self.debug("Immediate cost: {}. Discounted future losses through {} steps: {}".format(immediate_cost_decision, self.dec_steps, forecasted_cost_decision))
@@ -461,6 +481,10 @@ class Robot:
 
         if len(decision_array)>0:
             best_decision = self.get_best_decision(decision_array)
+
+        decision_end = process_time()
+        decision_process_time = self.time_elapsed(decision_start, decision_end)
+        self.process_time_counter.append(decision_process_time)  # Store process time in forecasting
 
         return best_decision
 
@@ -537,7 +561,7 @@ class Robot:
             # motivation_arr = list()
 
             for area in self.decay_rates_dict:
-                adj_decay_rate = decay_rates[area] * (1 + self.risk)
+                adj_decay_rate = decay_rates[area] * (1 + self.risk) #TODO: The risk here should be average.
                 time_to_crit = get_time_given_decay(self.max_fmeasure, self.fcrit, adj_decay_rate)
                 motivation = (tlapses[area] / time_to_crit) * self.risk
                 decay_rates[area] *= (1 + self.exploration * motivation)
@@ -711,6 +735,15 @@ class Robot:
         padded_entry = pd.DataFrame([entry] * nsamples, columns=entry.keys())
         return padded_entry
 
+    def update_risk(self, new_risk_value):
+        """
+        Updates the risk value by taking the average of recorded risks thus far
+        :param risk_value:
+        :return:
+        """
+        self.recorded_risks.append(new_risk_value)
+        self.risk = np.mean(np.array(self.recorded_risks))
+
     #Methods: Run operation
     def run_operation(self, filename, freq=1):
         """
@@ -772,12 +805,8 @@ class Robot:
 
                 elif self.robot_status == robotStatus.READY.value:
                     self.debug('Robot ready')
-                    think_start = process_time()
                     self.think_decisions()
-                    think_end = process_time()
-                    think_elapsed = self.time_elapsed(think_start, think_end)
-                    self.process_time_counter.append(think_elapsed)
-                    self.debug('Best decision: {}. Process time: {}s'.format(self.best_decision, think_elapsed))
+                    self.debug('Best decision: {}. Process time: {}s'.format(self.best_decision, self.process_time_counter[-1]))
                     self.update_robot_status(robotStatus.IN_MISSION)
 
                 elif self.robot_status == robotStatus.IN_MISSION.value:
@@ -815,9 +844,10 @@ class Robot:
                     # self.debug("Replan stats: nvisits {}, measured decay {}, belief {}, discrepancy {}".format(self.nvisits, measured_decay, belief_decay, discrepancy))
 
                     #TODO: Update risk to the largest growth in decay rate
-                    if self.toggle_exploration and discrepancy > self.risk:
-                        self.risk = discrepancy
-                        # self.debug("Risk of decay growth updated: {}".format(self.risk))
+                    #TODO: Actually we measure the average Type 2 error
+                    if self.toggle_exploration and discrepancy > 0:
+                        self.update_risk(discrepancy)
+                        self.debug("Recorded risk: {} Updated risk rate: {}".format(discrepancy, self.risk))
 
                     #Update the model
                     if self.nvisits >= self.nvisits_thresh and discrepancy >= self.discrepancy_thresh:
@@ -885,6 +915,7 @@ class Robot:
                 pu.dump_data(self.state, '{}_environment_state'.format(filename))
                 pu.dump_data(self.process_time_counter, '{}_robot{}_process_time'.format(filename, self.robot_id))
                 pu.dump_data(self.training_time_counter, '{}_robot{}_training_time'.format(filename, self.robot_id))
+                pu.dump_data(self.forecast_time_counter, '{}_robot{}_forecast_time'.format(filename, self.robot_id))
                 pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
                 pu.dump_data((self.decisions_accomplished, self.total_dist_travelled), '{}_robot{}_decisions_acc_travel'.format(filename, self.robot_id))
                 pu.dump_data({'travel_noise': self.travel_noise_data, 'restoration': self.restoration_data}, '{}_robot{}_noise_data'.format(filename, self.robot_id))
@@ -923,7 +954,7 @@ class Robot:
         if self.best_decision is not None:
             self.mission_area = self.best_decision
             self.mission_area_pub.publish(self.mission_area)
-            # self.debug('Heading to: {}. {}'.format(self.mission_area, self.sampled_nodes_poses[self.mission_area]))
+            self.debug('Heading to: {}. {}'.format(self.mission_area, self.sampled_nodes_poses[self.mission_area]))
             self.decisions_made.append(self.mission_area) #store decisions made
             self.go_to_target(self.mission_area)
             return 1
@@ -960,7 +991,7 @@ class Robot:
         """
         self.environment_status[self.charging_station] = msg.data
         if msg.data == battStatus.FULLY_CHARGED.value:
-            # if self.robot_id == 0: self.debug("Fully charged!")
+            if self.robot_id == 0: self.debug("Fully charged!")
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 
@@ -975,7 +1006,7 @@ class Robot:
             self.available = True
             self.tlapses[area_id] = 0 #Reset the tlapse since last restored for the newly restored area
             self.end_restore_time = self.sim_t
-            # if self.robot_id == 0: self.debug("Area {} fully restored! Sim time when restored: {}. Tlapse reset...".format(area_id, self.end_restore_time))
+            if self.robot_id == 0: self.debug("Area {} fully restored! Sim time when restored: {}. Tlapse reset...".format(area_id, self.end_restore_time))
 
             if (self.inference is not None) and (self.inference != 'oracle'):
                 self.update_robot_status(robotStatus.CONSIDER_REPLAN)

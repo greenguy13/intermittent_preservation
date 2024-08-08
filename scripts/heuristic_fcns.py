@@ -4,6 +4,7 @@ import numpy as np
 from loss_fcns import *
 import project_utils as pu
 from infer_lstm import *
+from time import process_time
 
 max_fmeasure = 100
 
@@ -109,10 +110,15 @@ def heuristic_timeseries_forecast_cost(curr_fmeasures, forecast_time_dict, decay
     #Return forecasted fmeasures and cost
     return forecasted_fmeasures, cost
 
-def forecast_opportunity_cost(curr_fmeasures, tlapses, data, model, loss_params, discount, dec_steps, average_duration_decay_dict, forecast_tstep):
+def forecast_opportunity_cost(curr_fmeasures, tlapses, forecast_decay_dict, loss_params, discount, dec_steps, average_duration_decay_dict, forecast_tstep):
     """
     #TODO: Add decay_dict as a parameter, forecast_step. DONE
     #TODO: The decay_dict should be a COPY
+
+
+    #If we have a forecast model initially, then no need for the data and model
+
+
     Forecasts future opportunity cost of a decision given dec_steps to look ahead
     :param curr_fmeasures:
     :param loss_params:
@@ -138,19 +144,46 @@ def forecast_opportunity_cost(curr_fmeasures, tlapses, data, model, loss_params,
 
     #TODO: We do the forecasting first. We then just index/look them up. In this case, this is linear. A
     #   What we do is we take the max number of forecast time steps by assuming the max duration times decsteps
+    # Take the max number of tlapse?
+
+    """
+    Idea: Forecast first
+        1. Come up with a scalar for forecast timesteps:
+            a. Get the max tlapse * max average duration * (decsteps-1)
+        2. Use this to forecast lstm
+    
+    Idea: Look up in forecast
+        1. Just feed decay_dict in
+    """
+    # max_tlapse = np.max(forecast_timesteps)
+    # max_average_duration = np.max(list(average_duration_decay_dict.values()))
+    # max_forecast_timesteps = int(max_tlapse + max_average_duration * (dec_steps-1))
+    #
+    # #TODO: Insert timer here
+    # forecast_start = process_time()
+    # forecast_decay_dict = forecast_decay_lstm(model, data, max_forecast_timesteps)
+    # forecast_end = process_time()
+    # forecast_process_time = forecast_end - forecast_start
+    #
+    # debug("Max forecast tsteps: {}. Process time: {}".format(max_forecast_timesteps, forecast_process_time))
+    # debug("Forecasted decay data {}:".format(forecast_decay_dict))
 
     #Measure discounted loss
+    # debug("\n Forecasting future opp cost")
     loss_arr = []
     for i in range(1, dec_steps):
         #Forecast the decay rates at this time step
-        decay_dict = forecast_decay_timesteps(model, data, forecast_timesteps)  # Update decay_dict here
+        # decay_dict = forecast_decay_timesteps(model, data, forecast_timesteps)  # Update decay_dict here
+        # TODO: We do a lookup here of the decay rate given their respective tlapses in the forecasted decay_dict
+        decay_dict = lookup_forecasted_data(forecast_decay_dict, forecast_timesteps)
         # debug("Forecasted decay rate in step {}: {}".format(i, decay_dict))
+
 
         #Estimate the average duration areas are decaying for one decision step
         forecast_time_dict = pu.add_entries_dicts(tlapses, average_duration_decay_dict)
         # debug("Forecast future step: {}. Tlapses: {}. Average duration: {}".format(i, tlapses, average_duration_decay_dict))
         # debug("Forecasted time: {}".format(forecast_time_dict))
-        # decay_dict = forecasted_decay.iloc[i].to_dict() #TODO: Forecast the respective decay per area by supplying respective decision step
+        # decay_dict = forecasted_decay.iloc[i].to_dict()
 
         #Forecast the opportunity cost at this decision step
         forecasted_fmeasures, loss = heuristic_timeseries_forecast_cost(curr_fmeasures, forecast_time_dict, decay_dict, fsafe, fcrit)
@@ -169,6 +202,22 @@ def forecast_opportunity_cost(curr_fmeasures, tlapses, data, model, loss_params,
     # debug("Discount: {}. Costs: {}".format(discount_arr, loss_arr))
     return cost
 
+def lookup_forecasted_data(forecasted_data, forecast_timesteps):
+    """
+    Looks up the decay for each area given their respective forecast_timestep
+    :param forecasted_data:
+    :param forecast_timesteps:
+    :return:
+    """
+    decay_dict = dict()
+    for area in forecasted_data.columns:
+        # print("Area: {} {}".format(type(area), area))
+        timestep = forecast_timesteps[area-1]
+        # debug("Timestep: {}".format(timestep))
+        # debug("Looking up Area {} in forecast dict. Forecast tstep: {}. Decay area: {}".format(area, timestep, forecasted_data.iloc[timestep][area]))
+        decay_dict[area] = forecasted_data.iloc[timestep][area]
+    return decay_dict
+
 def forecast_decay_timesteps(model, data, forecast_timesteps):
     """
     Forecast (by time steps) the respective decay on average per area
@@ -180,7 +229,7 @@ def forecast_decay_timesteps(model, data, forecast_timesteps):
     decay_dict = dict()
     for area in range(len(forecast_timesteps)):
         forecast = forecast_decay_lstm(model, data, forecast_timesteps[area])
-        decay_dict[area+1] = forecast.iloc[-1][area+1]
+        decay_dict[area+1] = forecast.iloc[-1][area+1] #TODO: Okay this is the one where we do an iloc
 
     return decay_dict
 def debug(msg, robot_id=0):
