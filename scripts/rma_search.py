@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 """
-Orienteering problem with time-varying rewards via dynamic programming.
+Orienteering problem with time-varying rewards via RMA* search
+
 """
 import rospy
 from time import process_time
