@@ -137,8 +137,8 @@ if __name__ == '__main__':
     # history_data, history_decisions = retrieve_history_data_decisions_filenames(world='office', method='heuristic_uncertainty', inference='expected', nareas=8, placement=2, dec_steps=4, trial=1)
 
     # placement = 1
-    # run_experiment('heuristic_uncertainty', 'office', 8, placement, 'non_uniform', 150,
-    #                inference='timeseries', dec_steps=1, ntrials=1, save=False)
+    # run_experiment('rma_search', 'office', 12, placement, 'non_uniform', 50,
+    #                inference=None, dec_steps=4, ntrials=(0, 1), save=True)
 
     # #TODO: We can potentially set discount and exploration rates as parameter to run_experiment
 
@@ -222,33 +222,37 @@ if __name__ == '__main__':
 
     #Full trials
 
-    run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
-                   inference='timeseries', dec_steps=4, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0,5), save=True)
+    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='timeseries', dec_steps=4, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0,5), save=True)
 
     #
     # run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 2100,
-    #                inference='optimistic', dec_steps=1, ntrials=5, save=True)
+    #                inference='optimistic', dec_steps=1, ntrials=(0,5), save=True)
     #
     # run_experiment('correlated_thompson', 'office', 12, placement, 'non_uniform', 2100,
-    #                inference='optimistic', dec_steps=1, ntrials=5, save=True) #3100
+    #                inference='optimistic', dec_steps=1, ntrials=(0,5), save=True) #3100
     #
-    run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 2100,
-                   inference='optimistic', dec_steps=1, exploration=0.60, ntrials=(0, 5), save=True)
+    # run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='optimistic', dec_steps=1, exploration=0.60, ntrials=(0, 5), save=True)
     #
     # run_experiment('dynamic_programming', 'office', 12, placement, 'non_uniform', 2100,
-    #                inference=None, dec_steps=4, ntrials=5, save=True) #3100
+    #                inference=None, dec_steps=4, ntrials=(0, 5), save=True) #3100
 
-    run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
-                   inference='timeseries', dec_steps=1, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0, 3),
-                   save=True)
+    run_experiment('rma_search', 'office', 12, placement, 'non_uniform', 2100,
+                   inference=None, dec_steps=4, ntrials=(0, 5), save=True)
 
-    run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
-                   inference='timeseries', dec_steps=8, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0, 3),
-                   save=True)
 
-    run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
-                   inference='timeseries', dec_steps=12, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0, 3),
-                   save=True)
+    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='timeseries', dec_steps=1, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0, 3),
+    #                save=True)
+
+    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='timeseries', dec_steps=8, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0, 3),
+    #                save=True)
+
+    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='timeseries', dec_steps=12, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0, 3),
+    #                save=True)
 
     #Latest in previous runs: 33
 

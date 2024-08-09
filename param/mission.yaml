@@ -21,7 +21,7 @@ battery_reserve: 20 #battery reserve
 f_thresh: [80, 50] #(safe, crit)
 batt_consumed_per_time: [0.10, 0.10] #(travel, restoration)
 restoration: 25 #F-measure/battery.py units per second restored
-noise: 0.25 #noise/error in navigation and restoration #TODO: Can we start with 0.0?
+noise: 0.25 #noise/error in navigation and restoration
 move_base_tolerance: 0.5
 
 #Uncertainty params
@@ -34,3 +34,6 @@ learning_rate: 0.75 #learning rate
 exploration: $(arg exploration) #tunable exploration parameter
 correlation_info: [[1, 2, 1.0], [2, 1, 1.0], [3, 4, 1.0], [4, 3, 1.0], [5, 6, 1.0], [6, 5, 1.0], [7, 8, 1.0], [8, 7, 1.0]] #correlation information among areas with their magnitude
 sigma: 1.0 #standard deviation of the normal distribution for thompson sampling
+
+#RMA search param
+frontier_length: None #Frontier length. If None, then full frontier; else, truncated frontier for that length
