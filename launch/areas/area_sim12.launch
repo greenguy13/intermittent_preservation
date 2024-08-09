@@ -8,86 +8,84 @@
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="1"/>
             <arg name="decay_rate" value="0.00109"/>
-            <arg name="decay_evolution" value="[0.15, 0.15]"/>
+            <arg name="decay_evolution" value="[]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="2"/>
             <arg name="decay_rate" value="0.00101"/>
-            <arg name="decay_evolution" value="[0.15, 0.15]"/>
+            <arg name="decay_evolution" value="[]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="3"/>
             <arg name="decay_rate" value="0.00117"/>
-            <arg name="decay_evolution" value="[0.15, 0.15]"/>
+            <arg name="decay_evolution" value="[]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="4"/>
             <arg name="decay_rate" value="0.00173"/>
-            <arg name="decay_evolution" value="[0.15, 0.15]"/>
+            <arg name="decay_evolution" value="[]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="5"/>
             <arg name="decay_rate" value="0.00152"/>
-            <arg name="decay_evolution" value="[0.15, 0.15]"/>
+            <arg name="decay_evolution" value="[]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="6"/>
             <arg name="decay_rate" value="0.00169"/>
-            <arg name="decay_evolution" value="[0.15, 0.15]"/>
+            <arg name="decay_evolution" value="[]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="7"/>
             <arg name="decay_rate" value="0.00203"/>
-            <arg name="decay_evolution" value="[]"/>
+            <arg name="decay_evolution" value="[-0.15, -0.15]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="8"/>
             <arg name="decay_rate" value="0.00225"/>
-            <arg name="decay_evolution" value="[]"/>
+            <arg name="decay_evolution" value="[-0.15, -0.15]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="9"/>
             <arg name="decay_rate" value="0.00219"/>
-            <arg name="decay_evolution" value="[]"/>
+            <arg name="decay_evolution" value="[-0.15, -0.15]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="10"/>
             <arg name="decay_rate" value="0.00264"/>
-            <arg name="decay_evolution" value="[]"/>
+            <arg name="decay_evolution" value="[-0.15, -0.15]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="11"/>
             <arg name="decay_rate" value="0.00271"/>
-            <arg name="decay_evolution" value="[]"/>
+            <arg name="decay_evolution" value="[-0.15, -0.15]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="12"/>
             <arg name="decay_rate" value="0.00250"/>
-            <arg name="decay_evolution" value="[]"/>
+            <arg name="decay_evolution" value="[-0.15, -0.15]"/>
         </include>
     </group>
-
-
 </launch>

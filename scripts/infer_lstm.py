@@ -83,7 +83,9 @@ def train_model_lstm(data):
     if (epoch + 1) % 10 == 0:
       print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
 
-  return model
+  #TODO: Insert training metrics here
+  training_loss = loss.item()
+  return model, training_loss
 
 def forecast_decay_lstm(model, data, steps):
   scaler = MinMaxScaler()
