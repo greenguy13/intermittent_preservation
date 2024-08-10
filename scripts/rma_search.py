@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Orienteering problem with time-varying rewards via dynamic programming
+Orienteering problem with time-varying rewards via RMA* search
 
 """
 import rospy
@@ -18,12 +18,14 @@ from status import areaStatus, battStatus, robotStatus
 from reset_simulation import *
 from heuristic_fcns import *
 from graph_node import *
-
+import heapq
+from loss_fcns import loss_fcn, decay
 
 INDEX_FOR_X = 0
 INDEX_FOR_Y = 1
-SUCCEEDED = 3 #GoalStatus ID for succeeded, http://docs.ros.org/en/api/actionlib_msgs/html/msg/GoalStatus.html
+SUCCEEDED = 3  # GoalStatus ID for succeeded, http://docs.ros.org/en/api/actionlib_msgs/html/msg/GoalStatus.html
 SHUTDOWN_CODE = 99
+
 
 class Robot:
     def __init__(self, node_name):
@@ -37,109 +39,114 @@ class Robot:
 
         rospy.init_node(node_name, anonymous=True)
 
-        #Parameters
+        # Parameters
         self.robot_id = rospy.get_param("~robot_id")
         self.debug_mode = rospy.get_param("/debug_mode")
-        self.robot_velocity = rospy.get_param("/robot_velocity") #Linear velocity of robot; we assume linear and angular are relatively equal
-        self.gamma = rospy.get_param("/gamma") #discount factor
+        self.robot_velocity = rospy.get_param(
+            "/robot_velocity")  # Linear velocity of robot; we assume linear and angular are relatively equal
+        self.gamma = rospy.get_param("/gamma")  # discount factor
         self.max_fmeasure = rospy.get_param("/max_fmeasure")  # Max F-measure of an area
-        self.max_battery = rospy.get_param("/max_battery") #Max battery
-        self.battery_reserve = rospy.get_param("/battery_reserve") #Battery reserve
+        self.max_battery = rospy.get_param("/max_battery")  # Max battery
+        self.battery_reserve = rospy.get_param("/battery_reserve")  # Battery reserve
 
         f_thresh = rospy.get_param("/f_thresh")
-        self.fsafe, self.fcrit = f_thresh #(safe, crit)
+        self.fsafe, self.fcrit = f_thresh  # (safe, crit)
 
         batt_consumed_per_time = rospy.get_param("/batt_consumed_per_time")
-        self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = batt_consumed_per_time #(travel, restoration)
+        self.batt_consumed_per_travel_time, self.batt_consumed_per_restored_f = batt_consumed_per_time  # (travel, restoration)
 
         self.inference = rospy.get_param("/inference")
-        self.dec_steps = rospy.get_param("/dec_steps") #STAR
+        self.dec_steps = rospy.get_param("/dec_steps")  # STAR
         self.restoration = rospy.get_param("/restoration")
         self.noise = rospy.get_param("/noise")
-        self.nareas = rospy.get_param("/nareas") #Sample nodes from voronoi equal to area count #STAR
-        self.areas = [int(i+1) for i in range(self.nareas)]  # list of int area IDs
+        self.nareas = rospy.get_param("/nareas")  # Sample nodes from voronoi equal to area count #STAR
+        self.areas = [int(i + 1) for i in range(self.nareas)]  # list of int area IDs
         self.tolerance = rospy.get_param("/move_base_tolerance")
         self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
         self.save = rospy.get_param("/save")  # Whether to save data
+        self.frontier_length = rospy.get_param("/frontier_length")  # frontier length, either full length or truncated
+        if self.frontier_length == 'None':
+            self.frontier_length = math.inf
+        self.debug("Frontier length: {}, {}".format(type(self.frontier_length), self.frontier_length))
 
-        #Initialize variables
-        charging_station_coords = rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y") #rospy.get_param("/charging_station_coords")
+        # Initialize variables
+        charging_station_coords = rospy.get_param("~initial_pose_x"), rospy.get_param(
+            "~initial_pose_y")  # rospy.get_param("/charging_station_coords")
         charging_pose_stamped = pu.convert_coords_to_PoseStamped(charging_station_coords)
-        self.sampled_nodes_poses = [charging_pose_stamped] #list container for sampled nodes of type PoseStamped
+        self.sampled_nodes_poses = [charging_pose_stamped]  # list container for sampled nodes of type PoseStamped
 
-        #Pickle load the sampled area poses
+        # Pickle load the sampled area poses
         with open('{}.pkl'.format(rospy.get_param("/file_sampled_areas")), 'rb') as f:
             sampled_areas_coords = pickle.load(f)
         for area_coords in sampled_areas_coords['n{}_p{}'.format(self.nareas, rospy.get_param("/placement"))]:
             pose_stamped = pu.convert_coords_to_PoseStamped(area_coords)
             self.sampled_nodes_poses.append(pose_stamped)
 
-        self.x, self.y = 0.0, 0.0 #Initialize robot pose
+        self.x, self.y = 0.0, 0.0  # Initialize robot pose
         self.charging_station = 0
-        self.curr_loc = self.charging_station #Initial location robot is the charging station
-        self.battery = self.max_battery #Initialize battery at max, then gets updated by subscribed battery topic
-        self.optimal_path = [] #container for the decided optimal path
+        self.curr_loc = self.charging_station  # Initial location robot is the charging station
+        self.battery = self.max_battery  # Initialize battery at max, then gets updated by subscribed battery topic
+        self.optimal_path = []  # container for the decided optimal path
         self.dist_matrix = None
-        self.graph_areas = None #TODO: Graph of connected among vertices
         self.mission_area = None
         self.robot_status = robotStatus.IDLE.value
         self.available = True
-        self.curr_fmeasures = dict() #container of current F-measure of areas
-        self.decay_rates_dict = dict() #dictionary for decay rates
+        self.curr_fmeasures = dict()  # container of current F-measure of areas
+        self.decay_rates_dict = dict()  # dictionary for decay rates
         self.tlapses = dict()
 
         for area in self.areas:
             self.tlapses[area] = 0
             self.decay_rates_dict[area] = None
-        self.decay_rates_counter = 0 #counter for stored decay rates; should be equal to number of areas
-        self.decisions_made, self.decisions_accomplished, self.status_history = [], [], [] #record of data
-        self.total_dist_travelled = 0 #total distance travelled
-        self.process_time_counter = [] #container for time it took to come up with decision
+        self.decay_rates_counter = 0  # counter for stored decay rates; should be equal to number of areas
+        self.decisions_made, self.decisions_accomplished, self.status_history = [], [], []  # record of data
+        self.total_dist_travelled = 0  # total distance travelled
+        self.process_time_counter = []  # container for time it took to come up with decision
 
-        #We sum this up
+        # We sum this up
         self.environment_status = dict()
-        for node in range(self.nareas+1):
+        for node in range(self.nareas + 1):
             self.environment_status[node] = 999
 
-        #Publishers/Subscribers
+        # Publishers/Subscribers
         rospy.Subscriber('/robot_{}/odom'.format(self.robot_id), Odometry, self.distance_travelled_cb, queue_size=1)
 
         # Service request to move_base to get plan : make_Plan
         server = '/robot_' + str(self.robot_id) + '/move_base_node/make_plan'
         rospy.wait_for_service(server)
         self.get_plan_service = rospy.ServiceProxy(server, GetPlan)
-        self.debug("Getplan service: {}".format(self.get_plan_service))
+        # self.debug("Getplan service: {}".format(self.get_plan_service))
 
         rospy.Subscriber('/robot_{}/battery_status'.format(self.robot_id), Int8, self.battery_status_cb)
         rospy.Subscriber('/robot_{}/battery'.format(self.robot_id), Float32, self.battery_level_cb)
 
         for area in self.areas:
             rospy.Subscriber('/area_{}/decay_rate'.format(area), Float32, self.decay_rate_cb, area)
-            rospy.Subscriber('/area_{}/fmeasure'.format(area), Float32, self.area_fmeasure_cb, area) #REMARK: Here we assume that we have live measurements of the F-measures
+            rospy.Subscriber('/area_{}/fmeasure'.format(area), Float32, self.area_fmeasure_cb,
+                             area)  # REMARK: Here we assume that we have live measurements of the F-measures
             rospy.Subscriber('/area_{}/status'.format(area), Int8, self.area_status_cb, area)
 
         self.robot_status_pub = rospy.Publisher('/robot_{}/robot_status'.format(self.robot_id), Int8, queue_size=1)
         self.mission_area_pub = rospy.Publisher('/robot_{}/mission_area'.format(self.robot_id), Int8, queue_size=1)
 
-        #Action client to move_base
-        self.robot_goal_client = actionlib.SimpleActionClient('/robot_' + str(self.robot_id) + '/move_base', MoveBaseAction)
+        # Action client to move_base
+        self.robot_goal_client = actionlib.SimpleActionClient('/robot_' + str(self.robot_id) + '/move_base',
+                                                              MoveBaseAction)
         self.robot_goal_client.wait_for_server()
-
 
         """
         On charging:
             Robot's mission area is 0. It then changes its status to CHARGING once it reaches the charging station.
             The charging station, which subscribes to robot's status, charges up the battery.
             Here, we assume there is only one charging station.
-            
+
             If the robot_status is other than CHARGING, the battery status is DEPLETING.
-        
+
         On area restoration:
             Robot's mission area is a specific area. If reaches the area, it changes its status to RESTORING_F.
             Now, the current mission area, which subscribes to both robot_status and robot_mission_area topics, will restore F; while,
                 those other areas not the mission area will have their F continually decay 
         """
-
 
     # METHODS: Node poses and distance matrix
     def get_plan_request(self, start_pose, goal_pose, tolerance):
@@ -267,202 +274,200 @@ class Robot:
         This duration includes the distance plus F-measure restoration, if any
         """
 
-        #Batt consumed in travel
+        # Batt consumed in travel
         distance = self.dist_matrix[int(start_area), int(next_area)]
         distance += noise * distance
         travel_time = (distance / self.robot_velocity)
         battery_consumed = self.batt_consumed_per_travel_time * travel_time
 
-        #Batt consumed in area restoration
+        # Batt consumed in area restoration
         if next_area != self.charging_station:
             battery_consumed += self.batt_consumed_per_restored_f * (self.max_fmeasure - curr_measure)
 
         return battery_consumed
 
-    def create_graph(self, dist_matrix):
-        """
-        Creates graph among areas (excluding charging station) given distance matrix
-        """
-        graph = nx.Graph()
-        graph.add_nodes_from(list(range(len(dist_matrix))))
-        self.debug("Nodes: {}".format(graph.nodes))
-        edges = list()
-        for i in graph.nodes:
-            for j in graph.nodes:
-                if dist_matrix[i, j] is not None:
-                    edge = (i, j)
-                    edges.append(edge)
-        graph.add_edges_from(edges)
-        return graph
+    def computeDurationMatrix(self, distance_matrix):
+        return distance_matrix / self.robot_velocity
 
-    def create_spatio_temporal_DAG(self, current_loc, G, duration_matrix, decay_rates, tlapses_init, k):
+    def getHeuristicValue(self, label, decay_rates, tlapse_schedule):
         """
-        Creates spatio temporal DAG, G', from current_location based on G for schedule length k (time window).
-        The nodes of G' will have representation (G x k)
+        Computes admissible loss. Should not underestimate the loss of remaining tlapse (upper bound)
         Inputs:
-                current_loc - current location of robot
-                G - graph
-                decay_rates - list of decay rates
-                tlapses_init - dict of tlapse for each area
-                duration_matrix - travel duration from one node to another
-                k - schedule length
+          label - Label object which we are currently computing heuristic value
+          decay_rates - container of decay rates of areas
+          tlapse_schedule - tlapse of a schedule, (time budget)
         """
+        admissible_loss = []
+        tlapse_to_go = tlapse_schedule - label.tlapse
+        # self.debug("Path in heuristic evaluation {}".format(label.path))
+        for area in decay_rates:
+            if area not in label.path:
+                loss_to_go = self.computeLoss(decay_rates[area], tlapse_to_go)
+                admissible_loss.append(loss_to_go)
+        if len(admissible_loss) > 0:
+            return max(admissible_loss)
+        else:
+            return 0
 
-        nareas = len(G.nodes)
-        assert k <= nareas, "Constraint error: schedule length <= number of areas, since an area is to be visited at most once"
+    def computeLoss(self, decay_rate, tlapse, max_fmeasure=100):
+        fmeasure = decay(decay_rate, tlapse, max_fmeasure)
+        loss = loss_fcn(max_fmeasure, fmeasure)
+        return -loss
 
-        dag = nx.DiGraph()
-        stemp_nodes = dict()
-
-        # Create root node at i=0
-        i = 0
-        name = '{}_{}'.format(current_loc, i)
-        decay_rate, tlapse_init = None, None
-        if current_loc != self.charging_station:
-            decay_rate = decay_rates[current_loc]
-            tlapse_init = tlapses_init[current_loc]
-
-        root_node = Node(name, id=current_loc, decay_rate=decay_rate, tlapse_init=tlapse_init)  # Root node
-        dag.add_node(root_node)
-
-        # Form weighted edges for the k visits
-        stemp_nodes[0] = {name: root_node}
-        prev_node = root_node
-        for i in range(1, k + 1):
-            stemp_nodes[i] = dict()
-            stemp_edges = list()
-            for prev_node in list(stemp_nodes[i - 1].values()):
-                for n in list(G.neighbors(prev_node.id)):
-                    if n != prev_node.id and n != self.charging_station:
-                        name = '{}_{}'.format(n, i)
-                        new_node = Node(name, id=n, decay_rate=decay_rates[n], tlapse_init=tlapses_init[n],
-                                        tlapse_post_init=prev_node.tlapse_post_init,
-                                        tlapse_visit=duration_matrix[prev_node.id, n])
-                        self.debug("Tlapse: {}. Decay: {}. Loss: {}".format(new_node.tlapse, new_node.decay_rate,
-                                                                       new_node.loss))
-
-                        stemp_nodes[i][name] = new_node
-
-                        edge = (prev_node, new_node, new_node.weight)  # weighted edge
-                        stemp_edges.append(edge)
-            dag.add_nodes_from(list(stemp_nodes[i].values()))
-            dag.add_weighted_edges_from(stemp_edges)
-
-            self.debug("i={}: {}, {}".format(i, [node.name for node in list(stemp_nodes[i].values())],
-                                        [(edge[0].name, edge[1].name) for edge in stemp_edges]))
-        return dag
-
-    def topological_sort_dag(self, dag):
+    def isPruned(self, label, label_soln, frontier, dec_steps):
         """
-        Topologically sorts a DAG object
-        """
-        ordered = list(nx.topological_sort(dag))
-        return ordered
+        Note that the loss is naturally >0. Our goal is to find the schedule that has minimal loss. By applying -loss and applying a maximization scheme, we get an
+          equivalent minimization solution.
 
-    def backtrack(self, tail_node, root_name):
+        Returns true if label is pruned by:
+          cond1 - f(l) is less than g(l_d) of incumbent solution
+          cond2 - whether adding l as another decision is more than the number of decisions to make
+          cond3 - whether l is dominated by any labels that have reached v(l)
         """
+        # Cond 1
+        # TODO: Current loss < 0 to deal with instantiated values
+        if (label_soln is not None) and (len(label_soln.path) > 0 and label.path <= label_soln.path) and (
+                label.valuation <= label_soln.current_loss):
+            # self.debug("Did not pass pruning cond1. Label valuation: {} <= Label solution current loss: {}".format(label.valuation, label_soln.current_loss))
+            return True
+
+        # Cond 2
+        if (label_soln is not None) and len(label_soln.path) + 1 > dec_steps:
+            # self.debug("Did not pass pruning cond2. Exceeded dec_steps={}: {}".format(dec_steps, len(label_soln.path) + 1))
+            return True
+
+        # Cond 3
+        # TODO: Any schedule length > those in frontier incurs larger loss and thus will be pruned.
+        for label_prime in frontier:
+            if label_prime.path <= label.path and (
+                    len(label_prime.path) > 0 and label.path <= label_prime.path) and label_prime.current_loss >= label.current_loss:
+                # self.debug("Did not pass pruning cond3. Dominated by some label in frontier. Label_prime {} current loss: {} >= Label current loss: {}".format(
+                #         label_prime.vertex, label_prime.current_loss, label.current_loss))
+                return True
+        return False
+
+    def backtrack(self, tail_node, root=None):
+        """
+        #TODO: To adapt in this context
         Back tracks the path from tail node to parent node
 
         """
-        nodes_list = [tail_node]
+        nodes_list = [tail_node.vertex]
         parent = tail_node.parent
-        while parent.name != root_name:
-            tail_node = parent
-            nodes_list.append(tail_node.id)
-            parent = tail_node.parent
+        if parent is not None:
+            while True:
+                if parent.parent is root:
+                    break
+                tail_node = parent
+                nodes_list.append(tail_node.vertex)
+                parent = tail_node.parent
 
-        nodes_list.reverse()
+            nodes_list.reverse()
         return nodes_list
 
-    def min_loss_path(self, dag, sorted_nodes, current_loc):
+    def estimate_tlapse_schedule(self, duration_matrix, dec_steps_togo):
         """
-        Returns the path that yields the minimal loss in a DAG of length k starting from the root node, which is the current location
+        Estimates the tlapse of schedule given the average duration of a decision and decision steps
         """
-        root_name = '{}_{}'.format(current_loc, 0)
-        for node in sorted_nodes:
-            if node.name == root_name:  # root node
-                node.sum = 0
-                self.debug("Root node: {}. sum: {}\n".format(node.name, node.sum))
-            for succ in list(dag.successors(node)):
-                self.debug("\n{} -> {}".format(node.name, succ.name))
-                self.debug("Node {} path: {}. Succesor node: {}. Succesor in path?: {}".format(node.name, node.path, succ.id,
-                                                                                          succ.id in node.path))
-                if succ.id not in node.path:
-                    self.debug("Node sum: {} - Succ loss: {} <= Succ sum: {} => {}".format(node.sum, succ.loss, succ.sum,
-                                                                                      node.sum + succ.loss <= succ.sum))
-                    if node.sum - succ.loss <= succ.sum:
-                        succ.sum = node.sum - succ.loss
-                        succ.parent = node
-                        succ.path = node.path.copy()
-                        succ.path.append(succ.id)
-                        self.debug("Updated {} sum: {}. parent: {}. path: {}".format(succ.name, succ.sum, succ.parent.name,
-                                                                                succ.path))
+        average_duration = np.mean(duration_matrix)
+        tlapse_schedule = average_duration * dec_steps_togo
+        return tlapse_schedule
 
-        # Search for the minimal sum among nodes in dag
-        min_node = list(dag.nodes)[0]
-        for node in list(dag.nodes):
-            self.debug("Min node: {}, sum: {}. Next node: {}, sum: {}".format(min_node.name, min_node.sum, node.name,
-                                                                         node.sum))
-            if (node != min_node) and (not math.isinf(node.sum)) and (node.sum <= min_node.sum):
-                min_node = node
-                self.debug("replaced")
-        self.debug("Min node: {}. sum: {}. parent: {}. path: {}".format(min_node.name, min_node.sum, min_node.parent.name,
-                                                                   min_node.path))
-
-        # Retrieve a path
-        # path = self.backtrack(min_node, root_name)
-        path = min_node.path
-        self.debug("Decided path: {}".format(path))
-        # print("\nNode id path:", [node.id for node in path])
-        return path
+    def compute_decsteps_togo(self, l, dec_steps):
+        """
+        Computes the number of decision steps remaining to go
+        """
+        return dec_steps - len(l.path)
 
     def decision_making(self):
         """
-        Given current location, come up with optimal schedule by dynamic programming
+        Given current location, come up with optimal schedule by RMA* search
         :return:
         """
+        distance_matrix = self.dist_matrix.copy() * (
+                    1 + self.noise)  # distance_matrix = np.array([[0, 1, 1, 1] * 3, [1, 0, 1, 1] * 3, [1, 1, 0, 1] * 3, [1, 1, 1, 0] * 3] * 3)
+        duration_matrix = self.computeDurationMatrix(distance_matrix)
+        # dec_steps = 4
+        # frontier_length = math.inf  # tunable parameter for length of frontier. trade-off between optimality and efficiency
+
+        # TODO: We probably will have problem here with charging station
+        if self.curr_loc == self.charging_station:
+            init_tlapse = 0
+            init_loss = 0  # self.computeLoss(decay_rates[curr_loc], init_tlapse)  # TODO: Should this be present loss? Or shall we set as -math.inf? In ROS integration, which works right? The latter I think
+        else:
+            init_tlapse = self.tlapses[self.curr_loc]
+            init_loss = self.computeLoss(self.decay_rates_dict[self.curr_loc], init_tlapse)
+        init_path = set()
+
+        l_0 = Label(vertex=self.curr_loc, current_loss=init_loss, tlapse=init_tlapse, path=init_path,
+                    parent=None)  # TODO: Be cautious of how we instantiate parameters of label
+        # There is no goal vertex, just a number of decision steps to make. We estimate its equivalent tlapse
+        dec_steps_togo = self.compute_decsteps_togo(l_0, self.dec_steps)
+        tlapse_schedule = self.estimate_tlapse_schedule(duration_matrix, dec_steps_togo)
+        l_0.heuristic = self.getHeuristicValue(l_0, self.decay_rates_dict, tlapse_schedule)  # heuristic
+        l_0.computeValuation()  # current_cost + heuristic_cost
+
+        open = DualCriteriaPriorityQueue()
+        open.push(l_0)
+        frontier = Frontier(self.frontier_length)
+        frontier.add(l_0)
+        l_d = None  # incumbent solution
+
         """
-        Step 1: Create a DAG from current location for length k
-            Inputs:
-                > current_loc
-                > graph_areas
-                > duration_matrix
-                > decay_rates
-                > tlapses_init, dict where areas are the keys, tlapse = get_time_given_decay(max_fmeasure, decayed_fmeasure, rate)
-                > k
-            Output: dag            
-        Step 2: Topologically sort
-            Input: dag
-            Output: sorted nodes
-        Step 3: Get the minimal feasible path
-            Inputs:
-                > dag
-                > sorted nodes
-                > current_loc
-            Output:
-                > path of length k to be taken from current loc (which means this is not included in the path)
-        
-        Ensuring feasibility:        
-        PO1: We get the minimal path. Then from current battery we can estimate the consumption of the path.
-        We then truncate those visits that are beyond estimated capacity.
-        
-        PO2: At each iteration where we pop the visits from the schedule, we check whether it is feasible. If not, we choose the charging station and reset the path.
-        >> PO2 is easier to implement but also practical
+        For consideration: If we care only about the number of decision steps, then we should just have a counter of the soln path, whether it is
         """
 
-        #Step 1
-        duration_matrix = self.dist_matrix/self.robot_velocity
-        # tlapses_init = dict()
-        # for area in self.areas:
-        #     tlapses_init[area] = get_time_given_decay(max_fmeasure=self.max_fmeasure, decayed_fmeasure=self.curr_fmeasures[area], rate=self.decay_rates_dict[area])
-        self.debug("Initial tlapses, spatio-temporal DAG: {}".format(self.tlapses))
-        dag = self.create_spatio_temporal_DAG(self.curr_loc, self.graph_areas, duration_matrix, self.decay_rates_dict, self.tlapses, self.dec_steps)
+        while not open.is_empty():
+            # self.debug("Current open: {}. Highest priority: {}".format(open._queue, open.peek().vertex))
+            l = open.pop()
+            # self.debug("Popped label vertex: {}".format(l.vertex))
+            if self.isPruned(l, l_d, frontier.frontier, self.dec_steps):
+                # self.debug("Label is pruned in first pruning")
+                continue
+            frontier.filterAddFront(l)
+            # self.debug("Label is added to frontier")
 
-        #Step 2
-        ordered = self.topological_sort_dag(dag)
+            # cond for instantiation or label has more length or the longer path and within dec_steps
+            if (((l_d is None or (l_d.current_loss == 0.0 and len(l_d.path) < self.dec_steps)) or (
+                    len(l_d.path) < len(l.path)) or
+                 ((l.current_loss > l_d.current_loss) and (l.path >= l_d.path))) and (
+                    len(l.path) <= self.dec_steps)):  # We dont have goal vertices. Our goal is to reach desired number of decisions
+                l_d = l
+                # self.debug("Label now set as new incumbent solution: {}, {}, {} \n".format(l_d.current_loss, l_d.path, self.backtrack(l_d)))
 
-        #Step 3
-        min_path = self.min_loss_path(dag, ordered, self.curr_loc)
+            successors = l.getSuccessors(set(self.areas))  # Returns a list of successor/vertices
+            # self.debug("Label successors: {}".format(successors))
+
+            for s in successors:
+                # self.debug("Evaluating successor: {}".format(s))
+                # Move to vertex or stay in place
+                tlapse = l.tlapse + self.tlapses[s] + duration_matrix[
+                    l.vertex - 1, s - 1]  # l.tlapse + duration_matrix[l.vertex-1, s-1]
+                current_loss = l.current_loss + self.computeLoss(self.decay_rates_dict[s],
+                                                                 tlapse)  # TODO: Compute for the loss. And then here the decay rate of the next vertex to move to? While this one is the loss of moving and visiting the next vertex
+                path = l.path.copy()
+                path.add(s)
+                # self.debug("Moved to vertex {}. Tlapse: {}. Current loss: {}. Updated path: {}".format(s, tlapse, current_loss, path))
+                l_s = Label(vertex=s, current_loss=current_loss, tlapse=tlapse, path=path, parent=None)
+                dec_steps_togo = self.compute_decsteps_togo(l_s, self.dec_steps)  # Update remaining dec_steps to go
+                tlapse_schedule = self.estimate_tlapse_schedule(duration_matrix,
+                                                                dec_steps_togo)  # Update remaining tlapse to go
+                # self.debug("Decsteps to go: {}. Tlapse to go: {}".format(dec_steps_togo, tlapse_schedule))
+                l_s.heuristic = self.getHeuristicValue(l_s, self.decay_rates_dict, tlapse_schedule)
+                l_s.computeValuation()
+                # self.debug("New label created: {}. Heuristic loss: {}. Valuation: {}".format(l_s.vertex, l_s.heuristic, l_s.valuation))
+
+                if self.isPruned(l_s, l_d, frontier.frontier, self.dec_steps):
+                    # self.debug("New label is pruned in second pruning")
+                    continue
+                else:
+                    l_s.parent = l
+                    open.push(l_s)
+                    # self.debug("New label is pushed to Open and parent assigned {}".format(l_s.parent.vertex))
+
+        min_path = self.backtrack(l_d, None)
+        # self.debug("Optimal soln. Tlapse: {}. Total loss: {}. Opt schedule: {}".format(l_d.tlapse, l_d.current_loss, min_path))
+
         return min_path
 
     def update_tlapses_areas(self):
@@ -472,10 +477,9 @@ class Robot:
         """
         for area in self.areas:
             self.tlapses[area] += 1
-        self.debug("Time elapsed since last restored: {}".format(self.tlapses))
+        # self.debug("Time elapsed since last restored: {}".format(self.tlapses))
 
-
-    #Methods: Run operation
+    # Methods: Run operation
     def run_operation(self, filename, freq=1):
         """
         :return:
@@ -483,22 +487,22 @@ class Robot:
 
         if self.robot_id == 0:
             rate = rospy.Rate(freq)
-            while self.decay_rates_counter != self.nareas and len(self.sampled_nodes_poses) != self.nareas+1:
-                self.debug("Insufficient data. Decay rates: {}/{}. Sampled nodes poses: {}/{}".format(len(self.decay_rates_counter), self.nareas,
-                                                                                                      len(self.sampled_nodes_poses), self.nareas+1))
-                rate.sleep() #Data for decay rates haven't registered yet
+            while self.decay_rates_counter != self.nareas and len(self.sampled_nodes_poses) != self.nareas + 1:
+                self.debug("Insufficient data. Decay rates: {}/{}. Sampled nodes poses: {}/{}".format(
+                    len(self.decay_rates_counter), self.nareas,
+                    len(self.sampled_nodes_poses), self.nareas + 1))
+                rate.sleep()  # Data for decay rates haven't registered yet
 
-            self.debug("Sufficent data. Decay rates: {}. Sampled nodes poses: {}".format(self.decay_rates_dict, self.sampled_nodes_poses))
+            self.debug("Sufficent data. Decay rates: {}. Sampled nodes poses: {}".format(self.decay_rates_dict,
+                                                                                         self.sampled_nodes_poses))
             self.build_dist_matrix()
             t = 0
-            while not rospy.is_shutdown() and t<self.t_operation:
+            while not rospy.is_shutdown() and t < self.t_operation:
                 self.robot_status_pub.publish(self.robot_status)
                 self.status_history.append(self.robot_status)
                 if self.robot_status == robotStatus.IDLE.value:
                     self.debug('Robot idle')
                     if self.dist_matrix is not None:
-                        if self.graph_areas is None:
-                            self.graph_areas = self.create_graph(self.dist_matrix)
                         self.update_robot_status(robotStatus.READY)
 
                 elif self.robot_status == robotStatus.READY.value:
@@ -522,7 +526,7 @@ class Robot:
                 elif self.robot_status == robotStatus.RESTORING_F.value:
                     self.debug('Restoring F-measure')
 
-                if len(self.decisions_made)>0 or (self.robot_status != robotStatus.IDLE.value) and (
+                if len(self.decisions_made) > 0 or (self.robot_status != robotStatus.IDLE.value) and (
                         self.robot_status != robotStatus.READY.value) and (
                         self.robot_status != robotStatus.CONSIDER_REPLAN.value):
                     self.update_tlapses_areas()  # Update the tlapse per area
@@ -531,16 +535,17 @@ class Robot:
                 t += 1
                 rate.sleep()
 
-            #Store results
+            # Store results
             self.update_robot_status(robotStatus.SHUTDOWN)
             self.robot_status_pub.publish(self.robot_status)
             self.status_history.append(self.robot_status)
 
-            #Wait before all other nodes have finished dumping their data
+            # Wait before all other nodes have finished dumping their data
             if self.save:
                 pu.dump_data(self.process_time_counter, '{}_robot{}_process_time'.format(filename, self.robot_id))
                 pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
-                pu.dump_data((self.decisions_accomplished, self.total_dist_travelled), '{}_robot{}_decisions_acc_travel'.format(filename, self.robot_id))
+                pu.dump_data((self.decisions_accomplished, self.total_dist_travelled),
+                             '{}_robot{}_decisions_acc_travel'.format(filename, self.robot_id))
                 pu.dump_data(self.status_history, '{}_robot{}_status_history'.format(filename, self.robot_id))
                 self.debug("Dumped all data.".format(self.robot_id))
             self.shutdown(sleep=10)
@@ -577,15 +582,18 @@ class Robot:
         if len(self.optimal_path):
             self.mission_area = self.optimal_path.pop(0)
             if self.mission_area is not self.charging_station:
-                battery_consumed = self.consume_battery(self.curr_loc, self.mission_area, self.curr_fmeasures[self.mission_area], self.noise)
+                battery_consumed = self.consume_battery(self.curr_loc, self.mission_area,
+                                                        self.curr_fmeasures[self.mission_area], self.noise)
                 if not is_feasible(self.battery, battery_consumed, self.battery_reserve):
-                    self.debug('Not enough battery to visit {}. Heading back to charging station and resetting schedule...'.format(self.mission_area))
+                    self.debug(
+                        'Not enough battery to visit {}. Heading back to charging station and resetting schedule...'.format(
+                            self.mission_area))
                     self.optimal_path = []
                     self.mission_area = self.charging_station
 
             self.mission_area_pub.publish(self.mission_area)
             self.debug('Heading to: {}. {}'.format(self.mission_area, self.sampled_nodes_poses[self.mission_area]))
-            self.decisions_made.append(self.mission_area) #store decisions made
+            self.decisions_made.append(self.mission_area)  # store decisions made
             self.go_to_target(self.mission_area)
             return 1
         return 0
@@ -599,8 +607,8 @@ class Robot:
         self.robot_status = status.value
 
     def distance_travelled_cb(self, msg):
-        #Updates total distance travelled
-        #Sets curr robot pose
+        # Updates total distance travelled
+        # Sets curr robot pose
         x, y = msg.pose.pose.position.x, msg.pose.pose.position.y
         self.total_dist_travelled += math.dist((self.x, self.y), (x, y))
         self.x, self.y = x, y
@@ -655,8 +663,8 @@ class Robot:
             if self.inference == 'oracle':
                 if self.decay_rates_dict[area_id] != msg.data: self.debug(
                     "Oracle knowledge, change in decay in area {}: {}".format(area_id, msg.data))
-                self.decay_rates_dict[area_id] = msg.data  # A subscribed topic. Oracle knows exactly the decay rate happening in area
-
+                self.decay_rates_dict[
+                    area_id] = msg.data  # A subscribed topic. Oracle knows exactly the decay rate happening in area
 
     def area_fmeasure_cb(self, msg, area_id):
         """
@@ -675,8 +683,8 @@ class Robot:
         """
         for area in self.areas:
             self.curr_fmeasures[area] = decay(self.decay_rates_dict[area], self.tlapses[area], self.max_fmeasure)
-        self.debug("Used for computation. Tlapses: {}. Decay rates: {}".format(self.tlapses, self.decay_rates_dict))
-        self.debug("Computed current f-measures: {}".format(self.curr_fmeasures))
+        # self.debug("Used for computation. Tlapses: {}. Decay rates: {}".format(self.tlapses, self.decay_rates_dict))
+        # self.debug("Computed current f-measures: {}".format(self.curr_fmeasures))
 
     def debug(self, msg):
         pu.log_msg('robot', self.robot_id, msg, self.debug_mode)
@@ -685,9 +693,10 @@ class Robot:
         self.debug("Reached {} time operation. Shutting down...".format(self.t_operation))
         kill_nodes(sleep)
 
+
 if __name__ == '__main__':
     # os.chdir('/home/ameldocena/.ros/int_preservation/results')
     os.chdir('/root/catkin_ws/src/results/int_preservation')
     filename = rospy.get_param('/file_data_dump')
-    Robot('dynamic_programming').run_operation(filename)
+    Robot('rma_search').run_operation(filename)
 

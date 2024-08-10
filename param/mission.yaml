@@ -34,3 +34,6 @@ learning_rate: 0.75 #learning rate
 exploration: $(arg exploration) #tunable exploration parameter
 correlation_info: [[1, 2, 1.0], [2, 1, 1.0], [3, 4, 1.0], [4, 3, 1.0], [5, 6, 1.0], [6, 5, 1.0], [7, 8, 1.0], [8, 7, 1.0]] #correlation information among areas with their magnitude
 sigma: 1.0 #standard deviation of the normal distribution for thompson sampling
+
+#RMA search
+frontier_length: None #Length of frontier for RMA search; set as None for full frontier or positive integer for truncated
