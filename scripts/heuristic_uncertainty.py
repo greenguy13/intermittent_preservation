@@ -122,6 +122,7 @@ class Robot:
         self.travel_noise_data = [] #container for actual travel noise
         self.restoration_data = [] #container for actual restoration rate
         self.training_time_counter = [] #container for time it takes to train time-series model
+        self.training_loss_counter = [] #container for training losses
         self.forecast_time_counter = [] #container for process time in forecasting decay data
 
         #Parameters under uncertainty
@@ -774,7 +775,11 @@ class Robot:
 
             # self.debug("Fitting initial model on survey data...")
             train_start = process_time()
-            self.model = train_model_lstm(self.survey_data)
+            self.model, training_loss = train_model_lstm(self.survey_data)
+            #TODO: Store trained error
+            self.training_loss_counter.append(training_loss)
+            self.debug("Training loss: {}. Stored".format(training_loss))
+
             train_end = process_time()
             train_elapsed = self.time_elapsed(train_start, train_end)
             self.training_time_counter.append(train_elapsed )
@@ -860,7 +865,10 @@ class Robot:
                         #Fit model using survey data
                         self.debug("Model update conditions met. Updating timeseries model...")
                         train_start = process_time()
-                        self.model = train_model_lstm(self.survey_data) #train_data
+                        self.model, training_loss = train_model_lstm(self.survey_data) #train_data
+                        self.debug("Training loss: {}. Stored".format(training_loss))
+                        # TODO: Store trained error
+                        self.training_loss_counter.append(training_loss)
                         train_end = process_time()
                         train_elapsed = self.time_elapsed(train_start, train_end)
                         self.training_time_counter.append(train_elapsed)
@@ -915,6 +923,8 @@ class Robot:
                 pu.dump_data(self.state, '{}_environment_state'.format(filename))
                 pu.dump_data(self.process_time_counter, '{}_robot{}_process_time'.format(filename, self.robot_id))
                 pu.dump_data(self.training_time_counter, '{}_robot{}_training_time'.format(filename, self.robot_id))
+                self.debug("Training losses: {}. Dumping data".format(self.training_loss_counter))
+                pu.dump_data(self.training_loss_counter, '{}_robot{}_training_losses'.format(filename, self.robot_id))
                 pu.dump_data(self.forecast_time_counter, '{}_robot{}_forecast_time'.format(filename, self.robot_id))
                 pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
                 pu.dump_data((self.decisions_accomplished, self.total_dist_travelled), '{}_robot{}_decisions_acc_travel'.format(filename, self.robot_id))
@@ -1066,4 +1076,3 @@ if __name__ == '__main__':
     os.chdir('/root/catkin_ws/src/results/int_preservation')
     filename = rospy.get_param('/file_data_dump')
     Robot('heuristic_uncertainty').run_operation(filename)
-
