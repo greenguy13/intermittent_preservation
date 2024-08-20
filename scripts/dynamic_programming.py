@@ -2,7 +2,6 @@
 
 """
 Orienteering problem with time-varying rewards via dynamic programming
-
 """
 import rospy
 from time import process_time
