@@ -197,6 +197,9 @@ if __name__ == '__main__':
     #
     # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
     #                inference='timeseries', dec_steps=4, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0,3), save=True)
+    #
+    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='timeseries', dec_steps=4, discount=0.75, exploration=0.90, nvisits=2, ntrials=(0,3), save=True)
 
     #UCB tune exploration
     # run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 2100,
@@ -220,31 +223,36 @@ if __name__ == '__main__':
 
     #Full trials
     #
-    run_experiment('treebased_decision', 'office', 12, placement, 'non_uniform', 2100,
-                   inference='oracle', dec_steps=4, ntrials=(0, 5), discount=0.75, save=True)
+    run_experiment('treebased_decision', 'cluttered', 12, placement, 'non_uniform', 2100,
+                   inference='oracle', dec_steps=4, ntrials=(0, 3), discount=0.75, save=True)
 
-    run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
-                   inference='timeseries', dec_steps=4, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0, 5), save=True)
+    run_experiment('heuristic_uncertainty', 'cluttered', 12, placement, 'non_uniform', 2100,
+                   inference='timeseries', dec_steps=4, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0, 3), save=True)
 
-    run_experiment('correlated_thompson', 'office', 12, placement, 'non_uniform', 2100,
-                   inference='optimistic', dec_steps=1, ntrials=(0, 5), save=True)
+    # run_experiment('correlated_thompson', 'cluttered', 12, placement, 'non_uniform', 2100,
+    #                inference='optimistic', dec_steps=1, ntrials=(0, 3), save=True)
 
-    run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 2100,
-                   inference='optimistic', dec_steps=1, exploration=0.60, ntrials=(0, 5), save=True)
+    run_experiment('correlated_ucb', 'cluttered', 12, placement, 'non_uniform', 2100,
+                   inference='optimistic', dec_steps=1, exploration=0.60, ntrials=(0, 3), save=True)
 
-    run_experiment('dynamic_programming', 'office', 12, placement, 'non_uniform', 2100,
-                   inference=None, dec_steps=4, ntrials=(0, 5), save=True)
+    run_experiment('dynamic_programming', 'cluttered', 12, placement, 'non_uniform', 2100,
+                   inference=None, dec_steps=4, ntrials=(0, 3), save=True)
 
-    run_experiment('rma_search', 'office', 12, placement, 'non_uniform', 2100,
-                   inference=None, dec_steps=4, ntrials=(0, 5), save=True)
+    run_experiment('rma_search', 'cluttered', 12, placement, 'non_uniform', 2100,
+                   inference=None, dec_steps=4, ntrials=(0, 3), save=True)
 
     #
     # run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 2100,
     #                inference='optimistic', dec_steps=1, ntrials=5, save=True)
     #
-
     # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
-    #                inference='timeseries', dec_steps=1, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0, 3),
+    #                inference='timeseries', dec_steps=4, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0, 3),
+    #                save=True)
+    # NOTE: dec_steps=4 has already been run
+
+    # Currently running: Decision steps, slower scenario
+    # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='timeseries', dec_steps=1, discount=0.00, exploration=0.60, nvisits=2, ntrials=(0, 3),
     #                save=True)
     #
     # run_experiment('heuristic_uncertainty', 'office', 12, placement, 'non_uniform', 2100,
