@@ -140,8 +140,6 @@ if __name__ == '__main__':
     # run_experiment('rma_search', 'office', 12, placement, 'non_uniform', 50,
     #                inference=None, dec_steps=4, ntrials=(0, 1), save=True)
 
-    # #TODO: We can potentially set discount and exploration rates as parameter to run_experiment
-
     placement = 1
     #
     # run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
@@ -166,7 +164,6 @@ if __name__ == '__main__':
     #                inference=None, dec_steps=4, ntrials=1, save=True)
 
     """
-    TODO: Aug 6
     Grid search parameters over e = [0.30, 0.60, 0.90]. For discount 0.0, means k=1
         Fine-tune exploration for reinfocement learning UCB. To re-run: e = 0.90
         Fine-tune exploration for our method for k=4, with equivalent discount as with oracle, to re-run: e = 0.00, 0.30, 0.60
@@ -223,23 +220,24 @@ if __name__ == '__main__':
 
     #Full trials
     #
-    run_experiment('treebased_decision', 'cluttered', 12, placement, 'non_uniform', 2100,
-                   inference='oracle', dec_steps=4, ntrials=(0, 3), discount=0.75, save=True)
-
-    run_experiment('heuristic_uncertainty', 'cluttered', 12, placement, 'non_uniform', 2100,
-                   inference='timeseries', dec_steps=4, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0, 3), save=True)
+    # run_experiment('treebased_decision', 'cluttered', 12, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=4, ntrials=(0, 3), discount=0.75, save=True)
+    #
+    # run_experiment('heuristic_uncertainty', 'cluttered', 12, placement, 'non_uniform', 2100,
+    #                inference='timeseries', dec_steps=4, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0, 3), save=True)
 
     # run_experiment('correlated_thompson', 'cluttered', 12, placement, 'non_uniform', 2100,
     #                inference='optimistic', dec_steps=1, ntrials=(0, 3), save=True)
 
-    run_experiment('correlated_ucb', 'cluttered', 12, placement, 'non_uniform', 2100,
-                   inference='optimistic', dec_steps=1, exploration=0.60, ntrials=(0, 3), save=True)
+    # run_experiment('correlated_ucb', 'cluttered', 12, placement, 'non_uniform', 2100,
+    #                inference='optimistic', dec_steps=1, exploration=0.60, ntrials=(0, 3), save=True)
 
     run_experiment('dynamic_programming', 'cluttered', 12, placement, 'non_uniform', 2100,
-                   inference=None, dec_steps=4, ntrials=(0, 3), save=True)
+                   inference=None, dec_steps=4, ntrials=(2, 3), save=True)
 
     run_experiment('rma_search', 'cluttered', 12, placement, 'non_uniform', 2100,
                    inference=None, dec_steps=4, ntrials=(0, 3), save=True)
+
 
     #
     # run_experiment('multiarmed_ucb', 'office', 12, placement, 'non_uniform', 2100,

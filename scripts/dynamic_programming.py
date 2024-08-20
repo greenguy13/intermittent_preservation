@@ -284,7 +284,7 @@ class Robot:
         """
         graph = nx.Graph()
         graph.add_nodes_from(list(range(len(dist_matrix))))
-        self.debug("Nodes: {}".format(graph.nodes))
+        # self.debug("Nodes: {}".format(graph.nodes))
         edges = list()
         for i in graph.nodes:
             for j in graph.nodes:
@@ -337,8 +337,8 @@ class Robot:
                         new_node = Node(name, id=n, decay_rate=decay_rates[n], tlapse_init=tlapses_init[n],
                                         tlapse_post_init=prev_node.tlapse_post_init,
                                         tlapse_visit=duration_matrix[prev_node.id, n])
-                        self.debug("Tlapse: {}. Decay: {}. Loss: {}".format(new_node.tlapse, new_node.decay_rate,
-                                                                       new_node.loss))
+                        # self.debug("Tlapse: {}. Decay: {}. Loss: {}".format(new_node.tlapse, new_node.decay_rate,
+                        #                                                new_node.loss))
 
                         stemp_nodes[i][name] = new_node
 
@@ -347,8 +347,8 @@ class Robot:
             dag.add_nodes_from(list(stemp_nodes[i].values()))
             dag.add_weighted_edges_from(stemp_edges)
 
-            self.debug("i={}: {}, {}".format(i, [node.name for node in list(stemp_nodes[i].values())],
-                                        [(edge[0].name, edge[1].name) for edge in stemp_edges]))
+            # self.debug("i={}: {}, {}".format(i, [node.name for node in list(stemp_nodes[i].values())],
+            #                             [(edge[0].name, edge[1].name) for edge in stemp_edges]))
         return dag
 
     def topological_sort_dag(self, dag):
@@ -381,37 +381,37 @@ class Robot:
         for node in sorted_nodes:
             if node.name == root_name:  # root node
                 node.sum = 0
-                self.debug("Root node: {}. sum: {}\n".format(node.name, node.sum))
+                # self.debug("Root node: {}. sum: {}\n".format(node.name, node.sum))
             for succ in list(dag.successors(node)):
-                self.debug("\n{} -> {}".format(node.name, succ.name))
-                self.debug("Node {} path: {}. Succesor node: {}. Succesor in path?: {}".format(node.name, node.path, succ.id,
-                                                                                          succ.id in node.path))
+                # self.debug("\n{} -> {}".format(node.name, succ.name))
+                # self.debug("Node {} path: {}. Succesor node: {}. Succesor in path?: {}".format(node.name, node.path, succ.id,
+                #                                                                           succ.id in node.path))
                 if succ.id not in node.path:
-                    self.debug("Node sum: {} - Succ loss: {} <= Succ sum: {} => {}".format(node.sum, succ.loss, succ.sum,
-                                                                                      node.sum + succ.loss <= succ.sum))
+                    # self.debug("Node sum: {} - Succ loss: {} <= Succ sum: {} => {}".format(node.sum, succ.loss, succ.sum,
+                    #                                                                   node.sum + succ.loss <= succ.sum))
                     if node.sum - succ.loss <= succ.sum:
                         succ.sum = node.sum - succ.loss
                         succ.parent = node
                         succ.path = node.path.copy()
                         succ.path.append(succ.id)
-                        self.debug("Updated {} sum: {}. parent: {}. path: {}".format(succ.name, succ.sum, succ.parent.name,
-                                                                                succ.path))
+                        # self.debug("Updated {} sum: {}. parent: {}. path: {}".format(succ.name, succ.sum, succ.parent.name,
+                        #                                                         succ.path))
 
         # Search for the minimal sum among nodes in dag
         min_node = list(dag.nodes)[0]
         for node in list(dag.nodes):
-            self.debug("Min node: {}, sum: {}. Next node: {}, sum: {}".format(min_node.name, min_node.sum, node.name,
-                                                                         node.sum))
+            # self.debug("Min node: {}, sum: {}. Next node: {}, sum: {}".format(min_node.name, min_node.sum, node.name,
+            #                                                              node.sum))
             if (node != min_node) and (not math.isinf(node.sum)) and (node.sum <= min_node.sum):
                 min_node = node
-                self.debug("replaced")
-        self.debug("Min node: {}. sum: {}. parent: {}. path: {}".format(min_node.name, min_node.sum, min_node.parent.name,
-                                                                   min_node.path))
+        #         self.debug("replaced")
+        # self.debug("Min node: {}. sum: {}. parent: {}. path: {}".format(min_node.name, min_node.sum, min_node.parent.name,
+        #                                                            min_node.path))
 
         # Retrieve a path
         # path = self.backtrack(min_node, root_name)
         path = min_node.path
-        self.debug("Decided path: {}".format(path))
+        # self.debug("Decided path: {}".format(path))
         # print("\nNode id path:", [node.id for node in path])
         return path
 
@@ -454,7 +454,7 @@ class Robot:
         # tlapses_init = dict()
         # for area in self.areas:
         #     tlapses_init[area] = get_time_given_decay(max_fmeasure=self.max_fmeasure, decayed_fmeasure=self.curr_fmeasures[area], rate=self.decay_rates_dict[area])
-        self.debug("Initial tlapses, spatio-temporal DAG: {}".format(self.tlapses))
+        # self.debug("Initial tlapses, spatio-temporal DAG: {}".format(self.tlapses))
         dag = self.create_spatio_temporal_DAG(self.curr_loc, self.graph_areas, duration_matrix, self.decay_rates_dict, self.tlapses, self.dec_steps)
 
         #Step 2
@@ -674,8 +674,8 @@ class Robot:
         """
         for area in self.areas:
             self.curr_fmeasures[area] = decay(self.decay_rates_dict[area], self.tlapses[area], self.max_fmeasure)
-        self.debug("Used for computation. Tlapses: {}. Decay rates: {}".format(self.tlapses, self.decay_rates_dict))
-        self.debug("Computed current f-measures: {}".format(self.curr_fmeasures))
+        # self.debug("Used for computation. Tlapses: {}. Decay rates: {}".format(self.tlapses, self.decay_rates_dict))
+        # self.debug("Computed current f-measures: {}".format(self.curr_fmeasures))
 
     def debug(self, msg):
         pu.log_msg('robot', self.robot_id, msg, self.debug_mode)
