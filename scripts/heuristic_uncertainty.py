@@ -420,7 +420,6 @@ class Robot:
         for area in self.areas:
             mean_duration_decay_dict[area] = self.mean_duration_decay(duration_matrix, area)
 
-        #TODO: Estimate max forecast time steps here
         #We forecast decay dict beforehand
         #We then feed this to forecast_opportunity_cost
         max_forecast_timesteps = int(self.forecast_step + (np.max(duration_matrix) * self.dec_steps))
@@ -440,9 +439,6 @@ class Robot:
         decision_array = []
         for decision in self.areas:
             # Battery consumption
-            #TODO: If not oracle, we need to compute for the self.curr_fmeasures based on the believed decay rates and the tlapse for that area
-            # PO: We can potentially keep updating the believed self.curr_fmeasures as we update the tlapses of areas
-            # PO: Will we record the actual recorded fmeasure for that self.curr_fmeasures? Hmm. We restore it back to full measure right, i.e. the tlapse=0?
             battery_consumption, feasible_battery = self.estimate_battery_params(decision, self.battery, self.curr_loc,
                                                                                  self.curr_fmeasures, self.travel_noise[self.curr_loc, decision])
             # self.debug("Batt consumption: {}. Feasible batt: {}".format(battery_consumption, feasible_battery))
@@ -451,14 +447,6 @@ class Robot:
             if not prune(self.battery, battery_consumption, self.battery_reserve) and decision != self.curr_loc:
                 #Immediate loss in i=1
                 duration = self.compute_duration(self.curr_loc, decision, self.curr_fmeasures[decision], self.restoration, self.travel_noise[self.curr_loc, decision])
-                """
-                #TODO: This should be what is in the head of the robot.
-                #   We can actually do an initial exploration to update the model.
-                #   It is even possible to have some exploration in the middle as well.
-                #   There is some problem it seems to have greedy that exploits the current learned model.
-                """
-
-                #TODO: To insert risk/exploration we may need to have a toggle
                 updated_fmeasures = self.adjust_fmeasures(self.tlapses.copy(), decision, duration)  # F-measure of areas adjusted accordingly, i.e., consequence of decision
                 immediate_cost_decision = self.compute_opportunity_cost(updated_fmeasures) #immediate opportunity cost
                 # self.debug("Current F-measures: {}".format(self.curr_fmeasures))
@@ -469,7 +457,6 @@ class Robot:
                 updated_tlapses = self.simulate_tlapses(self.tlapses.copy(), decision, duration)
                 # self.debug("Simulated tlapse: {}".format(updated_tlapses))
 
-                #TODO: Here we are forecasting future decay rates. We should use forecast_step as we will be adding it as base for future decision steps
                 forecasted_cost_decision = forecast_opportunity_cost(updated_fmeasures, updated_tlapses, forecast_decay_dict, (self.fsafe, self.fcrit),
                                                          self.gamma, self.dec_steps, mean_duration_decay_dict, self.forecast_step+duration) #forecasted opportunity cost
 
@@ -539,8 +526,6 @@ class Robot:
 
     def adjust_fmeasures(self, tlapses, visit_area, duration):
         """
-        #TODO: This is where we have potential overestimation.
-
         Adjusts the F-measures of all areas in robot's mind. The visit area will be restored to max, while the other areas will decay for
         t duration. Note that the charging station is not part of the areas to monitor. And so, if the visit_area is the
         charging station, then all of the areas will decay as duration passes by.
@@ -552,23 +537,14 @@ class Robot:
         fmeasures = dict()
         # self.debug("Computation given tlapse: {}".format(tlapses))
 
-        #TODO: We can use a scalar for exploration. If self.exploration > 0: self.toggle_exploration = True
-        #   Okay what to do?
         decay_rates = self.decay_rates_dict.copy()
         if self.toggle_exploration is True:
-            #TODO: Add the ratio of tlapse and time it takes to get there
-
-            # rates = np.array(list(self.decay_rates_dict.values())) * (1 + self.risk)
-            # motivation_arr = list()
-
             for area in self.decay_rates_dict:
-                adj_decay_rate = decay_rates[area] * (1 + self.risk) #TODO: The risk here should be average.
+                adj_decay_rate = decay_rates[area] * (1 + self.risk)
                 time_to_crit = get_time_given_decay(self.max_fmeasure, self.fcrit, adj_decay_rate)
                 motivation = (tlapses[area] / time_to_crit) * self.risk
                 decay_rates[area] *= (1 + self.exploration * motivation)
                 # self.debug("Area: {}, Decay rate: {}, Risk={} decay rate: {}, Time to crit: {}, Motivation: {}, Adj decay rate: {}".format(area, self.decay_rates_dict[area], self.risk, adj_decay_rate, time_to_crit, motivation, decay_rates[area]))
-
-            # decay_rates = dict(zip(self.decay_rates_dict.keys(), rates)) #TODO: Ensure that the decay rates area multiplied
 
             # self.debug("Motivating exploration. Risk factor: {}. Adjusted decay rates: {}".format(self.risk, decay_rates))
 
@@ -578,7 +554,7 @@ class Robot:
                 # self.debug("Visit area: {}. F: {}".format(visit_area, fmeasures[area]))
             else:
                 tlapse = tlapses[area] + duration
-                fmeasures[area] = decay(decay_rates[area], tlapse, self.max_fmeasure) #TODO: This one here needs to be reviewed in the new. Should be forecasted
+                fmeasures[area] = decay(decay_rates[area], tlapse, self.max_fmeasure)
                 # self.debug("Other area: {}. Tlapse: {}. New tlapse: {}. F: {}".format(area, tlapses[area], tlapse, fmeasures[area]))
 
         return fmeasures
@@ -617,7 +593,6 @@ class Robot:
             self.tlapses[area] += 1
         # self.debug("Sim t: {}. Time elapsed since last restored: {}".format(sim_t, self.tlapses))
 
-    # TODO: Measure tlapses
     def estimate_curr_fmeasures(self):
         """
         Estimates current f-measures based on believed decay rates and tlapse per area
@@ -641,12 +616,11 @@ class Robot:
         :param new_entry:
         :return:
         """
-        #TODO: This has to be concat since we self.temp_recorded_decay will now be a DataFrame
         pd_entry = self.pad_sample_data(new_entry, nsamples=max(40, nsamples))
         # self.debug("Padded sample data: {}".format(pd_entry))
         self.temp_recorded_decay = pd.concat([self.temp_recorded_decay, pd_entry], ignore_index=True)
         # self.debug("Temp data: {}".format(self.temp_recorded_decay))
-        self.nvisits += 1 #TODO: This will be nvisits
+        self.nvisits += 1
 
     def record_and_impute_decay(self, mission_area, decay_rate, forecast_steps):
         """
@@ -776,7 +750,6 @@ class Robot:
             # self.debug("Fitting initial model on survey data...")
             train_start = process_time()
             self.model, training_loss = train_model_lstm(self.survey_data)
-            #TODO: Store trained error
             self.training_loss_counter.append(training_loss)
             self.debug("Training loss: {}. Stored".format(training_loss))
 
@@ -836,20 +809,13 @@ class Robot:
                     measured_decay = self.recorded_decay_param[self.curr_loc][-1]
 
                     #Process the newly recorded data: Store actual data for area visited while impute for all other areas by forecasting using timeseries model
-                    new_entry = self.record_and_impute_decay(self.curr_loc, measured_decay, self.forecast_step) #TODO: Verify whether this is based on time step. HERE UPNEXT. SOUNDS GOOD
+                    new_entry = self.record_and_impute_decay(self.curr_loc, measured_decay, self.forecast_step)
                     # self.debug("Imputed data entry at forecast time step, {}: {}".format(self.forecast_step, new_entry))
-                    """
-                    1. Init temp_data as dataframe
-                    2. Update temp_data: Pad new entry and concat with temp_data. Increase nvisits += 1
-                    3. If enough nvisits, concat with self.survey_data. Train LSTM model
-                    """
                     self.update_temp_data(new_entry, actual_travel_time)
 
                     discrepancy = self.discrepancy(measured_decay, belief_decay)
                     # self.debug("Replan stats: nvisits {}, measured decay {}, belief {}, discrepancy {}".format(self.nvisits, measured_decay, belief_decay, discrepancy))
 
-                    #TODO: Update risk to the largest growth in decay rate
-                    #TODO: Actually we measure the average Type 2 error
                     if self.toggle_exploration and discrepancy > 0:
                         self.update_risk(discrepancy)
                         self.debug("Recorded risk: {} Updated risk rate: {}".format(discrepancy, self.risk))
@@ -867,7 +833,6 @@ class Robot:
                         train_start = process_time()
                         self.model, training_loss = train_model_lstm(self.survey_data) #train_data
                         self.debug("Training loss: {}. Stored".format(training_loss))
-                        # TODO: Store trained error
                         self.training_loss_counter.append(training_loss)
                         train_end = process_time()
                         train_elapsed = self.time_elapsed(train_start, train_end)

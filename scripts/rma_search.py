@@ -130,21 +130,6 @@ class Robot:
         self.robot_goal_client.wait_for_server()
 
 
-        """
-        On charging:
-            Robot's mission area is 0. It then changes its status to CHARGING once it reaches the charging station.
-            The charging station, which subscribes to robot's status, charges up the battery.
-            Here, we assume there is only one charging station.
-            
-            If the robot_status is other than CHARGING, the battery status is DEPLETING.
-        
-        On area restoration:
-            Robot's mission area is a specific area. If reaches the area, it changes its status to RESTORING_F.
-            Now, the current mission area, which subscribes to both robot_status and robot_mission_area topics, will restore F; while,
-                those other areas not the mission area will have their F continually decay 
-        """
-
-
     # METHODS: Node poses and distance matrix
     def get_plan_request(self, start_pose, goal_pose, tolerance):
         """
@@ -322,7 +307,6 @@ class Robot:
           cond3 - whether l is dominated by any labels that have reached v(l)
         """
         # Cond 1
-        # TODO: Current loss < 0 to deal with instantiated values
         if (label_soln is not None) and (len(label_soln.path) > 0 and label.path <= label_soln.path) and (label.valuation <= label_soln.current_loss):
             # self.debug("Did not pass pruning cond1. Label valuation: {} <= Label solution current loss: {}".format(label.valuation, label_soln.current_loss))
             return True
@@ -333,7 +317,6 @@ class Robot:
             return True
 
         # Cond 3
-        # TODO: Any schedule length > those in frontier incurs larger loss and thus will be pruned.
         for label_prime in frontier:
             if label_prime.path <= label.path and (len(label_prime.path) > 0 and label.path <= label_prime.path) and label_prime.current_loss >= label.current_loss:
                 # self.debug("Did not pass pruning cond3. Dominated by some label in frontier. Label_prime {} current loss: {} >= Label current loss: {}".format(
@@ -343,7 +326,6 @@ class Robot:
 
     def backtrack(self, tail_node, root=None):
         """
-        #TODO: To adapt in this context
         Back tracks the path from tail node to parent node
 
         """
@@ -384,16 +366,15 @@ class Robot:
         # dec_steps = 4
         # frontier_length = math.inf  # tunable parameter for length of frontier. trade-off between optimality and efficiency
 
-        #TODO: We probably will have problem here with charging station
         if self.curr_loc == self.charging_station:
             init_tlapse = 0
-            init_loss = 0 #self.computeLoss(decay_rates[curr_loc], init_tlapse)  # TODO: Should this be present loss? Or shall we set as -math.inf? In ROS integration, which works right? The latter I think
+            init_loss = 0 #self.computeLoss(decay_rates[curr_loc], init_tlapse)
         else:
             init_tlapse = self.tlapses[self.curr_loc]
             init_loss = self.computeLoss(self.decay_rates_dict[self.curr_loc], init_tlapse)
         init_path = set()
 
-        l_0 = Label(vertex=self.curr_loc, current_loss=init_loss, tlapse=init_tlapse, path=init_path, parent=None)  # TODO: Be cautious of how we instantiate parameters of label
+        l_0 = Label(vertex=self.curr_loc, current_loss=init_loss, tlapse=init_tlapse, path=init_path, parent=None)
         # There is no goal vertex, just a number of decision steps to make. We estimate its equivalent tlapse
         dec_steps_togo = self.compute_decsteps_togo(l_0, self.dec_steps)
         tlapse_schedule = self.estimate_tlapse_schedule(duration_matrix, dec_steps_togo)
@@ -433,7 +414,7 @@ class Robot:
                 # self.debug("Evaluating successor: {}".format(s))
                 # Move to vertex or stay in place
                 tlapse = l.tlapse + self.tlapses[s] + duration_matrix[l.vertex - 1, s - 1]  # l.tlapse + duration_matrix[l.vertex-1, s-1]
-                current_loss = l.current_loss + self.computeLoss(self.decay_rates_dict[s], tlapse)  # TODO: Compute for the loss. And then here the decay rate of the next vertex to move to? While this one is the loss of moving and visiting the next vertex
+                current_loss = l.current_loss + self.computeLoss(self.decay_rates_dict[s], tlapse)
                 path = l.path.copy()
                 path.add(s)
                 # self.debug("Moved to vertex {}. Tlapse: {}. Current loss: {}. Updated path: {}".format(s, tlapse, current_loss, path))
