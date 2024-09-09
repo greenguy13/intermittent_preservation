@@ -219,24 +219,138 @@ if __name__ == '__main__':
 
 
     #Full trials
+    # run_experiment('heuristic_decision', 'office', 4, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=1, discount=0.00, exploration=None, nvisits=None, ntrials=(0, 3), save=True)
+    #
+    # run_experiment('treebased_decision', 'office', 4, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=4, discount=0.25, exploration=None, nvisits=None, ntrials=(0, 3), save=True)
+
+    # run_experiment('heuristic_decision', 'office', 4, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=1, discount=0.00, exploration=None, nvisits=None, ntrials=(0, 3), save=True)
+
+    run_experiment('heuristic_decision', 'office', 4, placement, 'non_uniform', 2100,
+                   inference='oracle', dec_steps=4, discount=0.25, exploration=None, nvisits=None, ntrials=(0, 2), save=True)
+
+    # run_experiment('dynamic_programming', 'office', 4, placement, 'non_uniform', 2100,
+    #                inference=None, dec_steps=4, ntrials=(0, 3), save=True)
+
+
+    # run_experiment('heuristic_decision', 'office', 4, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=3, discount=0.75, exploration=None, nvisits=None, ntrials=(0, 3), save=True)
+    #
+    # run_experiment('heuristic_decision', 'office', 4, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=3, discount=1.00, exploration=None, nvisits=None, ntrials=(0, 3), save=True)
+
+    #12 areas
+    # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=1, discount=0.00, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+
+    # run_experiment('treebased_decision', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=4, discount=0.25, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+    #
+    # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=1, discount=0.00, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+
+    run_experiment('heuristic_decision', 'office', 9, placement, 'non_uniform', 2100,
+                   inference='oracle', dec_steps=3, discount=0.25, exploration=None, nvisits=None, ntrials=(0, 2),
+                   save=True)
+
+    # run_experiment('dynamic_programming', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference=None, dec_steps=4, ntrials=(0, 3), save=True)
+
+    #k=3
+    # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=3, discount=0.25, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+    #
+    # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=3, discount=0.50, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+    #
+    # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=3, discount=0.75, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+    #
+    # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=3, discount=1.00, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+    #
+    # #k=4
+    # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=4, discount=0.25, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+    #
+    # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=4, discount=0.50, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+    #
+    # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=4, discount=0.75, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+    #
+    # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=4, discount=1.00, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+    #
+    # #k=6
+    # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=6, discount=0.25, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+    #
+    # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=6, discount=0.50, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+    #
+    # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=6, discount=0.75, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+    #
+    # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=6, discount=1.00, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+
+
+    # run_experiment('heuristic_decision', 'cluttered', 4, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=1, discount=0.00, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+    #
+    # run_experiment('heuristic_decision', 'cluttered', 4, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=4, discount=0.25, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+    #
+    # run_experiment('heuristic_decision', 'cluttered', 4, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=4, discount=0.50, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+    #
+    # run_experiment('heuristic_decision', 'cluttered', 4, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=4, discount=0.75, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+    #
+    # run_experiment('heuristic_decision', 'cluttered', 4, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=4, discount=1.00, exploration=None, nvisits=None, ntrials=(0, 3),
+    #                save=True)
+
     #
     # run_experiment('treebased_decision', 'cluttered', 12, placement, 'non_uniform', 2100,
-    #                inference='oracle', dec_steps=4, ntrials=(0, 3), discount=0.75, save=True)
+    #                inference='oracle', dec_steps=4, ntrials=(0, 2), discount=0.75, save=True)
     #
     # run_experiment('heuristic_uncertainty', 'cluttered', 12, placement, 'non_uniform', 2100,
-    #                inference='timeseries', dec_steps=4, discount=0.75, exploration=0.60, nvisits=2, ntrials=(0, 3), save=True)
+    #                inference='timeseries', dec_steps=4, discount=0.75, exploration=0.60, nvisits=2, ntrials=(2, 3), save=True)
 
     # run_experiment('correlated_thompson', 'cluttered', 12, placement, 'non_uniform', 2100,
     #                inference='optimistic', dec_steps=1, ntrials=(0, 3), save=True)
 
     # run_experiment('correlated_ucb', 'cluttered', 12, placement, 'non_uniform', 2100,
-    #                inference='optimistic', dec_steps=1, exploration=0.60, ntrials=(0, 3), save=True)
-
-    run_experiment('dynamic_programming', 'cluttered', 12, placement, 'non_uniform', 2100,
-                   inference=None, dec_steps=4, ntrials=(2, 3), save=True)
-
-    run_experiment('rma_search', 'cluttered', 12, placement, 'non_uniform', 2100,
-                   inference=None, dec_steps=4, ntrials=(0, 3), save=True)
+    #                inference='optimistic', dec_steps=1, exploration=0.60, ntrials=(1, 3), save=True)
+    #
+    # run_experiment('dynamic_programming', 'cluttered', 12, placement, 'non_uniform', 2100,
+    #                inference=None, dec_steps=4, ntrials=(2, 3), save=True)
+    #
+    # run_experiment('rma_search', 'cluttered', 12, placement, 'non_uniform', 2100,
+    #                inference=None, dec_steps=4, ntrials=(2, 3), save=True)
 
 
     #
