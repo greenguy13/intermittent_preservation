@@ -340,7 +340,7 @@ class Robot():
         :return:
         """
 
-        if self.robot_id == 0:
+        if self.robot_id < 999:
             rate = rospy.Rate(1)
             while len(self.sampled_nodes_poses) != self.nareas+1:
                 self.debug("Insufficient data. Sampled nodes poses: {}/{}. Area status None: {}".format(len(self.sampled_nodes_poses), self.nareas + 1, sum(self.environment_status.values())))
@@ -448,7 +448,7 @@ class Robot():
         """
         self.environment_status[0] = msg.data
         if msg.data == battStatus.FULLY_CHARGED.value:
-            if self.robot_id == 0: self.debug("Fully charged!")
+            if self.robot_id < 999: self.debug("Fully charged!")
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 
@@ -460,7 +460,7 @@ class Robot():
         """
         self.environment_status[area_id] = msg.data
         if msg.data == areaStatus.RESTORED_F.value:
-            if self.robot_id == 0: self.debug("Area fully restored!")
+            if self.robot_id < 999: self.debug("Area fully restored!")
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 

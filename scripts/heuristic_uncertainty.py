@@ -752,7 +752,7 @@ class Robot:
         :return:
         """
 
-        if self.robot_id == 0:
+        if self.robot_id < 999:
             rate = rospy.Rate(freq)
             # self.debug("Waiting for nodes to register...")
             rospy.sleep(15)  # Wait for nodes to register
@@ -1001,7 +1001,7 @@ class Robot:
         """
         self.environment_status[self.charging_station] = msg.data
         if msg.data == battStatus.FULLY_CHARGED.value:
-            if self.robot_id == 0: self.debug("Fully charged!")
+            if self.robot_id < 999: self.debug("Fully charged!")
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 
@@ -1016,7 +1016,7 @@ class Robot:
             self.available = True
             self.tlapses[area_id] = 0 #Reset the tlapse since last restored for the newly restored area
             self.end_restore_time = self.sim_t
-            if self.robot_id == 0: self.debug("Area {} fully restored! Sim time when restored: {}. Tlapse reset...".format(area_id, self.end_restore_time))
+            if self.robot_id < 999: self.debug("Area {} fully restored! Sim time when restored: {}. Tlapse reset...".format(area_id, self.end_restore_time))
 
             if (self.inference is not None) and (self.inference != 'oracle'):
                 self.update_robot_status(robotStatus.CONSIDER_REPLAN)
@@ -1034,7 +1034,7 @@ class Robot:
         #Store the decay rates at instance, (prior knowledge as oracle)
         if self.decay_rates_dict[area_id] == None:
             # We store the prior decay rate data as first input to the recorded decay rates data
-            # if self.robot_id == 0: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
+            # if self.robot_id < 999: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
             self.decay_rates_dict[area_id] = msg.data
             if len(self.recorded_decay_param[area_id]) == 0:
                 self.recorded_decay_param[area_id].append(self.decay_rates_dict[area_id])

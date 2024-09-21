@@ -488,7 +488,7 @@ class Robot:
         :return:
         """
 
-        if self.robot_id == 0:
+        if self.robot_id < 999:
             rate = rospy.Rate(freq)
             while self.decay_rates_counter < self.nareas and len(self.sampled_nodes_poses) != self.nareas+1:
                 self.debug("Insufficient data. Decay rates: {}/{}. Sampled nodes poses: {}/{}".format(self.decay_rates_counter, self.nareas,
@@ -615,7 +615,7 @@ class Robot:
         """
         self.environment_status[self.charging_station] = msg.data
         if msg.data == battStatus.FULLY_CHARGED.value:
-            if self.robot_id == 0: self.debug("Fully charged!")
+            if self.robot_id < 999: self.debug("Fully charged!")
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 
@@ -627,7 +627,7 @@ class Robot:
         """
         self.environment_status[area_id] = msg.data
         if msg.data == areaStatus.RESTORED_F.value:
-            if self.robot_id == 0: self.debug("Area fully restored!")
+            if self.robot_id < 999: self.debug("Area fully restored!")
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 
@@ -639,7 +639,7 @@ class Robot:
     #     :return:
     #     """
     # if self.decay_rates_dict[str(area_id)] == None:
-    #     if self.robot_id == 0: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
+    #     if self.robot_id < 999: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
     #     self.decay_rates_dict[str(area_id)] = msg.data
     #     self.decay_rates_counter += 1
     def decay_rate_cb(self, msg, area_id):
@@ -651,7 +651,7 @@ class Robot:
         """
         # Store the decay rates at instance, (prior knowledge)
         if self.decay_rates_dict[str(area_id)] == None:
-            if self.robot_id == 0: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
+            if self.robot_id < 999: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
             self.decay_rates_dict[str(area_id)] = msg.data
             self.decay_rates_counter += 1
         else:

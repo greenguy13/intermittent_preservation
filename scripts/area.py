@@ -35,6 +35,16 @@ class Area():
         rospy.init_node('area', anonymous=True)
         self.debug_mode = rospy.get_param("/debug_mode")
         self.area = rospy.get_param("~area_id")
+        # TODO: When this becomes multi-robot, there has to be a robot assigned to it sent by a planner/auctioneer
+        #   PO: We can do an if, something like if nrobots = 1: self.robot_id = rospy.get_param("~decay_rate")
+        #   PO: Else (nrobots > 1): this becomes an assignment which can be a subscribed topic/message request
+
+        # TODO: Pause of simulation
+        #   PO1: We can have a global msg that tells all areas to pause their simulation?
+        #   PO2: Or by the robot assigned to them?
+        #   Remark: These 2 are possible
+
+
         self.robot_id = rospy.get_param("~robot_id")
         decay_rate = rospy.get_param("~decay_rate")
         self.decay_rate = float(decay_rate)

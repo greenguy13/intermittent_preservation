@@ -247,7 +247,7 @@ class DeepQLearning:
         """
         self.environment_status[self.charging_station] = msg.data
         if msg.data == battStatus.FULLY_CHARGED.value:
-            if self.robot_id == 0: self.debug("Fully charged!")
+            if self.robot_id < 999: self.debug("Fully charged!")
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 
@@ -259,7 +259,7 @@ class DeepQLearning:
         """
         self.environment_status[area_id] = msg.data
         if msg.data == areaStatus.RESTORED_F.value:
-            if self.robot_id == 0: self.debug("Area fully restored!")
+            if self.robot_id < 999: self.debug("Area fully restored!")
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 
@@ -271,7 +271,7 @@ class DeepQLearning:
         :return:
         """
         if self.decay_rates_dict[str(area_id)] == None:
-            if self.robot_id == 0: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
+            if self.robot_id < 999: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
             self.decay_rates_dict[str(area_id)] = msg.data
             self.decay_rates_counter += 1
 

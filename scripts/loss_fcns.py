@@ -45,6 +45,7 @@ def beta_rate(rate, rates):
     return beta
 
 def loss_fcn(max_fmeasure, decayed_fmeasure):
+    assert max_fmeasure >= decayed_fmeasure, "Decayed fmeasure should be at most max_fmeasure"
     loss = (max_fmeasure - decayed_fmeasure)**2
     return loss
 

@@ -85,7 +85,7 @@ class Battery():
         self.battery_status_pub.publish(self.status)
 
     def run_operation(self, filename, freq=1):
-        if self.robot_id == 0:
+        if self.robot_id < 999: #Not a dummy robot
             rate = rospy.Rate(freq)
             battery_record, battery_status_record = [], []
             while not rospy.is_shutdown():

@@ -65,6 +65,7 @@ def heuristic_cost_decision(curr_fmeasures, decay_dict, loss_params, discount, d
     # #Measure initial time elapsed
     # prev_time_dict = get_elapsed_time(max_fmeasure, curr_fmeasures, decay_dict)
     #
+    # debug("Discount: {}, {}. Dec steps: {}, {}".format(type(discount), discount, type(dec_steps), dec_steps))
     discount_arr = discount**np.array(list(range(1, dec_steps)))
 
     #Measure discounted loss

@@ -17,6 +17,7 @@ from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from status import areaStatus, battStatus, robotStatus
 from reset_simulation import *
 from heuristic_fcns import *
+from loss_fcns import *
 
 
 INDEX_FOR_X = 0
@@ -83,10 +84,14 @@ class Robot:
         self.available = True
         self.curr_fmeasures = dict() #container of current F-measure of areas
         self.decay_rates_dict = dict() #dictionary for decay rates
+        self.tlapses = dict() #dictionary containing tlapses of areas
+        self.state = list() #list of states
+        self.strict_bounds_list = list() #list of strict lower and upper bounds
 
         #TODO: We are setting the (initial) prior information of the decay rates
         for area in self.areas:
             self.decay_rates_dict[area] = None
+            self.tlapses[area] = 0
         self.decay_rates_counter = 0 #counter for stored decay rates; should be equal to number of areas
         self.decisions_made, self.decisions_accomplished, self.status_history = [], [], [] #record of data
         self.total_dist_travelled = 0 #total distance travelled
@@ -312,22 +317,22 @@ class Robot:
             # Battery consumption
             battery_consumption, feasible_battery = self.estimate_battery_params(decision, self.battery, self.curr_loc,
                                                                                  self.curr_fmeasures, self.noise)
-            self.debug("Batt consumption: {}. Feasible batt: {}".format(battery_consumption, feasible_battery))
+            # self.debug("Batt consumption: {}. Feasible batt: {}".format(battery_consumption, feasible_battery))
             if not prune(self.battery, battery_consumption, self.battery_reserve) and decision != self.curr_loc:
                 #Immediate loss in i=1
                 duration = self.compute_duration(self.curr_loc, decision, self.curr_fmeasures[decision], self.restoration, self.noise)
                 updated_fmeasures = self.adjust_fmeasures(self.curr_fmeasures.copy(), decision, duration)  # F-measure of areas adjusted accordingly, i.e., consequence of decision
                 immediate_cost_decision = self.compute_opportunity_cost(updated_fmeasures) #immediate opportunity cost
-                self.debug("Current F-measures: {}".format(self.curr_fmeasures))
-                self.debug("Feasible decision: {}. Duration: {}. Updated F: {}. Immediate loss: {}".format(decision, duration, updated_fmeasures, immediate_cost_decision))
+                # self.debug("Current F-measures: {}".format(self.curr_fmeasures))
+                # self.debug("Feasible decision: {}. Duration: {}. Updated F: {}. Immediate loss: {}".format(decision, duration, updated_fmeasures, immediate_cost_decision))
 
                 #Heuristic loss for i=2...k
                 forecasted_cost_decision = heuristic_cost_decision(updated_fmeasures, self.decay_rates_dict, (self.fsafe, self.fcrit),
                                                          self.gamma, self.dec_steps, mean_duration_decay_dict) #forecasted opportunity cost
 
-                self.debug("Discounted future losses through {} steps: {}".format(self.dec_steps, forecasted_cost_decision))
+                # self.debug("Discounted future losses through {} steps: {}".format(self.dec_steps, forecasted_cost_decision))
                 evaluated_cost_decision = immediate_cost_decision + forecasted_cost_decision #total forecasted opportunity cost
-                self.debug("Appending: {}".format((decision, evaluated_cost_decision, feasible_battery)))
+                # self.debug("Appending: {}".format((decision, evaluated_cost_decision, feasible_battery)))
                 decision_array.append((decision, evaluated_cost_decision, feasible_battery))
 
         best_decision = self.charging_station
@@ -421,10 +426,98 @@ class Robot:
         """
         # Sort the decisions: the cost is key while the value is decision
         sorted_decisions = sorted(dec_arr, key = lambda x: (x[-2], -x[-1]))
-        self.debug("Decisions sorted by cost: {}".format(sorted_decisions))
-        self.debug("Best decision (branch info): {}".format(sorted_decisions[0]))
+        # self.debug("Decisions sorted by cost: {}".format(sorted_decisions))
+        # self.debug("Best decision (branch info): {}".format(sorted_decisions[0]))
         best_decision = sorted_decisions[0][0] #pick the decision with least net loss and most available feasible battery
         return best_decision
+
+    def update_tlapses_areas(self, sim_t):
+        """
+        Lapses all time elapsed for each area
+        :return:
+        """
+        for area in self.areas:
+            self.tlapses[area] += 1
+        self.debug("Sim t: {}. Time elapsed since last restored: {}".format(sim_t, self.tlapses))
+
+    """
+    TODO: Estimate strict and lower upper bounds
+    PO: We can do this separately or within the heuristic decision/function method
+    What are the ingredients?
+        > self.tlapses
+        > self.gamma
+        > self.decay_rates_dict
+        > duration_matrix = self.dist_matrix/self.robot_velocity
+        > self.dec_steps
+        > self.nareas
+    
+    Strict lower bound
+        duration_matrix = self.dist_matrix/self.robot_velocity
+        min_decay_rate = min(self.decay_rates_dict.values())
+        min_tlapse = min(self.tlapses.values())
+        min_duration = min(duration_matrix)
+        
+        max_decay_rate = max(self.decay_rates_dict.values())
+        max_tlapse = max(self.tlapses.values())
+        max_duration = max(duration_matrix)
+        
+        strict_lower_bound = 0
+        tlapse = min_tlapse
+        for i in range(1, self.dec_steps+1):
+            tlapse += min_duration
+            fmeasure = decay(min_decay_rate, tlapse, self.max_fmeasure)
+            strict_lower_bound += self.gamma^{i-1}*loss_fcn(fmeasure, self.max_fmeasure)
+        strict_lower_bound *= (self.nareas - 1)
+    
+    Strict upper bound
+        strict_upper_bound = 0
+        tlapse = max_tlapse
+        for i in range(1, self.dec_steps+1):
+            tlapse += i * max_duration
+            fmeasure = decay(max_decay_rate, tlapse, self.max_fmeasure)
+            strict_upper_bound += self.gamma^{i-1}*loss_fcn(fmeasure, self.max_fmeasure)
+        strict_upper_bound *= (self.nareas - 1)
+    """
+
+    def strict_bounds(self):
+        """
+        Estimates the strict and upper bounds of the opportunity cost of the schedule
+        :return: strict upper and lower bounds
+        """
+        # Strict lower bound
+        duration_matrix = self.dist_matrix / self.robot_velocity
+        min_decay_rate = min(self.decay_rates_dict.values())
+        min_tlapse = min(self.tlapses.values())
+        min_duration = np.min(duration_matrix)
+
+        max_decay_rate = max(self.decay_rates_dict.values())
+        max_tlapse = max(self.tlapses.values())
+        max_duration = np.max(duration_matrix)
+
+        strict_lower_bound = 0
+        tlapse = min_tlapse
+        for i in range(1, self.dec_steps + 1):
+            tlapse += min_duration
+            fmeasure = decay(min_decay_rate, tlapse, self.max_fmeasure)
+            discounted_loss = (self.gamma**(i - 1)) * loss_fcn(self.max_fmeasure, fmeasure)
+            strict_lower_bound += discounted_loss
+        strict_lower_bound *= (self.nareas - 1)
+
+        # Strict upper bound
+        strict_upper_bound = 0
+        tlapse = max_tlapse
+        for i in range(1, self.dec_steps + 1):
+            tlapse += i * max_duration
+            fmeasure = decay(max_decay_rate, tlapse, self.max_fmeasure)
+            discounted_loss = (self.gamma**(i - 1)) * loss_fcn(self.max_fmeasure, fmeasure)
+            strict_upper_bound += discounted_loss
+        strict_upper_bound *= (self.nareas - 1)
+
+        #Measure average time steps for plotting
+        mean_duration = np.mean(duration_matrix)
+        mean_tsteps = math.ceil(self.dec_steps * mean_duration)
+
+        return strict_lower_bound, strict_upper_bound, mean_tsteps
 
     #Methods: Run operation
     def run_operation(self, filename, freq=1):
@@ -432,17 +525,30 @@ class Robot:
         :return:
         """
 
-        if self.robot_id == 0:
+        if self.robot_id < 999: #Not a dummy robot
             rate = rospy.Rate(freq)
-            while self.decay_rates_counter != self.nareas and len(self.sampled_nodes_poses) != self.nareas+1:
-                self.debug("Insufficient data. Decay rates: {}/{}. Sampled nodes poses: {}/{}".format(len(self.decay_rates_counter), self.nareas,
-                                                                                                      len(self.sampled_nodes_poses), self.nareas+1))
-                rate.sleep() #Data for decay rates haven't registered yet
+            rospy.sleep(15)  # Wait for nodes to register
 
+            wait_registry = True
+            while (wait_registry is True) and (len(self.sampled_nodes_poses) != self.nareas + 1):
+                na_count = 0
+                for area in self.decay_rates_dict:
+                    if self.decay_rates_dict[area] is None:
+                        na_count += 1
+                if na_count > 0:
+                    # self.debug("Insufficient data. Decay rates: {}/{}. Sampled nodes poses: {}/{}".format(na_count, self.nareas,
+                    #                                                                                       len(self.sampled_nodes_poses), self.nareas+1))
+                    rate.sleep()  # Data for decay rates haven't registered yet
+                else:
+                    wait_registry = False
             self.debug("Sufficent data. Decay rates: {}. Sampled nodes poses: {}".format(self.decay_rates_dict, self.sampled_nodes_poses))
+
             self.build_dist_matrix()
-            t = 0
-            while not rospy.is_shutdown() and t<self.t_operation:
+            self.sim_t = 0
+            while not rospy.is_shutdown() and self.sim_t<self.t_operation:
+                curr_state = (self.sim_t, self.curr_loc, self.battery, self.tlapses, self.decay_rates_dict)
+                self.state.append(curr_state)
+                self.debug("Curr state: {}".format(curr_state))
                 self.robot_status_pub.publish(self.robot_status)
                 self.status_history.append(self.robot_status)
                 if self.robot_status == robotStatus.IDLE.value:
@@ -456,6 +562,14 @@ class Robot:
                     self.think_decisions()
                     think_end = process_time()
                     think_elapsed = self.time_elapsed(think_start, think_end)
+
+                    #TODO: Insert the computation of the bounds here
+                    bounds = self.strict_bounds()
+                    self.debug('Strict bounds:{}'.format(bounds))
+                    self.strict_bounds_list.append(bounds)
+
+                    #TODO: Store the strict bounds
+
                     self.process_time_counter.append(think_elapsed)
                     self.debug('Best decision: {}. Process time: {}s'.format(self.best_decision, think_elapsed))
                     self.update_robot_status(robotStatus.IN_MISSION)
@@ -471,7 +585,11 @@ class Robot:
                 elif self.robot_status == robotStatus.RESTORING_F.value:
                     self.debug('Restoring F-measure')
 
-                t += 1
+                self.sim_t += 1
+
+                # Update tlapse for each area when all nodes have registered
+                if len(self.decisions_made) > 1 or (self.robot_status != robotStatus.IDLE.value) and (self.robot_status != robotStatus.READY.value):
+                    self.update_tlapses_areas(self.sim_t)
                 rate.sleep()
 
             #Store results
@@ -481,6 +599,8 @@ class Robot:
 
             #Wait before all other nodes have finished dumping their data
             if self.save:
+                pu.dump_data(self.strict_bounds_list, '{}_strict_bounds'.format(filename))
+                pu.dump_data(self.state, '{}_environment_state'.format(filename))
                 pu.dump_data(self.process_time_counter, '{}_robot{}_process_time'.format(filename, self.robot_id))
                 pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
                 pu.dump_data((self.decisions_accomplished, self.total_dist_travelled), '{}_robot{}_decisions_acc_travel'.format(filename, self.robot_id))
@@ -556,7 +676,7 @@ class Robot:
         """
         self.environment_status[self.charging_station] = msg.data
         if msg.data == battStatus.FULLY_CHARGED.value:
-            if self.robot_id == 0: self.debug("Fully charged!")
+            if self.robot_id < 999: self.debug("Fully charged!")
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 
@@ -568,7 +688,8 @@ class Robot:
         """
         self.environment_status[area_id] = msg.data
         if msg.data == areaStatus.RESTORED_F.value:
-            if self.robot_id == 0: self.debug("Area fully restored!")
+            if self.robot_id < 999: self.debug("Area fully restored!")
+            self.tlapses[area_id] = 0  # Reset the tlapse since last restored for the newly restored area
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 
@@ -580,7 +701,7 @@ class Robot:
         :return:
         """
         if self.decay_rates_dict[area_id] == None:
-            if self.robot_id == 0: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
+            if self.robot_id < 999: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
             self.decay_rates_dict[area_id] = msg.data
             self.decay_rates_counter += 1
 
