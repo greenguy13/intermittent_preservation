@@ -121,7 +121,7 @@ if __name__ == '__main__':
 
     #Sample node poses
     # worlds = ['office']
-    # nareas_list = [12]
+    # nareas_list = [20]
     # nplacements = 2000
     # batch_sample_nodes_poses(worlds, nareas_list, nplacements)
     #
@@ -234,8 +234,8 @@ if __name__ == '__main__':
     # run_experiment('correlated_thompson', 'cluttered', 12, placement, 'non_uniform', 2100,
     #                inference='optimistic', dec_steps=1, ntrials=(0,3), save=True) #3100
 
-    run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 100,
-                   inference='oracle', dec_steps=1, discount=0.25, exploration=0.0, ntrials=(0, 1), save=False)
+    run_experiment('heuristic_decision', 'office', 20, placement, 'non_uniform', 100,
+                   inference='oracle', dec_steps=1, discount=0.25, exploration=0.0, ntrials=(0, 1), save=False) #TODO: Insert nrobots as a parameter
 
     # run_experiment('dynamic_programming', 'cluttered', 12, placement, 'non_uniform', 2100,
     #                inference=None, dec_steps=4, ntrials=(0, 2), save=True) #3100

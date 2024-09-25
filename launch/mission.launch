@@ -2,7 +2,7 @@
     <arg name="world" default="office"/>
     <arg name="method" default="treebased_decision"/>
     <arg name="inference" default="None"/>
-    <arg name="nrobots" default="1"/>
+    <arg name="nrobots" default="8"/>
     <arg name="nareas" default="3"/>
     <arg name="decay" default="non_uniform"/>
     <arg name="dsteps" default="1"/>
