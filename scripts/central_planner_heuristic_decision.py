@@ -34,9 +34,32 @@ if there is one unassigned cluster, we consider re-planning/re-assignment:
 
 Consider re-plan is triggered only when one robot is heading to a charging station
 
+
 for cluster in unassigned clusters with priority:
     for robot in robots:
         evalute their score for that unassigned cluster
     assign the cluster to the robot with highest score
+
+Note: We assume that each robot will have an assigned cluster. We first assume that we have oracle knowledge.
+
+Initial assignment to robots
+while operation:
+    if at least one area is unassigned:
+        Consider re-assignment of clusters among robots who are not charging up
+
+Robot:
+    Input, cluster of areas to be monitored
+    d = best decision
+    if d = 0:
+        broadcast unassigned status
+
+
+Okay. Does this cover everything/all cases?
+What about if we have uncertainty? Perhaps we need to insert the assignment block inside? Yes, even the clustering part.
+
+How do we evaluate a cluster and its assignment to potential robots?
+    > Average/expected opportunity cost
+    > The location of the robot to get there plus the cost would be inversely proportional
+    > Or could even be the marginal opportunity cost / marginal battery consumption to get there, something like that
 """
 
