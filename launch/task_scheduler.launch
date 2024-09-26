@@ -1,0 +1,9 @@
+<launch>
+    <arg name="task_scheduler" default="None"/>
+
+    <group unless="$(eval task_scheduler == 'None')">
+        <node name="$(arg task_scheduler)" pkg="int_preservation" type="$(arg task_scheduler).py">
+        </node>
+    </group>
+
+</launch>
