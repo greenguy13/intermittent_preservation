@@ -365,6 +365,8 @@ def log_msg(type, id, msg, debug=True):
             rospy.logwarn("Robot {}: {}".format(id, msg))
         elif type == 'area':
             rospy.logwarn("Area {}: {}".format(id, msg))
+        elif type == 'task_scheduler':
+            rospy.logwarn("Central: {}".format(msg))
 
 def in_range(point, polygon):
     x = point[INDEX_FOR_X]

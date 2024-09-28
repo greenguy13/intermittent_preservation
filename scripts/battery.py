@@ -22,6 +22,7 @@ class Battery():
     def __init__(self, node_name):
         #Params
         rospy.init_node(node_name)
+        #TODO: This has to robot specific too. Isn't it already since included in nodes launch
         self.robot_id = rospy.get_param('~robot_id')
         self.max_battery = rospy.get_param("/max_battery")
         batt_consumed_per_time = rospy.get_param("/batt_consumed_per_time")

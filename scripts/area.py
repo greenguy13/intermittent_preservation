@@ -45,7 +45,7 @@ class Area():
         #   Remark: These 2 are possible
 
 
-        self.robot_id = rospy.get_param("~robot_id")
+        self.robot_id = rospy.get_param("~robot_id") #TODO: Assigned robot should be actually correct
         decay_rate = rospy.get_param("~decay_rate")
         self.decay_rate = float(decay_rate)
         decay_evolution = rospy.get_param("~decay_evolution")
@@ -67,7 +67,7 @@ class Area():
         self.status_pub = rospy.Publisher("/area_{}/status".format(self.area), Int8, queue_size=1)
 
         # Subscribed topics
-        ## Suggestion: General/multi-robots
+        ## TODO Suggestion: General/multi-robots
         rospy.Subscriber('/robot_{}/robot_status'.format(self.robot_id), Int8, self.robot_status_cb)
         rospy.Subscriber('/robot_{}/mission_area'.format(self.robot_id), Int8, self.mission_area_cb)
 

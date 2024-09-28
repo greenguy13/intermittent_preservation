@@ -11,6 +11,7 @@ history_data: $(arg history_data) #filename for history data to be used to train
 history_decisions: $(arg history_decisions) #filename for history decisions accomplished to be used to train time-series model
 file_data_dump: $(arg fileresult) #file name for data dump
 inference: $(arg inference) #type of heuristic for inference on decay param
+task_scheduler: $(arg task_scheduler) #task scheduler
 save: $(arg save) #save data
 
 gamma: $(arg discount) #0.25 #discount factor for future losses/rewards: [0, 1]. If gamma=0, present looking. Else if gamma=1, all future rewards are treated equally with present reward
