@@ -26,3 +26,13 @@ class robotStatus(Enum):
     CONSIDER_REPLAN = 50
     SHUTDOWN = SHUTDOWN_CODE
 
+class robotAssignStatus(Enum):
+    UNASSIGNED = 0
+    ASSIGNED = 1
+
+
+class centralStatus(Enum):
+    IDLE = 0
+    IN_MISSION = 20
+    CONSIDER_REPLAN = 50
+

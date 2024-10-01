@@ -61,6 +61,7 @@ add_service_files(
     FILES
         flevel.srv
         clusterAssignment.srv
+        areaAssignment.srv
 )
 
 

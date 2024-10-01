@@ -19,6 +19,7 @@ from reset_simulation import *
 from heuristic_fcns import *
 from loss_fcns import *
 from int_preservation.srv import clusterAssignment, clusterAssignmentResponse
+from int_preservation.srv import areaAssignment
 
 
 INDEX_FOR_X = 0
@@ -60,7 +61,6 @@ class Robot:
         #TODO: This prolly needs to be instantiated within run_operation
         self.nareas = rospy.get_param("/nareas") #Sample nodes from voronoi equal to area count #STAR
         self.areas = [int(i+1) for i in range(self.nareas)]  # list of int area IDs
-
 
         self.tolerance = rospy.get_param("/move_base_tolerance")
         self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
@@ -155,6 +155,21 @@ class Robot:
             Now, the current mission area, which subscribes to both robot_status and robot_mission_area topics, will restore F; while,
                 those other areas not the mission area will have their F continually decay 
         """
+
+    def area_assignment_notice(self, assigned_areas):
+        """
+        Tags areas with the assigned robot
+        :param assigned_areas:
+        :return:
+        """
+        for area_id in assigned_areas:
+            rospy.wait_for_service("/area_assignment_server_" + str(area_id))
+            try:
+                area_assign = rospy.ServiceProxy("/area_assignment_server_" + str(area_id), areaAssignment)
+                resp = area_assign(self.robot_id)
+                self.debug("Noted assigned Area {}".format(resp))
+            except rospy.ServiceException as e:
+                rospy.logerr(f"Service call failed: {e}")
 
     def cluster_assignment_cb(self, msg):
         """
@@ -606,7 +621,8 @@ class Robot:
             rate = rospy.Rate(freq)
             rospy.sleep(15)  # Wait for nodes to register
 
-            # TODO: This may be re-organized as part of the initialization based on what areas have been assigned to a robot
+            #TODO: This may be re-organized as part of the initialization based on what areas have been assigned to a robot
+            # IOTW, there is no need for this anymore
             wait_registry = True
             while (wait_registry is True) and (len(self.sampled_nodes_poses) != self.nareas + 1):
                 na_count = 0
@@ -632,7 +648,7 @@ class Robot:
                 # sampled_nodes_poses = self.extract_sampled_node_poses(self.assigned_areas)
 
             #TODO: Here we do the initialization of all containers related to areas
-
+            self.area_assignment_notice(self.assigned_areas)
             self.build_dist_matrix(sampled_nodes_poses)
             self.sim_t = 0
             while not rospy.is_shutdown() and self.sim_t<self.t_operation:
@@ -650,7 +666,7 @@ class Robot:
                 # Freedom comes with courage. And with courage comes freedom.
                 # New wave. I create a new culture. A new trend people will appreciate and follow
 
-                if self.robot_status == robotStatus.IDLE.value:
+                if self.robot_status == robotStatus.IDLE.value: # Here, robot is available but unassigned
                     self.debug('Robot idle')
                     if self.dist_matrix is not None:
                         self.update_robot_status(robotStatus.READY)
@@ -798,6 +814,9 @@ class Robot:
         # Q: All areas or just assigned?
 
         self.environment_status[area_id] = msg.data
+
+        #TODO: This part here doesn't reach full restoration
+        # Could it be because the area index do not match?
         if msg.data == areaStatus.RESTORED_F.value:
             if self.robot_id < 999: self.debug("Area fully restored!")
             self.tlapses[area_id] = 0  # Reset the tlapse since last restored for the newly restored area

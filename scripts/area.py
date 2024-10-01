@@ -26,9 +26,8 @@ import project_utils as pu
 import pickle
 from status import areaStatus, robotStatus
 from int_preservation.srv import flevel, flevelResponse
+from int_preservation.srv import areaAssignment, areaAssignmentResponse
 from loss_fcns import *
-
-
 
 class Area():
     def __init__(self):
@@ -45,7 +44,7 @@ class Area():
         #   Remark: These 2 are possible
 
 
-        self.robot_id = rospy.get_param("~robot_id") #TODO: Assigned robot should be actually correct
+        self.robot_id = None #rospy.get_param("~robot_id") #TODO: Assigned robot should be actually correct
         decay_rate = rospy.get_param("~decay_rate")
         self.decay_rate = float(decay_rate)
         decay_evolution = rospy.get_param("~decay_evolution")
@@ -67,12 +66,14 @@ class Area():
         self.status_pub = rospy.Publisher("/area_{}/status".format(self.area), Int8, queue_size=1)
 
         # Subscribed topics
-        ## TODO Suggestion: General/multi-robots
-        rospy.Subscriber('/robot_{}/robot_status'.format(self.robot_id), Int8, self.robot_status_cb)
-        rospy.Subscriber('/robot_{}/mission_area'.format(self.robot_id), Int8, self.mission_area_cb)
+        # TODO Suggestion: General/multi-robots
+        #  Okay here is the mistake, it will subscribe
+        # rospy.Subscriber('/robot_{}/robot_status'.format(self.robot_id), Int8, self.robot_status_cb)
+        # rospy.Subscriber('/robot_{}/mission_area'.format(self.robot_id), Int8, self.mission_area_cb)
 
         # Service server: Fmeasure
         self.fmeasure_server = rospy.Service("/flevel_server_" + str(self.area), flevel, self.report_flevel_cb)
+        self.area_assignment_server = rospy.Service("/area_assignment_server_" + str(self.area), areaAssignment, self.area_assignment_cb)
 
         self.status = areaStatus.IDLE.value
         self.robot_mission_area = None
@@ -80,6 +81,18 @@ class Area():
         self.decay_evolve_tframe = round(self.t_operation / (len(self.decay_evolution_list) + 1))
         self.sim_t = 0
 
+    def area_assignment_cb(self, msg):
+        """
+        Callback function for area_assignment service
+        :param msg:
+        :return:
+        """
+        self.robot_id = int(msg.area)
+        rospy.Subscriber('/robot_{}/robot_status'.format(self.robot_id), Int8, self.robot_status_cb)
+        rospy.Subscriber('/robot_{}/mission_area'.format(self.robot_id), Int8, self.mission_area_cb)
+
+        self.debug("Newly assigned robot id: {}".format(self.robot_id))
+        return areaAssignmentResponse(True)
 
     def robot_status_cb(self, msg):
         """
@@ -102,7 +115,8 @@ class Area():
         :param msg:
         :return:
         """
-        self.robot_mission_area = msg.data
+        self.robot_mission_area = int(msg.data)
+        return
 
     #TODO: For now, we are setting the as-is naming for F-level request when we modified it to give/provide the decay rate
     def report_flevel_cb(self, msg):
@@ -171,8 +185,13 @@ class Area():
         if self.evolving_decay:
             time_decay_evolves, evolve_decay_idx = self.sim_t + self.decay_evolve_tframe, 0 #first time stamp where decay rate evolves
 
+        while self.robot_id is None:
+            self.debug("Waiting for robot assignment...")
+            rospy.sleep(1)
+
         while not rospy.is_shutdown():
             status_record.append(self.status)
+            self.debug("Assigned robot: {}. Area status: {}. Fmeasure: {}. Tlapse: {}".format(self.robot_id, self.status, self.fmeasure, self.tlapse))
             if self.evolving_decay and (self.sim_t >= time_decay_evolves) and (self.sim_t < self.t_operation):
                 self.decay_rate = (1 + self.decay_evolution_list[evolve_decay_idx])*self.decay_rate
                 self.debug("Decay now evolved to {} beginning time {}".format(self.decay_rate, time_decay_evolves))
