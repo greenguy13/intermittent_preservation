@@ -30,7 +30,6 @@ class robotAssignStatus(Enum):
     UNASSIGNED = 0
     ASSIGNED = 1
 
-
 class centralStatus(Enum):
     IDLE = 0
     IN_MISSION = 20

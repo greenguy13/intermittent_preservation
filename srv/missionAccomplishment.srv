@@ -1,0 +1,4 @@
+int8 robot_id
+int8 area_accomplished
+---
+bool confirmation

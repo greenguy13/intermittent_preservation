@@ -71,8 +71,8 @@ def compute_cost_fmeasures(fmeasures, fsafe, fcrit, max_fmeasure=100):
     :return:
     """
     cost = 0
-    for area in fmeasures:
-        loss = loss_fcn(max_fmeasure, fmeasures[area])
+    for area_idx in fmeasures:
+        loss = loss_fcn(max_fmeasure, fmeasures[area_idx])
         cost += loss
     return cost
 

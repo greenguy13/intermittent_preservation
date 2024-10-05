@@ -24,7 +24,7 @@ import rospy
 from std_msgs.msg import Float32, Int8
 import project_utils as pu
 import pickle
-from status import areaStatus, robotStatus
+from status import areaStatus, robotStatus, centralStatus
 from int_preservation.srv import flevel, flevelResponse
 from int_preservation.srv import areaAssignment, areaAssignmentResponse
 from loss_fcns import *
@@ -67,9 +67,12 @@ class Area():
 
         # Subscribed topics
         # TODO Suggestion: General/multi-robots
-        #  Okay here is the mistake, it will subscribe
+        #  Subscribe to task scheduler
+        #
         # rospy.Subscriber('/robot_{}/robot_status'.format(self.robot_id), Int8, self.robot_status_cb)
         # rospy.Subscriber('/robot_{}/mission_area'.format(self.robot_id), Int8, self.mission_area_cb)
+
+        rospy.Subscriber('/central_status', Int8, self.central_status_cb)
 
         # Service server: Fmeasure
         self.fmeasure_server = rospy.Service("/flevel_server_" + str(self.area), flevel, self.report_flevel_cb)
@@ -80,6 +83,16 @@ class Area():
         self.tlapse = 0
         self.decay_evolve_tframe = round(self.t_operation / (len(self.decay_evolution_list) + 1))
         self.sim_t = 0
+
+
+    def central_status_cb(self, msg):
+        """
+        Moves state to IDLE when central is IDLE (cause of initialization or thinking) or CONSIDER_REPLAN, pausing the simulation/decay of areas
+        :param msg:
+        :return:
+        """
+        status = msg.data
+        self.central_status = int(status)
 
     def area_assignment_cb(self, msg):
         """
@@ -100,7 +113,8 @@ class Area():
         :return:
         """
         robot_status = msg.data
-        if (robot_status == robotStatus.IDLE.value) or (robot_status == robotStatus.READY.value) or (robot_status == robotStatus.CONSIDER_REPLAN.value):
+        if (robot_status == robotStatus.IDLE.value) or (robot_status == robotStatus.READY.value) or (robot_status == robotStatus.CONSIDER_REPLAN.value) \
+                or (self.central_status == centralStatus.IDLE.value or self.central_status == centralStatus.CONSIDER_REPLAN.value):
             self.update_status(areaStatus.IDLE)
         elif robot_status == robotStatus.IN_MISSION.value or (robot_status == robotStatus.RESTORING_F.value and self.robot_mission_area != self.area) \
                 or robot_status == robotStatus.CHARGING.value:
@@ -116,7 +130,6 @@ class Area():
         :return:
         """
         self.robot_mission_area = int(msg.data)
-        return
 
     #TODO: For now, we are setting the as-is naming for F-level request when we modified it to give/provide the decay rate
     def report_flevel_cb(self, msg):

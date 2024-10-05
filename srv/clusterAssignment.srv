@@ -1,3 +1,5 @@
-int8[] cluster
+int16[] cluster
+int16[] tlapses
+float32[] decay_rates
 ---
 bool availability
