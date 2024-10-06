@@ -20,6 +20,7 @@ from heuristic_fcns import *
 from loss_fcns import *
 from int_preservation.srv import clusterAssignment, clusterAssignmentResponse
 from int_preservation.srv import areaAssignment
+from int_preservation.srv import assignmentAccomplishment
 
 
 INDEX_FOR_X = 0
@@ -71,7 +72,8 @@ class Robot:
         #Pickle load the sampled area poses
         with open('{}.pkl'.format(rospy.get_param("/file_sampled_areas")), 'rb') as f:
             sampled_areas_coords = pickle.load(f)
-        for area_coords in sampled_areas_coords['n{}_p{}'.format(self.nareas, rospy.get_param("/placement"))]:
+        nareas = rospy.get_param("/nareas")
+        for area_coords in sampled_areas_coords['n{}_p{}'.format(nareas, rospy.get_param("/placement"))]:
             pose_stamped = pu.convert_coords_to_PoseStamped(area_coords)
             self.nodes_poses.append(pose_stamped)
 
@@ -95,6 +97,9 @@ class Robot:
         self.process_time_counter = [] #container for time it took to come up with decision
         self.assigned_areas = None
 
+        self.environment_status = dict()
+        self.environment_status[self.charging_station] = 999
+
         #Publishers/Subscribers
         rospy.Subscriber('/robot_{}/odom'.format(self.robot_id), Odometry, self.distance_travelled_cb, queue_size=1)
 
@@ -109,7 +114,8 @@ class Robot:
 
         self.robot_status_pub = rospy.Publisher('/robot_{}/robot_status'.format(self.robot_id), Int8, queue_size=1)
         self.mission_area_idx_pub = rospy.Publisher('/robot_{}/mission_area'.format(self.robot_id), Int8, queue_size=1)
-        self.battery_pub = rospy.Publisher('/robot_{}/battery'.format(self.robot_id), Float32, queue_size=1)
+
+        self.location_pub = rospy.Publisher('/robot_{}/location'.format(self.robot_id), Int8, queue_size=1)
 
         #Action client to move_base
         self.robot_goal_client = actionlib.SimpleActionClient('/robot_' + str(self.robot_id) + '/move_base', MoveBaseAction)
@@ -234,7 +240,6 @@ class Robot:
 
         self.debug("Dist matrix: {}".format(self.dist_matrix))
 
-
     # METHODS: Send robot to area
     def go_to_target(self, goal_idx):
         """
@@ -353,12 +358,12 @@ class Robot:
                 # self.debug("Appending: {}".format((decision, evaluated_cost_decision, feasible_battery)))
                 decision_array.append((decision_idx, evaluated_cost_decision, feasible_battery))
 
-        best_decision = self.charging_station
+        best_decision_idx = self.charging_station
 
         if len(decision_array)>0:
-            best_decision = self.get_best_decision(decision_array)
+            best_decision_idx = self.get_best_decision(decision_array)
 
-        return best_decision
+        return best_decision_idx
 
     def compute_duration(self, start_area_idx, next_area_idx, curr_measure, restoration, noise):
         """
@@ -565,12 +570,14 @@ class Robot:
             self.tlapses[area_idx] = tlapses[area_idx-1] #Instantiate provided tlapses
 
         # Environment status intialization
-        self.environment_status = dict()
-        for node in range(self.nareas + 1):
-            self.environment_status[node] = 999
+        environment_status = dict()
+        environment_status[self.charging_station] = self.environment_status[self.charging_station]
+        for node in range(self.nareas):
+            self.environment_status[node+1] = 999
+        self.environment_status = environment_status
 
         # Unsubscribe from previous area topics
-        self.unsubscribe_previous_area_topics()
+        # self.unsubscribe_previous_area_topics() TODO: Debug this one
         self.subscribe_fmeasures = dict()
         self.subscribe_statuses = dict()
 
@@ -582,8 +589,8 @@ class Robot:
             self.subscribe_statuses[area_id] = rospy.Subscriber('/area_{}/status'.format(area_id), Int8, self.area_status_cb, area_id)
 
         # Sampled node poses and distance matrix
-        self.sampled_node_poses = self.extract_sampled_node_poses(self.assigned_areas)
-        self.dist_matrix = self.build_dist_matrix()
+        self.sampled_nodes_poses = self.extract_sampled_node_poses(self.assigned_areas)
+        self.build_dist_matrix()
 
         # Send notice to areas about their robot assignment
         self.area_assignment_notice(self.assigned_areas)
@@ -632,7 +639,7 @@ class Robot:
             rate = rospy.Rate(freq)
             rospy.sleep(15)  # Wait for nodes to register
 
-            while self.dist_matrix is None:
+            while self.assigned_areas is None:
                 self.debug("Initialization: No cluster assignment yet. Waiting for assignment...")
                 rospy.sleep(1)
 
@@ -642,6 +649,7 @@ class Robot:
                 self.state.append(curr_state)
                 self.debug("Curr state: {}".format(curr_state))
                 self.robot_status_pub.publish(self.robot_status)
+                self.location_pub.publish(self.get_assigned_area_id(self.curr_loc_idx))
                 self.status_history.append(self.robot_status)
 
                 #I am learning something new! Each day
@@ -651,6 +659,7 @@ class Robot:
 
                 if self.robot_status == robotStatus.IDLE.value: # Here, robot is available but unassigned
                     self.debug('Robot idle')
+                    self.debug("With dist_matrix: {}".format(bool(self.dist_matrix is not None)))
                     if self.dist_matrix is not None:
                         self.update_robot_status(robotStatus.READY)
 
@@ -692,6 +701,7 @@ class Robot:
             #Store results
             self.update_robot_status(robotStatus.SHUTDOWN)
             self.robot_status_pub.publish(self.robot_status)
+            self.location_pub.publish(self.get_assigned_area_id(self.curr_loc_idx))
             self.status_history.append(self.robot_status)
 
             #Wait before all other nodes have finished dumping their data
@@ -738,6 +748,7 @@ class Robot:
         :return:
         """
         if self.best_decision_idx is not None:
+            self.mission_area_idx = self.best_decision_idx
             mission_area_id = self.get_assigned_area_id(self.mission_area_idx)
             self.mission_area_idx_pub.publish(mission_area_id)
             self.debug('Heading to: {}. {}'.format(mission_area_id, self.sampled_nodes_poses[self.mission_area_idx]))
@@ -781,6 +792,21 @@ class Robot:
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 
+    def notify_assignment_accomplishment(self, area_id):
+        """
+        Assigns clusters to robots
+        :param clusters:
+        :return:
+        """
+
+        rospy.wait_for_service("/assignment_accomplishment_server")
+        try:
+            notify_server = rospy.ServiceProxy("/cluster_assignment_server", assignmentAccomplishment)
+            resp = notify_server(self.robot_id, area_id)
+            self.debug("Robot: {}. Accomplished assignment: {}. Notified server".format(self.robot_id, area_id))
+        except rospy.ServiceException as e:
+            rospy.logerr(f"Service call failed: {e}")
+
     def area_status_cb(self, msg, area_id):
         """
 
@@ -792,10 +818,10 @@ class Robot:
         self.environment_status[area_idx+1] = int(status)
 
         if msg.data == areaStatus.RESTORED_F.value:
-            if self.robot_id < 999: self.debug("Area fully restored!")
+            if self.robot_id < 999: self.debug("Area {} fully restored!".format(area_id))
             self.tlapses[area_idx] = 0  # Reset the tlapse since last restored for the newly restored area
 
-            #TODO: Send notification to central that area fully restored. HERE!
+            self.notify_assignment_accomplishment(area_id) #Notifies central that recent assignment is accomplished
 
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)

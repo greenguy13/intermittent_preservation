@@ -200,6 +200,7 @@ class Area():
 
         while self.robot_id is None:
             self.debug("Waiting for robot assignment...")
+            self.publish_fmeasure()
             rospy.sleep(1)
 
         while not rospy.is_shutdown():

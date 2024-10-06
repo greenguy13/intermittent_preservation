@@ -72,7 +72,7 @@ from nav_msgs.srv import GetPlan
 from std_msgs.msg import Int8, Float32
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from int_preservation.srv import clusterAssignment
-from int_preservation.srv import missionAccomplishment
+from int_preservation.srv import assignmentAccomplishment
 from status import centralStatus, battStatus, robotStatus, robotAssignStatus
 from reset_simulation import *
 from heuristic_fcns import *
@@ -125,8 +125,6 @@ class TaskScheduler:
         self.save = rospy.get_param("/save")  # Whether to save data
 
         # Initialize variables/containers
-        self.status = centralStatus.IDLE.value
-
         self.mission_areas = dict() #Mission areas of robots
         for robot_id in self.robot_ids:
             self.mission_areas[robot_id] = None
@@ -155,15 +153,14 @@ class TaskScheduler:
         for area in self.areas:
             self.decay_rates[area] = None
 
-        self.clusters = None #Clustering of areas #TODO: Proper naming of clusters, with their keys and values
+        self.clusters = None #Clustering of areas
         self.clusters_assignment = dict() #Assignment of clusters (keys) to robots (values)
         self.robots_assignment = dict() #Assignment of robots (keys) to clusters (values)
-        self.unassigned_clusters = list() #List of unassigned clusters #TODO: Initialize cluster keys, then store them here
-        self.unassigned_robots = list() #List of unassigned robots #TODO: Initialize robots, then store here
+        self.unassigned_clusters = list() #List of unassigned clusters
+        self.unassigned_robots = list() #List of unassigned robots
 
         # Server
-        # TODO: About robot's accomplishment of restoring an area. Needed for tlapse reset for that area. DONE
-        self.mission_accomplishment_server = rospy.Service("/mission_accomplishment_server", missionAccomplishment, self.mission_accomplishment_cb)
+        self.assignment_accomplishment_server = rospy.Service("/assignment_accomplishment_server", assignmentAccomplishment, self.assignment_accomplishment_cb)
 
         # Publishers/Subscribers
         self.central_status_pub = rospy.Publisher('/central_status', Int8, queue_size=1)
@@ -174,6 +171,9 @@ class TaskScheduler:
             rospy.Subscriber('/robot_{}/robot_status'.format(robot_id), Int8, self.robot_status_cb, robot_id)
             rospy.Subscriber('/robot_{}/location'.format(robot_id), Int8, self.robot_location_cb, robot_id)
             rospy.Subscriber('/robot_{}/battery'.format(robot_id), Int8, self.robot_battery_cb, robot_id)
+
+        for area in self.areas:
+            rospy.Subscriber('/area_{}/decay_rate'.format(area), Float32, self.decay_rate_cb, area)
 
     def robot_location_cb(self, msg, robot_id):
         """
@@ -195,12 +195,12 @@ class TaskScheduler:
         battery = msg.data
         self.robots_battery[robot_id] = int(battery)
 
-    def mission_accomplishment_cb(self, msg):
+    def assignment_accomplishment_cb(self, msg):
         """
-        Receives mission accomplishment from robots. Central then updates tlapse for that area
+        Receives area accomplishment from robots. Central then updates tlapse for that area
         :return:
         """
-        #Tlapse reset if area is mission area
+        #Tlapse reset if area is assigned area
         robot_id = msg.robot_id
         area_id = msg.area_accomplished
         self.tlapses[area_id] = 0
@@ -270,21 +270,25 @@ class TaskScheduler:
         :param clusters:
         :return:
         """
-
-        for robot_id in range(self.nrobots): #TODO: Should be unassigned robots. Initially, all robots are among the unassigned
+        self.debug("Unassigned robots: {}".format(self.unassigned_robots))
+        self.debug("Clusters: {}".format(clusters))
+        assigned = 0
+        for robot_id in self.unassigned_robots:
             self.robots_assignment[robot_id] = 'C' + str(robot_id+1) #Assignment of robot to a cluster #TODO: For now, the assignment is 1:1, not yet K-means cluster
-            # TODO: Remove unassigned clusters and robots if any
+            self.unassigned_robots.remove(robot_id)
             rospy.wait_for_service("/cluster_assignment_server_" + str(robot_id))
             try:
                 cluster_assign = rospy.ServiceProxy("/cluster_assignment_server_" + str(robot_id), clusterAssignment)
-                areas_assigned = self.clusters[self.robots_assignment[robot_id]]
-                # tlapses_areas = self.retrieve_tlapses(areas_assigned) #TODO: Supply here
-                # decay_rates = self.retrieve_decay_rates(areas_assigned) #TODO: Supply here
-                resp = cluster_assign(areas_assigned) #TODO: Include decay_rates and tlapses of assigned areas
-                self.debug("Robot: {}. Assigned: {}, Response: {}".format(robot_id, areas_assigned, resp.result))
+                areas_assigned = clusters[self.robots_assignment[robot_id]]
+                tlapses_areas = self.retrieve_tlapses(areas_assigned)
+                decay_rates = self.retrieve_decay_rates(areas_assigned)
+                resp = cluster_assign(areas_assigned, tlapses_areas, decay_rates)
+                self.debug("Robot: {}. Assigned: {}, Robot availability: {}".format(robot_id, areas_assigned, resp.availability))
+                self.debug("Remaining unassigned: {}".format(self.unassigned_robots))
             except rospy.ServiceException as e:
                 rospy.logerr(f"Service call failed: {e}")
-        self.debug("Assignment of robots to clusters: {}".format(self.robots_assignment))
+            assigned += 1
+        self.debug("Assignment of {} robots to clusters: {}".format(assigned, self.robots_assignment))
 
     def retrieve_tlapses(self, areas):
         """
@@ -332,38 +336,40 @@ class TaskScheduler:
                 #     for area in self.clusters[cluster]:
                 #         self.tlapses[area] += 1
 
-
+    def wait_areas_to_register(self):
+        """
+        Wait for area nodes to register
+        :return:
+        """
+        na_counts = True
+        while na_counts is True:
+            decay_rates = list(self.decay_rates.values())
+            self.debug("Decay rates: {}".format(decay_rates))
+            if None not in decay_rates:
+                na_counts = False
+            rospy.sleep(1)
+        self.debug("Sufficent data. Decay rates: {}".format(self.decay_rates))
+        return
 
     def run_operation(self, filename, freq=1):
         rospy.sleep(10)
-
-        wait_registry = True
-        while (wait_registry is True) and (len(self.sampled_nodes_poses) != self.nareas + 1):
-            na_count = 0
-            for area in self.decay_rates:
-                if self.decay_rates[area] is None:
-                    na_count += 1
-            if na_count > 0:
-                # self.debug("Insufficient data. Decay rates: {}/{}. Sampled nodes poses: {}/{}".format(na_count, self.nareas,
-                #                                                                                       len(self.sampled_nodes_poses), self.nareas+1))
-                rospy.sleep(1)  # Data for decay rates haven't registered yet
-            else:
-                wait_registry = False
-        self.debug("Sufficent data. Decay rates: {}".format(self.decay_rates))
-
+        self.wait_areas_to_register()
+        self.unassigned_robots = self.robot_ids
+        self.status = centralStatus.IDLE.value
         self.sim_t = 0
         while self.sim_t < self.t_operation:
-            self.central_status_pub.publish(self.status) # TODO: Publish status. DONE
+            self.central_status_pub.publish(self.status)
             self.print_state()
-            if self.status == centralStatus.IDLE.value and self.clusters == None:
-                self.debug("Idle central state")
-                self.clusters = self.create_clusters() #TODO: The clusters should be correct keys and values
+            if self.status == centralStatus.IDLE.value:
+                self.debug("Idle central state. Creating and assigning clusters")
+                self.clusters = self.create_clusters()
                 self.assign_clusters(self.clusters)
-                self.update_central_status(centralStatus.IN_MISSION)
+                if len(self.unassigned_robots) == 0:
+                    self.update_central_status(centralStatus.IN_MISSION)
 
             elif self.status == centralStatus.IN_MISSION.value:
                 self.debug("Central in mission...")
-                self.update_tlapses_areas() #TODO: Po, place here. Or could also be at the end of the while loop
+                self.update_tlapses_areas()
 
             elif self.status == centralStatus.CONSIDER_REPLAN.value:
                 self.debug("Central considers re-assignment...")
@@ -372,13 +378,14 @@ class TaskScheduler:
             rospy.sleep(1)
         # TODO: Save central data if any
         # TODO: Shutdown node
+        # self.shutdown(sleep=10)
 
     def print_state(self):
         """
         Prints current state of the environment based on info collected by central
         :return:
         """
-        state = (self.sim_t, self.robots_curr_loc, self.robots_battery, self.tlapses, self.decay_rates)
+        state = (self.sim_t, self.robots_location, self.robots_battery, self.tlapses, self.decay_rates)
         self.debug("State: {}".format(state))
 
     def update_central_status(self, status):
@@ -392,6 +399,9 @@ class TaskScheduler:
     def debug(self, msg):
         pu.log_msg(type='task_scheduler', id=None, msg=msg, debug=self.debug_mode)
 
+    def shutdown(self, sleep):
+        self.debug("Reached {} time operation. Shutting down...".format(self.t_operation))
+        kill_nodes(sleep)
 
 
 if __name__ == '__main__':
