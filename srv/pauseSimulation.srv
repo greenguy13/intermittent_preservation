@@ -1,0 +1,4 @@
+bool is_pause
+int8 agent_id
+---
+bool pause_result

@@ -203,7 +203,9 @@ class Area():
             self.publish_fmeasure()
             rospy.sleep(1)
 
+        #TODO: rospy.time here
         while not rospy.is_shutdown():
+            #TODO: rospy.time here
             status_record.append(self.status)
             self.debug("Assigned robot: {}. Area status: {}. Fmeasure: {}. Tlapse: {}".format(self.robot_id, self.status, self.fmeasure, self.tlapse))
             if self.evolving_decay and (self.sim_t >= time_decay_evolves) and (self.sim_t < self.t_operation):

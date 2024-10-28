@@ -64,6 +64,10 @@ class Robot:
         self.save = rospy.get_param("/save")  # Whether to save data
         self.task_scheduler = rospy.get_param("/task_scheduler") #task scheduler
 
+        #TODO: If task scheduler is not None, we register the robot. Here the robot is a client to the CP
+        if self.task_scheduler == "central_planner":
+            pass
+
         #Initialize variables
         charging_station_coords = rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y") #rospy.get_param("/charging_station_coords")
         charging_pose_stamped = pu.convert_coords_to_PoseStamped(charging_station_coords)
@@ -123,6 +127,8 @@ class Robot:
 
         #Server for assigned cluster to monitor/preserve
         self.cluster_assignment_server = rospy.Service("/cluster_assignment_server_" + str(self.robot_id), clusterAssignment, self.cluster_assignment_cb)
+
+        #TODO: Pause simulation client
 
         """
         On charging:
@@ -344,7 +350,11 @@ class Robot:
             if not prune(self.battery, battery_consumption, self.battery_reserve) and decision_idx != self.curr_loc_idx:
                 #Immediate loss in i=1
                 duration = self.compute_duration(self.curr_loc_idx, decision_idx, self.curr_fmeasures[decision_idx], self.restoration, self.noise)
+
+                #TODO: It is here where we edit, we don't reset the f-measure of the area we visit
                 updated_fmeasures = self.adjust_fmeasures(self.curr_fmeasures.copy(), decision_idx, duration)  # F-measure of areas adjusted accordingly, i.e., consequence of decision
+
+                #TODO: Po, add a dummy fmeasures for the immediate cost computation where the f-measure of the are is not reset
                 immediate_cost_decision = self.compute_opportunity_cost(updated_fmeasures) #immediate opportunity cost
                 # self.debug("Current F-measures: {}".format(self.curr_fmeasures))
                 # self.debug("Feasible decision: {}. Duration: {}. Updated F: {}. Immediate loss: {}".format(decision, duration, updated_fmeasures, immediate_cost_decision))
@@ -430,7 +440,7 @@ class Robot:
 
         for area_idx in self.areas:
             if area_idx == visit_area_idx:
-                fmeasures[area_idx] = self.max_fmeasure
+                fmeasures[area_idx] = self.max_fmeasure #TODO: This may need to be fixed for the objective computation
             else:
                 tlapse_decay = get_time_given_decay(self.max_fmeasure, fmeasures[area_idx], self.decay_rates_dict[area_idx]) + duration
                 fmeasures[area_idx] = decay(self.decay_rates_dict[area_idx], tlapse_decay, self.max_fmeasure)

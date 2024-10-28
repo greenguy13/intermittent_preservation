@@ -367,6 +367,8 @@ def log_msg(type, id, msg, debug=True):
             rospy.logwarn("Area {}: {}".format(id, msg))
         elif type == 'task_scheduler':
             rospy.logwarn("Central: {}".format(msg))
+        elif type == 'pause_simulator':
+            rospy.logwarn("Pause simulator: {}".format(msg))
 
 def in_range(point, polygon):
     x = point[INDEX_FOR_X]

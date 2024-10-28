@@ -21,6 +21,9 @@ def get_elapsed_time(max_fmeasure, fmeasures, discount_arr):
         elapsed_time_dict[area] = get_time_given_decay(max_fmeasure, fmeasures[area], discount_arr[area])
     return elapsed_time_dict
 
+#TODO: Edit for the version where we sum up all losses.
+# For the comparison, we can just use the greedy part (k=1)
+
 def heuristic_forecast_cost(curr_fmeasures, average_duration_decay, decay_dict, fsafe, fcrit):
     """
     Forecast the fmeasures by some heuristic
@@ -113,8 +116,6 @@ def heuristic_timeseries_forecast_cost(curr_fmeasures, forecast_time_dict, decay
 
 def forecast_opportunity_cost(curr_fmeasures, tlapses, forecast_decay_dict, loss_params, discount, dec_steps, average_duration_decay_dict, forecast_tstep):
     """
-    #TODO: Add decay_dict as a parameter, forecast_step. DONE
-    #TODO: The decay_dict should be a COPY
 
 
     #If we have a forecast model initially, then no need for the data and model
@@ -142,10 +143,6 @@ def forecast_opportunity_cost(curr_fmeasures, tlapses, forecast_decay_dict, loss
     forecast_timesteps = np.array([forecast_tstep]*len(curr_fmeasures)).astype(int)
     # debug("Init forecast timesteps: {}".format(forecast_timesteps))
     # debug("Init decayed F for future forecast: {}".format(curr_fmeasures))
-
-    #TODO: We do the forecasting first. We then just index/look them up. In this case, this is linear. A
-    #   What we do is we take the max number of forecast time steps by assuming the max duration times decsteps
-    # Take the max number of tlapse?
 
     """
     Idea: Forecast first

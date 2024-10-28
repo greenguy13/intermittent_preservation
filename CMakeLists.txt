@@ -63,6 +63,8 @@ add_service_files(
         clusterAssignment.srv
         areaAssignment.srv
         assignmentAccomplishment.srv
+        pauseSimulation.srv
+        registerRobot.srv
 )
 
 

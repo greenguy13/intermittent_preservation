@@ -73,6 +73,8 @@ from std_msgs.msg import Int8, Float32
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from int_preservation.srv import clusterAssignment
 from int_preservation.srv import assignmentAccomplishment
+from int_preservation.srv import registerRobot, registerRobotResponse
+#TODO: Insert pause simulation service
 from status import centralStatus, battStatus, robotStatus, robotAssignStatus
 from reset_simulation import *
 from heuristic_fcns import *
@@ -84,14 +86,11 @@ SUCCEEDED = 3  # GoalStatus ID for succeeded, http://docs.ros.org/en/api/actionl
 SHUTDOWN_CODE = 99
 
 
-class TaskScheduler:
+class CentralPlanner:
     def __init__(self, node_name):
         """
 
         :param node_name:
-        :param areas:
-        :param est_distance_matrix:
-        :param est_batt_consumption_matrix:
         """
 
         rospy.init_node(node_name, anonymous=True)
@@ -105,6 +104,7 @@ class TaskScheduler:
         self.max_fmeasure = rospy.get_param("/max_fmeasure")  # Max F-measure of an area
         self.max_battery = rospy.get_param("/max_battery")  # Max battery
         self.battery_reserve = rospy.get_param("/battery_reserve")  # Battery reserve
+        self.tolerance = rospy.get_param("/move_base_tolerance")
         self.charging_station = 0 #charging station index
 
         f_thresh = rospy.get_param("/f_thresh")
@@ -118,11 +118,32 @@ class TaskScheduler:
         self.noise = rospy.get_param("/noise")
         self.nareas = rospy.get_param("/nareas")  # Sample nodes from voronoi equal to area count #STAR
         self.areas = [int(i + 1) for i in range(self.nareas)]  # list of int area IDs
-        self.debug("Hello there!")
         self.debug("Nareas {}. Areas list: {}".format(self.nareas, self.areas))
         # self.tolerance = rospy.get_param("/move_base_tolerance")
         self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
         self.save = rospy.get_param("/save")  # Whether to save data
+
+        #Sampled nodes poses
+        charging_station_coords = (0, 0) #rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y")  # rospy.get_param("/charging_station_coords")
+        charging_pose_stamped = pu.convert_coords_to_PoseStamped(charging_station_coords)
+        self.nodes_poses = [charging_pose_stamped]  # list container for sampled nodes of type PoseStamped, where 0 is the charging station for that robot
+
+        # Pickle load the sampled area poses
+        with open('{}.pkl'.format(rospy.get_param("/file_sampled_areas")), 'rb') as f:
+            sampled_areas_coords = pickle.load(f)
+        for area_coords in sampled_areas_coords['n{}_p{}'.format(self.nareas, rospy.get_param("/placement"))]:
+            pose_stamped = pu.convert_coords_to_PoseStamped(area_coords)
+            self.nodes_poses.append(pose_stamped)
+
+        #Build distance matrix for each of the robots
+        # TODO: This would mean asking for their initial x,y pose as the charging station coords
+        #   One possibility is just to input this as coords, although this might be just about namespacing
+        #   Perhaps we can think of it as robots registering to the central planner
+
+
+        self.dist_matrix = dict() #Initialize distance matrices of each robot #TODO: Upnext
+
+        self.charging_station = 0
 
         # Initialize variables/containers
         self.mission_areas = dict() #Mission areas of robots
@@ -160,10 +181,17 @@ class TaskScheduler:
         self.unassigned_robots = list() #List of unassigned robots
 
         # Server
-        self.assignment_accomplishment_server = rospy.Service("/assignment_accomplishment_server", assignmentAccomplishment, self.assignment_accomplishment_cb)
+        self.robots_registry_server = rospy.Service('/robots_registry_server', registerRobot, self.register_robots_cb)
+        self.assignment_accomplishment_server = rospy.Service('/assignment_accomplishment_server', assignmentAccomplishment, self.assignment_accomplishment_cb)
 
         # Publishers/Subscribers
         self.central_status_pub = rospy.Publisher('/central_status', Int8, queue_size=1)
+
+        # Service request to move_base to get plan : make_Plan
+        server = '/move_base_node/make_plan'
+        rospy.wait_for_service(server)
+        self.get_plan_service = rospy.ServiceProxy(server, GetPlan)
+        self.debug("Getplan service: {}".format(self.get_plan_service))
 
         for robot_id in self.robot_ids:
             rospy.Subscriber('/robot_{}/assignment_status'.format(robot_id), Int8, self.assign_status_cb, robot_id)
@@ -174,6 +202,96 @@ class TaskScheduler:
 
         for area in self.areas:
             rospy.Subscriber('/area_{}/decay_rate'.format(area), Float32, self.decay_rate_cb, area)
+
+        #TODO: Pause simulation client
+
+    def register_robots_cb(self, msg):
+        """
+        Register robots id
+        :return:
+        """
+        #TODO: UPNEXT
+        robot_id = msg.robot_id #robot id for registration
+        init_x = msg.init_x
+        init_y = msg.init_y
+
+        #Build distance matrix for that robot
+
+        #Debug that robot has been registered
+
+
+    # METHODS: Node poses and distance matrix
+    def get_plan_request(self, start_pose, goal_pose, tolerance):
+        """
+        Sends a request to GetPlan service to create a plan for path from start to goal without actually moving the robot
+        :param start_pose:
+        :param goal_pose:
+        :param tolerance:
+        :return:
+        """
+        req = GetPlan()
+        req.start = start_pose
+        req.goal = goal_pose
+        req.tolerance = tolerance
+        server = self.get_plan_service
+        result = server(req.start, req.goal, req.tolerance)
+        path = result.plan.poses
+        return path
+
+    def decouple_path_poses(self, path):
+        """
+        Decouples a path of PoseStamped poses; returning a list of x,y poses
+        :param path: list of PoseStamped
+        :return:
+        """
+        list_poses = list()
+        for p in path:
+            x, y = p.pose.position.x, p.pose.position.y
+            list_poses.append((x, y))
+        return list_poses
+
+    def compute_path_total_dist(self, list_poses):
+        """
+        Computes the total path distance
+        :return:
+        """
+        total_dist = 0
+        for i in range(len(list_poses) - 1):
+            dist = math.dist(list_poses[i], list_poses[i + 1])
+            total_dist += dist
+        return total_dist
+
+    def compute_dist_bet_areas(self, area_i, area_j, tolerance):
+        """
+        Computes the distance between area_i and area_j:
+            1. Call the path planner between area_i and area_j
+            2. Decouple the elements of path planning
+            3. Compute the distance then total distance
+        :param area_i: PoseStamped
+        :param area_j: PoseStamped
+        :return:
+        """
+        path = self.get_plan_request(area_i, area_j, tolerance)
+        list_poses = self.decouple_path_poses(path)
+        total_dist = self.compute_path_total_dist(list_poses)
+        return total_dist
+
+    def build_dist_matrix(self):
+        """
+        Builds the distance matrix among areas
+        :return:
+        """
+        n = len(self.nodes_poses)
+        self.dist_matrix = np.zeros((n, n))
+
+        for i in range(n):
+            for j in range(n):
+                area_i, area_j = self.nodes_poses[i], self.nodes_poses[j]
+                if area_i != area_j:
+                    dist = self.compute_dist_bet_areas(area_i, area_j, self.tolerance)
+                    self.dist_matrix[i, j] = dist
+
+        self.debug("Dist matrix: {}".format(self.dist_matrix))
 
     def robot_location_cb(self, msg, robot_id):
         """
@@ -270,6 +388,12 @@ class TaskScheduler:
         :param clusters:
         :return:
         """
+
+        """
+        This is where we would assign clusters to robots. We do a greedy assignment where we choose the highly urgent more distant clusters first,
+            assigning them with the best robot that is closest and has more coverage capability
+        """
+
         self.debug("Unassigned robots: {}".format(self.unassigned_robots))
         self.debug("Clusters: {}".format(clusters))
         assigned = 0
@@ -335,6 +459,118 @@ class TaskScheduler:
                 #
                 #     for area in self.clusters[cluster]:
                 #         self.tlapses[area] += 1
+    #TODO: A method to consider re-assignment of robots
+    def intra_cluster_closeness(self, distance_matrix, cluster_areas):
+        """
+        Calculate the closeness centrality of each node within a given cluster.
+
+        Inputs:
+        distance_matrix (2D np.array): The distance matrix representing the whole network.
+        cluster_areas (list): The list of areas that belong to the cluster.
+
+        Returns:
+        dict: A dictionary where keys are node indices and values are their closeness centrality within the cluster.
+        """
+        # Extract the submatrix for the cluster
+        cluster_submatrix = distance_matrix[np.ix_(cluster_areas, cluster_areas)]
+
+        # Number of nodes in the cluster
+        num_nodes_in_cluster = cluster_submatrix.shape[0]
+
+        # Dictionary to store closeness centrality for nodes in the cluster
+        cluster_centrality = {}
+
+        # Iterate over each node in the cluster
+        for idx, node in enumerate(cluster_areas):
+            total_distance = np.sum(cluster_submatrix[idx])
+
+            # Avoid division by zero for isolated nodes
+            if total_distance > 0:
+                cluster_centrality[node] = (num_nodes_in_cluster - 1) / total_distance
+            else:
+                cluster_centrality[node] = 0.0  # For isolated nodes
+
+        return cluster_centrality
+
+    def closeness_robot_to_cluster(self, distance_matrix, robot_location, cluster_nodes):
+        """
+        Calculate the closeness of a node to a cluster of nodes.
+
+        Inputs:
+        distance_matrix (2D np.array): Distance matrix for the whole graph.
+        node (int): The node whose closeness to the cluster is to be measured.
+        cluster_nodes (list): The list of nodes representing the cluster.
+
+        Returns:
+        float: Closeness of the node to the cluster (lower values indicate closer proximity).
+        """
+        avg_distance = np.mean([distance_matrix[robot_location][i] for i in cluster_nodes])
+
+        # PO: the minimum distance from the node to any node in the cluster
+        # min_distance = min(distance_matrix[robot_location][i] for i in cluster_nodes)
+        return avg_distance
+
+
+    def compute_clusters_scores_then_sort(self):
+        """
+        Computes cluster scores
+        :return:
+        """
+        #Compute losses score
+            #Total losses of areas within the cluster
+            # Measure the loss which is a function of the tlapse of the areas within that cluster and their corresponding decay rate
+
+        """
+        We call on the clusters with their corresponding areas. For each cluster, we measure the losses of the areas.
+            We do this by retrieving their tlapses and decay rates to compute the decay fmeasure,
+                then pair this with the max fmeasure to get the loss
+            We sum up the losses of the areas
+            We store in a dictionary wherein the cluster loss as the value while the cluster itself is the key
+            
+            PO: We may have a second score on which to sort the dictionary
+            We then sort the dictionary by value
+            We return the sorted keys of the sorted dictionary
+        """
+        clusters = dict()
+        for cluster in self.clusters:
+            total_losses = 0
+            for area in cluster:
+                #Measure losses
+                decayed_f = decay(self.decay_rates[area], self.tlapses[area], self.max_fmeasure)
+                loss = loss_fcn(self.max_fmeasure, decayed_f)
+                total_losses += loss
+
+            #Measure intra-cluster closeness
+            intra_closeness = self.intra_cluster_closeness(self.dist_matrix, self.clusters)
+        #Sort the clusters by losses descendingly and closeness descendingly
+
+        #Return the sorted clusters
+
+    def compute_robots_scores_then_sort(self):
+        """
+        Computes robots scores
+        :return:
+        """
+        #Compute robots scores
+            # Measure closeness to the cluster
+
+            # Retrieve remaining battery
+
+        #Sort the robots by closeness ascendingly then remaining battery descendingly
+        #Return sorted robots
+
+    def consider_reassignment(self):
+        """
+        Considers re-assignment of robots available whenever a cluster is unassigned. An unassigned cluster occurs
+            when a robot decides to charge up
+        """
+        # Get unassigned robots
+        # Create clusters based on the number of unassigned robots
+        # Measure the cluster scores then sort
+        # For each cluster in sorted clusters
+            # Find the best unassigned robot for that cluster
+            # If cluster assignment is not the cluster, update cluster assignment for that robot
+
 
     def wait_areas_to_register(self):
         """
@@ -351,15 +587,37 @@ class TaskScheduler:
         self.debug("Sufficent data. Decay rates: {}".format(self.decay_rates))
         return
 
+    #TODO: Wait for robots to register
+
+    def build_dist_matrix(self):
+        """
+        Builds the distance matrix among areas
+        :return:
+        """
+        n = len(self.sampled_nodes_poses)
+        self.dist_matrix = np.zeros((n, n))
+
+        for i in range(n):
+            for j in range(n):
+                area_i, area_j = self.sampled_nodes_poses[i], self.sampled_nodes_poses[j]
+                if area_i != area_j:
+                    dist = self.compute_dist_bet_areas(area_i, area_j, self.tolerance)
+                    self.dist_matrix[i, j] = dist
+
+        self.debug("Dist matrix: {}".format(self.dist_matrix))
+
     def run_operation(self, filename, freq=1):
         rospy.sleep(10)
         self.wait_areas_to_register()
+        #TODO: Wait for robots to register
         self.unassigned_robots = self.robot_ids
         self.status = centralStatus.IDLE.value
         self.sim_t = 0
         while self.sim_t < self.t_operation:
             self.central_status_pub.publish(self.status)
             self.print_state()
+
+            #TODO: Send pause simulation request here
             if self.status == centralStatus.IDLE.value:
                 self.debug("Idle central state. Creating and assigning clusters")
                 self.clusters = self.create_clusters()
@@ -408,4 +666,4 @@ if __name__ == '__main__':
     # os.chdir('/home/ameldocena/.ros/int_preservation/results')
     os.chdir('/root/catkin_ws/src/results/int_preservation')
     filename = rospy.get_param('/file_data_dump')
-    TaskScheduler('central_heuristic_decision').run_operation(filename)
+    CentralPlanner('central_heuristic_decision').run_operation(filename)
