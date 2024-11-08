@@ -74,7 +74,7 @@ from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from int_preservation.srv import clusterAssignment
 from int_preservation.srv import assignmentAccomplishment
 from int_preservation.srv import registerRobot, registerRobotResponse
-#TODO: Insert pause simulation service
+from int_preservation.srv import pauseSimulation
 from status import centralStatus, battStatus, robotStatus, robotAssignStatus
 from reset_simulation import *
 from heuristic_fcns import *
@@ -118,30 +118,30 @@ class CentralPlanner:
         self.noise = rospy.get_param("/noise")
         self.nareas = rospy.get_param("/nareas")  # Sample nodes from voronoi equal to area count #STAR
         self.areas = [int(i + 1) for i in range(self.nareas)]  # list of int area IDs
+
+        # self.check_pause()
+
         self.debug("Nareas {}. Areas list: {}".format(self.nareas, self.areas))
         # self.tolerance = rospy.get_param("/move_base_tolerance")
         self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
         self.save = rospy.get_param("/save")  # Whether to save data
 
         #Sampled nodes poses
-        charging_station_coords = (0, 0) #rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y")  # rospy.get_param("/charging_station_coords")
-        charging_pose_stamped = pu.convert_coords_to_PoseStamped(charging_station_coords)
-        self.nodes_poses = [charging_pose_stamped]  # list container for sampled nodes of type PoseStamped, where 0 is the charging station for that robot
+        # charging_station_coords = (0, 0) #rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y")  # rospy.get_param("/charging_station_coords")
+        # charging_pose_stamped = pu.convert_coords_to_PoseStamped(charging_station_coords)
+        # self.nodes_poses = [charging_pose_stamped]  # list container for sampled nodes of type PoseStamped, where 0 is the charging station for that robot
 
         # Pickle load the sampled area poses
+        self.areas_poses = list()
         with open('{}.pkl'.format(rospy.get_param("/file_sampled_areas")), 'rb') as f:
             sampled_areas_coords = pickle.load(f)
         for area_coords in sampled_areas_coords['n{}_p{}'.format(self.nareas, rospy.get_param("/placement"))]:
             pose_stamped = pu.convert_coords_to_PoseStamped(area_coords)
-            self.nodes_poses.append(pose_stamped)
+            self.areas_poses.append(pose_stamped)
 
-        #Build distance matrix for each of the robots
-        # TODO: This would mean asking for their initial x,y pose as the charging station coords
-        #   One possibility is just to input this as coords, although this might be just about namespacing
-        #   Perhaps we can think of it as robots registering to the central planner
-
-
-        self.dist_matrix = dict() #Initialize distance matrices of each robot #TODO: Upnext
+        self.dist_matrices = dict() #Initialize distance matrices of each robot #TODO: Distance matrices of registered robots
+        for robot in range(self.nrobots):
+            self.dist_matrices[robot] = None
 
         self.charging_station = 0
 
@@ -188,7 +188,7 @@ class CentralPlanner:
         self.central_status_pub = rospy.Publisher('/central_status', Int8, queue_size=1)
 
         # Service request to move_base to get plan : make_Plan
-        server = '/move_base_node/make_plan'
+        server = '/robot_0/move_base_node/make_plan'
         rospy.wait_for_service(server)
         self.get_plan_service = rospy.ServiceProxy(server, GetPlan)
         self.debug("Getplan service: {}".format(self.get_plan_service))
@@ -200,25 +200,29 @@ class CentralPlanner:
             rospy.Subscriber('/robot_{}/location'.format(robot_id), Int8, self.robot_location_cb, robot_id)
             rospy.Subscriber('/robot_{}/battery'.format(robot_id), Int8, self.robot_battery_cb, robot_id)
 
+        #Here: It is assumed oracle knoweldge of decay rates
         for area in self.areas:
             rospy.Subscriber('/area_{}/decay_rate'.format(area), Float32, self.decay_rate_cb, area)
-
-        #TODO: Pause simulation client
 
     def register_robots_cb(self, msg):
         """
         Register robots id
         :return:
         """
-        #TODO: UPNEXT
+        #TODO: UPNEXT. Sanity check
         robot_id = msg.robot_id #robot id for registration
         init_x = msg.init_x
         init_y = msg.init_y
 
+        self.debug("Registry request received (id, x, y): {}, {}, {}".format(robot_id, init_x, init_y))
+
         #Build distance matrix for that robot
+        self.dist_matrices[robot_id] = self.build_dist_matrix(robot_id, float(init_x), float(init_y)) #TODO
 
         #Debug that robot has been registered
+        self.debug("Robot registered: {}. Dist matrix: {}".format(robot_id, self.dist_matrices[robot_id]))
 
+        return registerRobotResponse(True)
 
     # METHODS: Node poses and distance matrix
     def get_plan_request(self, start_pose, goal_pose, tolerance):
@@ -271,27 +275,35 @@ class CentralPlanner:
         :param area_j: PoseStamped
         :return:
         """
-        path = self.get_plan_request(area_i, area_j, tolerance)
+        path = self.get_plan_request(area_i, area_j, tolerance) #TODO: Which robot movebase shall we use to compute this? Could it be any robot? Could be robot_1
         list_poses = self.decouple_path_poses(path)
         total_dist = self.compute_path_total_dist(list_poses)
         return total_dist
 
-    def build_dist_matrix(self):
+    def build_dist_matrix(self, robot_id, init_x, init_y):
         """
         Builds the distance matrix among areas
         :return:
         """
-        n = len(self.nodes_poses)
-        self.dist_matrix = np.zeros((n, n))
+        #TODO: Concatenate charging station with the area nodes
+        charging_station_coords = (init_x, init_y)
+        charging_pose_stamped = pu.convert_coords_to_PoseStamped(charging_station_coords)
+        nodes_poses = [charging_pose_stamped]
+        nodes_poses.extend(self.areas_poses)
+        self.debug("Robot: {}. Nodes_poses: {}".format(robot_id, nodes_poses))
+
+        n = len(nodes_poses)
+        dist_matrix = np.zeros((n, n))
 
         for i in range(n):
             for j in range(n):
-                area_i, area_j = self.nodes_poses[i], self.nodes_poses[j]
+                area_i, area_j = nodes_poses[i], nodes_poses[j]
                 if area_i != area_j:
                     dist = self.compute_dist_bet_areas(area_i, area_j, self.tolerance)
-                    self.dist_matrix[i, j] = dist
+                    dist_matrix[i, j] = dist
 
-        self.debug("Dist matrix: {}".format(self.dist_matrix))
+        # self.debug("Dist matrix: {}".format(self.dist_matrix))
+        return dist_matrix
 
     def robot_location_cb(self, msg, robot_id):
         """
@@ -447,7 +459,7 @@ class CentralPlanner:
                 if self.assign_statuses[robot_id] == robotAssignStatus.ASSIGNED.value and (self.robot_statuses[robot_id] != robotStatus.IDLE.value and self.robot_statuses[robot_id] != robotStatus.READY.value):
                     cluster = self.robots_assignment[robot_id]
                     for area in self.clusters[cluster]:
-                        self.tlapses[area] += 1
+                        self.tlapses[area] += 1 #TODO: Update tlapses here
 
                 #Case 2: Elapse time for unassigned areas when robot is charging and central is not thinking
                 # elif self.assign_statuses[robot_id] == robotAssignStatus.UNASSIGNED.value and (self.robot_statuses[robot_id] != robotStatus.IDLE.value and self.robot_statuses[robot_id] != robotStatus.READY.value) and self.mission_areas[robot_id] == self.charging_station:
@@ -572,44 +584,23 @@ class CentralPlanner:
             # If cluster assignment is not the cluster, update cluster assignment for that robot
 
 
-    def wait_areas_to_register(self):
+    def wait_nodes_to_register(self):
         """
         Wait for area nodes to register
         :return:
         """
         na_counts = True
         while na_counts is True:
-            decay_rates = list(self.decay_rates.values())
-            self.debug("Decay rates: {}".format(decay_rates))
-            if None not in decay_rates:
+            decay_rates, dist_matrices = list(self.decay_rates.values()), list(self.dist_matrices.values())
+            self.debug("Decay rates: {}. Dist matrices: {}".format(decay_rates, dist_matrices))
+            if None not in decay_rates and None not in dist_matrices:
                 na_counts = False
             rospy.sleep(1)
-        self.debug("Sufficent data. Decay rates: {}".format(self.decay_rates))
-        return
-
-    #TODO: Wait for robots to register
-
-    def build_dist_matrix(self):
-        """
-        Builds the distance matrix among areas
-        :return:
-        """
-        n = len(self.sampled_nodes_poses)
-        self.dist_matrix = np.zeros((n, n))
-
-        for i in range(n):
-            for j in range(n):
-                area_i, area_j = self.sampled_nodes_poses[i], self.sampled_nodes_poses[j]
-                if area_i != area_j:
-                    dist = self.compute_dist_bet_areas(area_i, area_j, self.tolerance)
-                    self.dist_matrix[i, j] = dist
-
-        self.debug("Dist matrix: {}".format(self.dist_matrix))
+        self.debug("Sufficent data. Decay rates: {}. Dist matrices: {}".format(self.decay_rates, self.dist_matrices))
 
     def run_operation(self, filename, freq=1):
         rospy.sleep(10)
-        self.wait_areas_to_register()
-        #TODO: Wait for robots to register
+        self.wait_nodes_to_register()
         self.unassigned_robots = self.robot_ids
         self.status = centralStatus.IDLE.value
         self.sim_t = 0
@@ -617,26 +608,84 @@ class CentralPlanner:
             self.central_status_pub.publish(self.status)
             self.print_state()
 
-            #TODO: Send pause simulation request here
             if self.status == centralStatus.IDLE.value:
                 self.debug("Idle central state. Creating and assigning clusters")
-                self.clusters = self.create_clusters()
+
+                # TODO: Send pause simulation request here
+                self.clusters = self.create_clusters() #Thinking. Pause
                 self.assign_clusters(self.clusters)
                 if len(self.unassigned_robots) == 0:
                     self.update_central_status(centralStatus.IN_MISSION)
 
             elif self.status == centralStatus.IN_MISSION.value:
                 self.debug("Central in mission...")
-                self.update_tlapses_areas()
+
+                self.update_tlapses_areas() #TODO: Update tlapses here. Yea this is correct should be +=1. Or could be from time. Yea we can use from time
 
             elif self.status == centralStatus.CONSIDER_REPLAN.value:
                 self.debug("Central considers re-assignment...")
 
-            self.sim_t += 1
+            self.sim_t += 1 #TODO: Update tlapses here
             rospy.sleep(1)
         # TODO: Save central data if any
         # TODO: Shutdown node
         # self.shutdown(sleep=10)
+
+    def check_pause(self):
+        """
+        Checks the pause request to Stage
+        :return:
+        """
+        #Check time whether it is ticking
+        #Then check time again after pausing the simulation and whether it is likewise ticking
+        time_new = rospy.get_time()
+        for i in range(5):
+            time_prev = time_new
+            time_new = rospy.get_time()
+            tlapse = time_new - time_prev
+            self.debug("Ticking instance: {}. Rospy time: {}. Tlapse: {}".format(i, time_new, tlapse))
+
+            rospy.sleep(1)
+
+        #We do the pausing here
+        # is_pause = False
+        # if is_pause is False:
+        #     self.request_pause()
+        #     is_pause = True
+        self.request_pause()
+
+        time_prev = time_new
+        time_new = rospy.get_time()
+        tlapse = time_new - time_prev
+        self.debug("Ticking instance: {}. Rospy time: {}. Tlapse: {}".format(i, time_new, tlapse))
+        sum = 1 + 1
+        self.debug("Sum: {}".format(sum))
+
+        self.request_unpause()
+
+        self.check_pause()
+
+    def request_pause(self, is_pause=True):
+        """
+        Sends pause request to pause_simulation
+        :return:
+        """
+        rospy.wait_for_service('/pause_queue_server')
+        try:
+            pause_request = rospy.ServiceProxy('/pause_queue_server', pauseSimulation)
+            agent_id = 999
+            resp = pause_request(is_pause, agent_id)
+            return resp.pause_result
+        except rospy.ServiceException as e:
+            rospy.logerr(f"Pause service call failed: {e}")
+
+    def request_unpause(self):
+        """
+        Sends unpause request to simulation
+        :param is_pause:
+        :return:
+        """
+        self.request_pause(is_pause=False)
 
     def print_state(self):
         """
@@ -666,4 +715,5 @@ if __name__ == '__main__':
     # os.chdir('/home/ameldocena/.ros/int_preservation/results')
     os.chdir('/root/catkin_ws/src/results/int_preservation')
     filename = rospy.get_param('/file_data_dump')
-    CentralPlanner('central_heuristic_decision').run_operation(filename)
+    CentralPlanner('central_planner').run_operation(filename)
+    # CentralPlanner('central_planner').check_pause()

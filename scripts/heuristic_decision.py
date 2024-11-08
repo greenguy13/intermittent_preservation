@@ -21,6 +21,7 @@ from loss_fcns import *
 from int_preservation.srv import clusterAssignment, clusterAssignmentResponse
 from int_preservation.srv import areaAssignment
 from int_preservation.srv import assignmentAccomplishment
+from int_preservation.srv import registerRobot
 
 
 INDEX_FOR_X = 0
@@ -58,18 +59,15 @@ class Robot:
         self.dec_steps = rospy.get_param("/dec_steps")
         self.restoration = rospy.get_param("/restoration")
         self.noise = rospy.get_param("/noise")
-
         self.tolerance = rospy.get_param("/move_base_tolerance")
         self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
         self.save = rospy.get_param("/save")  # Whether to save data
         self.task_scheduler = rospy.get_param("/task_scheduler") #task scheduler
 
-        #TODO: If task scheduler is not None, we register the robot. Here the robot is a client to the CP
-        if self.task_scheduler == "central_planner":
-            pass
-
         #Initialize variables
-        charging_station_coords = rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y") #rospy.get_param("/charging_station_coords")
+        self.init_x, self.init_y = rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y") #Initialize robot pose
+        self.debug("Init x, y {}".format((self.init_x, self.init_y)))
+        charging_station_coords = self.init_x, self.init_y #rospy.get_param("/charging_station_coords")
         charging_pose_stamped = pu.convert_coords_to_PoseStamped(charging_station_coords)
         self.nodes_poses = [charging_pose_stamped] #list container for sampled nodes of type PoseStamped, where 0 is the charging station for that robot
 
@@ -81,7 +79,7 @@ class Robot:
             pose_stamped = pu.convert_coords_to_PoseStamped(area_coords)
             self.nodes_poses.append(pose_stamped)
 
-        self.x, self.y = 0.0, 0.0 #Initialize robot pose
+        self.x, self.y = self.init_x, self.init_y  # Initialize robot pose
         self.charging_station = 0
         self.curr_loc_idx = self.charging_station #Initial location robot is the charging station
         self.battery = self.max_battery #Initialize battery at max, then gets updated by subscribed battery topic
@@ -128,7 +126,6 @@ class Robot:
         #Server for assigned cluster to monitor/preserve
         self.cluster_assignment_server = rospy.Service("/cluster_assignment_server_" + str(self.robot_id), clusterAssignment, self.cluster_assignment_cb)
 
-        #TODO: Pause simulation client
 
         """
         On charging:
@@ -143,6 +140,22 @@ class Robot:
             Now, the current mission area, which subscribes to both robot_status and robot_mission_area topics, will restore F; while,
                 those other areas not the mission area will have their F continually decay 
         """
+
+    def register_to_central(self):
+        """
+        Register robot info to central
+        :return:
+        """
+        if self.task_scheduler == "central_planner":
+            rospy.wait_for_service('/robots_registry_server') #TODO
+            try:
+                register_request = rospy.ServiceProxy('/robots_registry_server', registerRobot) #TODO
+                self.debug("Registering robot info to central (id, x, y): {}, {}, {}".format(self.robot_id, self.init_x, self.init_y))
+                resp = register_request(self.robot_id, self.init_x, self.init_y) #TODO
+                self.debug("Registry to central success: {}".format(resp.registered)) #TODO
+            except rospy.ServiceException as e:
+                rospy.logerr(f"Register to central service call failed: {e}")
+
 
     def area_assignment_notice(self, assigned_areas):
         """
@@ -593,7 +606,7 @@ class Robot:
 
         for area_idx in self.areas:
             area_id = self.get_assigned_area_id(area_idx)
-            # Decay rates provided by central. Here we assume oracle knowledge of fmeasure
+            # Decay rates provided by central.
             # rospy.Subscriber('/area_{}/decay_rate'.format(area_id), Float32, self.decay_rate_cb, area_id)
             self.subscribe_fmeasures[area_id] = rospy.Subscriber('/area_{}/fmeasure'.format(area_id), Float32, self.area_fmeasure_cb, area_id)  # REMARK: Here we assume that we have live measurements of the F-measures
             self.subscribe_statuses[area_id] = rospy.Subscriber('/area_{}/status'.format(area_id), Int8, self.area_status_cb, area_id)
@@ -647,7 +660,10 @@ class Robot:
 
         if self.robot_id < 999: #Not a dummy robot
             rate = rospy.Rate(freq)
-            rospy.sleep(15)  # Wait for nodes to register
+            rospy.sleep(5)  # Wait for nodes to register
+
+            #TODO: Register to central planner
+            self.register_to_central()
 
             while self.assigned_areas is None:
                 self.debug("Initialization: No cluster assignment yet. Waiting for assignment...")

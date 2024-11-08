@@ -1,12 +1,15 @@
 <launch>
 <arg name="task_scheduler"/>
-<arg name="robot_prefix" value="task_scheduler"/>
-<param name="tf_prefix" type="string" value="task_scheduler"/>
+<arg name="robot_prefix" value="$(arg task_scheduler)"/>
+<param name="tf_prefix" type="string" value="$(arg task_scheduler)"/>
 
 <group unless="$(eval task_scheduler == 'None')">
     <node name="task_scheduler" pkg="int_preservation" type="$(arg task_scheduler).py">
     </node>
+</group>
+</launch>
 
+<!--
     <node pkg="move_base" type="move_base" respawn="false" name="move_base_node" output="screen">
         <remap from="map" to="/map" />
         <param name="controller_frequency" value="10.0" />
@@ -19,3 +22,4 @@
 </group>
 
 </launch>
+-->

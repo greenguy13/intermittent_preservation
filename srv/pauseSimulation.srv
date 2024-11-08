@@ -1,4 +1,4 @@
 bool is_pause
-int8 agent_id
+int16 agent_id
 ---
 bool pause_result

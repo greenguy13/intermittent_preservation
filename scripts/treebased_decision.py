@@ -77,7 +77,8 @@ class Robot:
         self.inference = rospy.get_param("/inference")
 
         #Initialize variables
-        charging_station_coords = rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y") #rospy.get_param("/charging_station_coords")
+        init_x, init_y = rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y")  # Initialize robot pose
+        charging_station_coords = init_x, init_y #rospy.get_param("/charging_station_coords")
         charging_pose_stamped = pu.convert_coords_to_PoseStamped(charging_station_coords)
         self.sampled_nodes_poses = [charging_pose_stamped] #list container for sampled nodes of type PoseStamped
 
@@ -88,7 +89,7 @@ class Robot:
             pose_stamped = pu.convert_coords_to_PoseStamped(area_coords)
             self.sampled_nodes_poses.append(pose_stamped)
 
-        self.x, self.y = 0.0, 0.0 #Initialize robot pose
+        self.x, self.y = init_x, init_y #Initialize robot pose
         self.charging_station = 0
         self.curr_loc = self.charging_station #Initial location robot is the charging station
         self.battery = self.max_battery #Initialize battery at max, then gets updated by subscribed battery topic

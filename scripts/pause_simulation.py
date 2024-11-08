@@ -16,6 +16,8 @@ class PauseSimulation:
 
         rospy.init_node(node_name, anonymous=True)
         self.debug_mode = rospy.get_param('/debug_mode')
+
+        #TODO: Client will have to wait for this service and request
         self.pause_queue_server = rospy.Service("/pause_queue_server", pauseSimulation, self.pause_request_cb) #Server for pause simulation requests, i.e., when an agent is thinking
         self.pause_queue = list() #Queue of agents thinking
         self.is_simulation_paused = False #Bool whether simulation is paused
@@ -30,6 +32,7 @@ class PauseSimulation:
         agent_id = msg.agent_id #Agent id
 
         #Agent is thinking, so we pause simulation, if not yet
+        is_pause = bool(is_pause)
         if is_pause is True:
             if self.is_simulation_paused is False:
                 self.request_pause_simulation(is_pause) #Request Stage to pause simulation
