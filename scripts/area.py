@@ -219,7 +219,7 @@ class Area():
                 pass
 
             elif self.status == areaStatus.DECAYING.value:
-                self.decay(self.tlapse)
+                self.decay(self.tlapse) #TODO: Measure the tlapse here based on rospy.get_time()
                 self.tlapse += 1
 
             elif self.status == areaStatus.RESTORING_F.value:

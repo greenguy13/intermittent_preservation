@@ -198,7 +198,7 @@ class CentralPlanner:
             rospy.Subscriber('/robot_{}/mission_area'.format(robot_id), Int8, self.mission_area_cb, robot_id)
             rospy.Subscriber('/robot_{}/robot_status'.format(robot_id), Int8, self.robot_status_cb, robot_id)
             rospy.Subscriber('/robot_{}/location'.format(robot_id), Int8, self.robot_location_cb, robot_id)
-            rospy.Subscriber('/robot_{}/battery'.format(robot_id), Int8, self.robot_battery_cb, robot_id)
+            rospy.Subscriber('/robot_{}/battery'.format(robot_id), Float32, self.robot_battery_cb, robot_id)
 
         #Here: It is assumed oracle knoweldge of decay rates
         for area in self.areas:
@@ -388,7 +388,7 @@ class CentralPlanner:
         interval = self.nareas // self.nrobots
         areas = self.areas.copy()
         start = 0
-        self.debug("Areas: {}, {}, Interval: {}".format(self.areas, areas, interval))
+        self.debug("Areas: {}, No. of Robots: {}, Interval: {}".format(areas, self.nrobots, interval))
         for i in range(self.nrobots):
             clusters['C' + str(i+1)] = areas[start:start+interval]
             start = start + interval
@@ -593,7 +593,9 @@ class CentralPlanner:
         while na_counts is True:
             decay_rates, dist_matrices = list(self.decay_rates.values()), list(self.dist_matrices.values())
             self.debug("Decay rates: {}. Dist matrices: {}".format(decay_rates, dist_matrices))
-            if None not in decay_rates and None not in dist_matrices:
+            is_notna_decay_rates = all(element is not None for element in decay_rates)
+            is_notna_dist_matrices = all(element is not None for element in dist_matrices)
+            if is_notna_decay_rates is True and is_notna_dist_matrices is True:
                 na_counts = False
             rospy.sleep(1)
         self.debug("Sufficent data. Decay rates: {}. Dist matrices: {}".format(self.decay_rates, self.dist_matrices))

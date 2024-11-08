@@ -326,6 +326,7 @@ class Robot:
         :return:
         """
         # Battery consumed travel and preserve area (if not charging station)
+        self.debug("Estimate battery params fmeasure, decision: {}, {}".format(fmeasures, decision))
         battery_consumption = self.consume_battery(start_area_idx=curr_loc, next_area_idx=decision,
                                                    curr_measure=fmeasures[decision],
                                                    noise=noise)
@@ -579,10 +580,14 @@ class Robot:
         :param assigned_areas:
         :return:
         """
+        self.debug("Instantiating variables")
 
         self.assigned_areas = assigned_areas  # Has the same list indexing with self.areas
         self.nareas = len(self.assigned_areas)  # Sample nodes from voronoi equal to area count #STAR
         self.areas = [int(i + 1) for i in range(self.nareas)]  # list of int area indexes, starting at index=1
+
+        # Send notice to areas about their robot assignment
+        self.area_assignment_notice(self.assigned_areas)
 
         self.curr_fmeasures = dict()  # container of current F-measure of areas
         self.decay_rates_dict = dict()  # dictionary for decay rates
@@ -611,12 +616,14 @@ class Robot:
             self.subscribe_fmeasures[area_id] = rospy.Subscriber('/area_{}/fmeasure'.format(area_id), Float32, self.area_fmeasure_cb, area_id)  # REMARK: Here we assume that we have live measurements of the F-measures
             self.subscribe_statuses[area_id] = rospy.Subscriber('/area_{}/status'.format(area_id), Int8, self.area_status_cb, area_id)
 
+        #Wait for self.curr_fmeasures to be populated
+        while set(list(self.curr_fmeasures.keys())) != set(self.areas):
+            self.debug("Subscribing to area topics...")
+            rospy.sleep(1)
+
         # Sampled node poses and distance matrix
         self.sampled_nodes_poses = self.extract_sampled_node_poses(self.assigned_areas)
         self.build_dist_matrix()
-
-        # Send notice to areas about their robot assignment
-        self.area_assignment_notice(self.assigned_areas)
 
     def get_assigned_area_index(self, area_id):
         """
@@ -662,12 +669,13 @@ class Robot:
             rate = rospy.Rate(freq)
             rospy.sleep(5)  # Wait for nodes to register
 
-            #TODO: Register to central planner
             self.register_to_central()
 
-            while self.assigned_areas is None:
+            while self.dist_matrix is None:
                 self.debug("Initialization: No cluster assignment yet. Waiting for assignment...")
                 rospy.sleep(1)
+
+            #TODO: To take into account re-assignment of areas
 
             self.sim_t = 0
             while not rospy.is_shutdown() and self.sim_t<self.t_operation:
@@ -725,7 +733,7 @@ class Robot:
                 rate.sleep()
 
             #Store results
-            self.update_robot_status(robotStatus.SHUTDOWN)
+            self.update_robot_status(robotStatus.SHUTDOWN) #TODO: There should be a notice that come from central actually
             self.robot_status_pub.publish(self.robot_status)
             self.location_pub.publish(self.get_assigned_area_id(self.curr_loc_idx))
             self.status_history.append(self.robot_status)
