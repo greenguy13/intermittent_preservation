@@ -31,8 +31,10 @@ def batch_sample_nodes_poses(worlds, nareas_list, nplacements):
                 sample_nodes_poses(w, n, nplacements)
 
 #Run the experiment
-def run_experiment(method, world, nareas, placement, decay, tframe, inference=None, dec_steps=1, ntrials=(0, 1), discount=None, exploration=None, nvisits=None,
-                   history_data=None, history_decisions=None, save=False):
+def run_experiment(method, world, nareas, placement, decay, tframe, nrobots=1, inference=None, dec_steps=1, ntrials=(0, 1), discount=None, exploration=None, nvisits=None,
+                   history_data=None, history_decisions=None,
+                   task_scheduler=None,
+                   save=False):
     """
     Runs a single experiment
     :param method:
@@ -53,17 +55,18 @@ def run_experiment(method, world, nareas, placement, decay, tframe, inference=No
                           'inference:={}'.format(inference),
                           'world:={}'.format(world), 'nareas:={}'.format(nareas),
                           'decay:={}'.format(decay),
+                          'nrobots:={}'.format(nrobots),
                           'dsteps:={}'.format(dec_steps),
                           'tframe:={}'.format(tframe), 'placement:={}'.format(placement),
-                          'fileposes:={}'.format(fileposes), 'save:={}'.format(save)]
-                fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}'.format(method, inference, world, nareas, placement, decay, dec_steps, i + 1)
+                          'fileposes:={}'.format(fileposes), 'task_scheduler:={}'.format(task_scheduler), 'save:={}'.format(save)] #TODO: Insert task_scheduler for uncertainty solution. Although, we haven't worked on a script for this yet
+                fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_{}robots_{}'.format(method, inference, world, nareas, placement, decay, dec_steps, i + 1, nrobots, task_scheduler)
 
                 if method == 'treebased_decision':
                     params.append('discount:={}'.format(discount))
 
-                elif (method == 'heuristic_uncertainty' and inference == 'timeseries') or method == 'heuristic_decision':
-                    fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_disc{}_exp{}_nvisits{}'.format(method, inference, world, nareas, placement, decay,
-                                                                     dec_steps, i + 1, discount, exploration, nvisits)
+                elif (method == 'heuristic_uncertainty' and inference == 'timeseries') or method == 'heuristic_decision': #TODO: Insert nrobots and task_scheduler
+                    fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_disc{}_exp{}_nvisits{}_{}robots_{}'.format(method, inference, world, nareas, placement, decay,
+                                                                     dec_steps, i + 1, discount, exploration, nvisits, nrobots, task_scheduler)
                     params.append('discount:={}'.format(discount))
                     params.append('exploration:={}'.format(exploration))
                     params.append('nvisits:={}'.format(nvisits))
@@ -71,27 +74,30 @@ def run_experiment(method, world, nareas, placement, decay, tframe, inference=No
                         params.append('history_data:={}'.format(history_data))
                         params.append('history_decisions:={}'.format(history_decisions))
 
-                elif method == 'multiarmed_ucb' or method == 'correlated_ucb':
-                    fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_exp{}'.format(method, inference, world,
+                elif method == 'multiarmed_ucb' or method == 'correlated_ucb': #TODO: Insert nrobots and task_scheduler
+                    fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_exp{}_{}robots_{}'.format(method, inference, world,
                                                                                             nareas, placement, decay,
-                                                                                            dec_steps, i + 1, exploration)
+                                                                                            dec_steps, i + 1, exploration,
+                                                                                            nrobots, task_scheduler)
                     params.append('exploration:={}'.format(exploration))
 
                 params.append('fileresult:={}'.format(fileresult))
                 print(
-                    "Launching...method: {}, inference: {}, world: {}, nareas: {}, decay: {}, dsteps: {}, discount: {}, exploration: {}, nvisits: {}, tframe: {}, placement: {}, trial: {}, save: {}".format(
-                        method, inference, world, nareas, decay, dec_steps, discount, exploration, nvisits, tframe, placement, i + 1, save))
-            else:
-                fileresult = '{}_{}_n{}_p{}_{}_k{}_{}'.format(method, world, nareas, placement, decay, dec_steps, i + 1)
+                    "Launching...method: {}, inference: {}, world: {}, nareas: {}, nrobots: {}, task_scheduler: {}, decay: {}, dsteps: {}, discount: {}, exploration: {}, nvisits: {}, tframe: {}, placement: {}, trial: {}, save: {}".format(
+                        method, inference, world, nareas, nrobots, task_scheduler, decay, dec_steps, discount, exploration, nvisits, tframe, placement, i + 1, save))
+
+            else: #TODO: Insert here task_scheduler for methods without inference (heuristic_decision, multi_op solns)
+                fileresult = '{}_{}_n{}_p{}_{}_k{}_{}_{}robots_{}'.format(method, world, nareas, placement, decay, dec_steps, i + 1, nrobots, task_scheduler)
                 params = ['method:={}'.format(method),
                           'world:={}'.format(world), 'nareas:={}'.format(nareas),
                           'decay:={}'.format(decay),
+                          'nrobots:={}'.format(nrobots),
                           'dsteps:={}'.format(dec_steps),
                           'tframe:={}'.format(tframe), 'placement:={}'.format(placement),
                           'fileposes:={}'.format(fileposes), 'fileresult:={}'.format(fileresult),
-                          'save:={}'.format(save)]
-                print("Launching...method: {}, world: {}, nareas: {}, decay: {}, dsteps: {}, tframe: {}, placement: {}, trial: {}, save: {}".format(
-                        method, world, nareas, decay, dec_steps, tframe, placement, i + 1, save))
+                          'task_scheduler:={}'.format(task_scheduler), 'save:={}'.format(save)]
+                print("Launching...method: {}, world: {}, nareas: {}, nrobots: {}, task_scheduler: {}, decay: {}, dsteps: {}, tframe: {}, placement: {}, trial: {}, save: {}".format(
+                        method, world, nareas, nrobots, task_scheduler, decay, dec_steps, tframe, placement, i + 1, save))
             logfile = fileresult + '.txt'
             launch_file = 'mission.launch' #'/home/ameldocena/catkin_ws/src/intermittent_preservation/launch/mission.launch'
             launch_nodes('int_preservation', launch_file, params, logfile)
@@ -234,8 +240,8 @@ if __name__ == '__main__':
     # run_experiment('correlated_thompson', 'cluttered', 12, placement, 'non_uniform', 2100,
     #                inference='optimistic', dec_steps=1, ntrials=(0,3), save=True) #3100
 
-    run_experiment('heuristic_decision', 'office', 4, placement, 'non_uniform', 100,
-                   inference='oracle', dec_steps=1, discount=0.25, exploration=0.0, ntrials=(0, 1), save=False) #TODO: Insert nrobots as a parameter
+    run_experiment('heuristic_decision', 'office', 4, placement, 'non_uniform', 100, nrobots=2,
+                   inference='oracle', dec_steps=1, discount=0.25, exploration=0.0, ntrials=(0, 1), task_scheduler='central_planner', save=False) #TODO: Insert nrobots as a parameter
 
     # run_experiment('dynamic_programming', 'cluttered', 12, placement, 'non_uniform', 2100,
     #                inference=None, dec_steps=4, ntrials=(0, 2), save=True) #3100
