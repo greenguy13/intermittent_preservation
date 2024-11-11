@@ -678,7 +678,8 @@ class Robot:
             #TODO: To take into account re-assignment of areas
 
             self.sim_t = 0
-            while not rospy.is_shutdown() and self.sim_t<self.t_operation:
+            # while not rospy.is_shutdown() and self.sim_t<self.t_operation:
+            while not rospy.is_shutdown():
                 curr_state = self.get_current_state()
                 self.state.append(curr_state)
                 self.debug("Curr state: {}".format(curr_state))
@@ -730,24 +731,33 @@ class Robot:
                 # Update tlapse for each area when all nodes have registered
                 if len(self.decisions_made) > 1 or (self.robot_status != robotStatus.IDLE.value) and (self.robot_status != robotStatus.READY.value):
                     self.update_tlapses_areas(self.sim_t)
+
+                if self.save:
+                    pu.dump_data(self.strict_bounds_list, '{}_strict_bounds'.format(filename))
+                    pu.dump_data(self.state, '{}_environment_state'.format(filename))
+                    pu.dump_data(self.process_time_counter, '{}_robot{}_process_time'.format(filename, self.robot_id))
+                    pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
+                    pu.dump_data((self.decisions_accomplished, self.total_dist_travelled), '{}_robot{}_decisions_acc_travel'.format(filename, self.robot_id))
+                    pu.dump_data(self.status_history, '{}_robot{}_status_history'.format(filename, self.robot_id))
+
                 rate.sleep()
 
-            #Store results
-            self.update_robot_status(robotStatus.SHUTDOWN) #TODO: There should be a notice that come from central actually
-            self.robot_status_pub.publish(self.robot_status)
-            self.location_pub.publish(self.get_assigned_area_id(self.curr_loc_idx))
-            self.status_history.append(self.robot_status)
-
-            #Wait before all other nodes have finished dumping their data
-            if self.save:
-                pu.dump_data(self.strict_bounds_list, '{}_strict_bounds'.format(filename))
-                pu.dump_data(self.state, '{}_environment_state'.format(filename))
-                pu.dump_data(self.process_time_counter, '{}_robot{}_process_time'.format(filename, self.robot_id))
-                pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
-                pu.dump_data((self.decisions_accomplished, self.total_dist_travelled), '{}_robot{}_decisions_acc_travel'.format(filename, self.robot_id))
-                pu.dump_data(self.status_history, '{}_robot{}_status_history'.format(filename, self.robot_id))
-                self.debug("Dumped all data.".format(self.robot_id))
-            self.shutdown(sleep=10)
+            # #Store results
+            # self.update_robot_status(robotStatus.SHUTDOWN) #TODO: There should be a notice that come from central actually
+            # self.robot_status_pub.publish(self.robot_status)
+            # self.location_pub.publish(self.get_assigned_area_id(self.curr_loc_idx))
+            # self.status_history.append(self.robot_status)
+            #
+            # #Wait before all other nodes have finished dumping their data
+            # if self.save:
+            #     pu.dump_data(self.strict_bounds_list, '{}_strict_bounds'.format(filename))
+            #     pu.dump_data(self.state, '{}_environment_state'.format(filename))
+            #     pu.dump_data(self.process_time_counter, '{}_robot{}_process_time'.format(filename, self.robot_id))
+            #     pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
+            #     pu.dump_data((self.decisions_accomplished, self.total_dist_travelled), '{}_robot{}_decisions_acc_travel'.format(filename, self.robot_id))
+            #     pu.dump_data(self.status_history, '{}_robot{}_status_history'.format(filename, self.robot_id))
+            #     self.debug("Dumped all data.".format(self.robot_id))
+            # self.shutdown(sleep=10)
 
     """
     NOTE: For the subscribed/published topics and data storages, as well as self.debugs! use assigned area ids! All else area index

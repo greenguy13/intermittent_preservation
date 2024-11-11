@@ -606,7 +606,7 @@ class CentralPlanner:
         self.unassigned_robots = self.robot_ids
         self.status = centralStatus.IDLE.value
         self.sim_t = 0
-        while self.sim_t < self.t_operation:
+        while not rospy.is_shutdown() and self.sim_t < self.t_operation:
             self.central_status_pub.publish(self.status)
             self.print_state()
 
@@ -630,8 +630,7 @@ class CentralPlanner:
             self.sim_t += 1 #TODO: Update tlapses here
             rospy.sleep(1)
         # TODO: Save central data if any
-        # TODO: Shutdown node
-        # self.shutdown(sleep=10)
+        self.shutdown(sleep=10)
 
     def check_pause(self):
         """
