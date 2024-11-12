@@ -46,7 +46,11 @@ class PauseSimulation:
                 self.request_pause_simulation(is_pause)
                 self.is_simulation_paused = False
 
-        #TODO: Print diagnostics here, like the simulation time when a request is to pause. Do the same for un-pause
+        #TODO: For consideration. What happens if we issue an unpause request, but since not everyone has finished processing, then the simulation remains un-paused.
+        # If this is the case, then the FSM for all of the decision-makers should remain as is.
+
+
+        # Diagnostics
         time = rospy.Time.now()
         if self.is_simulation_paused:
             self.debug("Simulation paused. Time: {}".format(time))
