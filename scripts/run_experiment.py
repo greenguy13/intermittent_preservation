@@ -240,7 +240,7 @@ if __name__ == '__main__':
     # run_experiment('correlated_thompson', 'cluttered', 12, placement, 'non_uniform', 2100,
     #                inference='optimistic', dec_steps=1, ntrials=(0,3), save=True) #3100
 
-    run_experiment('heuristic_decision', 'office', 4, placement, 'non_uniform', 100, nrobots=2,
+    run_experiment('heuristic_decision', 'office', 4, placement, 'non_uniform', 100, nrobots=1,
                    inference='oracle', dec_steps=1, discount=0.25, exploration=0.0, ntrials=(0, 1), task_scheduler='central_planner', save=False) #TODO: Insert nrobots as a parameter
 
     # run_experiment('dynamic_programming', 'cluttered', 12, placement, 'non_uniform', 2100,

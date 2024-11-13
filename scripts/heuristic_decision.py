@@ -130,6 +130,7 @@ class Robot:
         #Server for assigned cluster to monitor/preserve
         self.cluster_assignment_server = rospy.Service("/cluster_assignment_server_" + str(self.robot_id), clusterAssignment, self.cluster_assignment_cb)
 
+        #TODO: Need to publish assignment_status
 
         """
         On charging:

@@ -51,11 +51,11 @@ class PauseSimulation:
 
 
         # Diagnostics
-        time = rospy.Time.now()
+        # time = rospy.Time.now()
         if self.is_simulation_paused:
-            self.debug("Simulation paused. Time: {}".format(time))
+            self.debug("Simulation paused. Requested by: {}".format(agent_id))
         else:
-            self.debug("Simulation un-paused. Time: {}".format(time))
+            self.debug("Simulation un-paused. Requested by: {}".format(agent_id))
 
 
         #TODO: Send out the response of this pause/unpause request

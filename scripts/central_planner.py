@@ -195,7 +195,7 @@ class CentralPlanner:
         self.debug("Getplan service: {}".format(self.get_plan_service))
 
         for robot_id in self.robot_ids:
-            rospy.Subscriber('/robot_{}/assignment_status'.format(robot_id), Int8, self.assign_status_cb, robot_id)
+            # rospy.Subscriber('/robot_{}/assignment_status'.format(robot_id), Int8, self.assign_status_cb, robot_id)
             rospy.Subscriber('/robot_{}/mission_area'.format(robot_id), Int8, self.mission_area_cb, robot_id)
             rospy.Subscriber('/robot_{}/robot_status'.format(robot_id), Int8, self.robot_status_cb, robot_id)
             rospy.Subscriber('/robot_{}/location'.format(robot_id), Int8, self.robot_location_cb, robot_id)
@@ -454,15 +454,22 @@ class CentralPlanner:
         Updates the tlapses of areas based on robot's status and mission area/assignment status
         :return:
         """
-        if self.status != centralStatus.IDLE.value and self.status != centralStatus.CONSIDER_REPLAN.value:
-            for robot_id in self.robot_ids:
-                #Case 1: Elapse time when robots are assigned and not idle/ready and central is not thinking
-                if self.assign_statuses[robot_id] == robotAssignStatus.ASSIGNED.value and (self.robot_statuses[robot_id] != robotStatus.IDLE.value and self.robot_statuses[robot_id] != robotStatus.READY.value):
-                    cluster = self.robots_assignment[robot_id]
-                    for area in self.clusters[cluster]:
-                        self.tlapses[area] += 1 #TODO: Update tlapses here based on rospy.get_time(). Actually there is no need. Since the time is maintained at per second
+        for robot_id in self.robot_ids:
+            cluster = self.robots_assignment[robot_id]
+            for area in self.clusters[cluster]:
+                self.tlapses[area] += 1 #TODO: Update tlapses here based on rospy.get_time(). Actually there is no need. Since the time is maintained at per second
 
-                    self.sim_t += 1  # TODO: Update tlapses here. Question should it be simulation time? Actually there is no need. Maintained per second
+            self.sim_t += 1
+
+        # if self.status != centralStatus.IDLE.value and self.status != centralStatus.CONSIDER_REPLAN.value:
+        #     for robot_id in self.robot_ids:
+        #         #Case 1: Elapse time when robots are assigned and not idle/ready and central is not thinking
+        #         if self.assign_statuses[robot_id] == robotAssignStatus.ASSIGNED.value and (self.robot_statuses[robot_id] != robotStatus.IDLE.value and self.robot_statuses[robot_id] != robotStatus.READY.value):
+        #             cluster = self.robots_assignment[robot_id]
+        #             for area in self.clusters[cluster]:
+        #                 self.tlapses[area] += 1 #TODO: Update tlapses here based on rospy.get_time(). Actually there is no need. Since the time is maintained at per second
+        #
+        #             self.sim_t += 1  # TODO: Update tlapses here. Question should it be simulation time? Actually there is no need. Maintained per second
 
                 #Case 2: Elapse time for unassigned areas when robot is charging and central is not thinking
                 # elif self.assign_statuses[robot_id] == robotAssignStatus.UNASSIGNED.value and (self.robot_statuses[robot_id] != robotStatus.IDLE.value and self.robot_statuses[robot_id] != robotStatus.READY.value) and self.mission_areas[robot_id] == self.charging_station:
@@ -606,7 +613,7 @@ class CentralPlanner:
     def run_operation(self, filename, freq=1):
         rospy.sleep(10)
         self.wait_nodes_to_register()
-        self.unassigned_robots = self.robot_ids
+        self.unassigned_robots = self.robot_ids.copy()
         self.status = centralStatus.IDLE.value
         self.sim_t = 0
 
@@ -622,10 +629,10 @@ class CentralPlanner:
                 # TODO: Send pause simulation request here
                 self.request_pause(True)
                 self.clusters = self.create_clusters() #Thinking. Pause
+                self.request_pause(False)  # TODO: Un-pause simulation
                 self.assign_clusters(self.clusters)
 
-                if len(self.unassigned_robots) == 0 and self.requested_pause: #TODO: We need a validation whether the pause/unpause mechanism works, given that we are working/dealing with a queue and we wait until all requests have been resolved
-                    self.request_pause(False) #TODO: Un-pause simulation
+                if len(self.unassigned_robots) == 0: #TODO: We need a validation whether the pause/unpause mechanism works, given that we are working/dealing with a queue and we wait until all requests have been resolved
                     self.update_central_status(centralStatus.IN_MISSION)
 
             elif self.status == centralStatus.IN_MISSION.value:
