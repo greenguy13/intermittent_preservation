@@ -17,6 +17,11 @@ from status import areaStatus, battStatus, robotStatus
 from reset_simulation import *
 from heuristic_fcns import *
 from graph_node import *
+from int_preservation.srv import clusterAssignment, clusterAssignmentResponse
+from int_preservation.srv import areaAssignment
+from int_preservation.srv import assignmentAccomplishment
+from int_preservation.srv import registerRobot
+from int_preservation.srv import pauseSimulation
 
 
 INDEX_FOR_X = 0
@@ -32,6 +37,13 @@ class Robot:
         :param areas:
         :param est_distance_matrix:
         :param est_batt_consumption_matrix:
+        """
+
+        """
+        TODO: Implement dynamic programming with central planner
+            1. Instantiate vars
+            2. Request of pause simulation
+            3. Re-structure the FSM
         """
 
         rospy.init_node(node_name, anonymous=True)
@@ -55,34 +67,44 @@ class Robot:
         self.dec_steps = rospy.get_param("/dec_steps") #STAR
         self.restoration = rospy.get_param("/restoration")
         self.noise = rospy.get_param("/noise")
-        self.nareas = rospy.get_param("/nareas") #Sample nodes from voronoi equal to area count #STAR
-        self.areas = [int(i+1) for i in range(self.nareas)]  # list of int area IDs
+        # self.nareas = rospy.get_param("/nareas") #Sample nodes from voronoi equal to area count #STAR
+        # self.areas = [int(i+1) for i in range(self.nareas)]  # list of int area IDs
         self.tolerance = rospy.get_param("/move_base_tolerance")
         self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
         self.save = rospy.get_param("/save")  # Whether to save data
+        self.task_scheduler = rospy.get_param("/task_scheduler")  # task scheduler
 
         #Initialize variables
-        charging_station_coords = rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y") #rospy.get_param("/charging_station_coords")
+        self.init_x, self.init_y = rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y")  # Initialize robot pose
+        self.debug("Init x, y {}".format((self.init_x, self.init_y)))
+        charging_station_coords = self.init_x, self.init_y  # rospy.get_param("/charging_station_coords")
         charging_pose_stamped = pu.convert_coords_to_PoseStamped(charging_station_coords)
-        self.sampled_nodes_poses = [charging_pose_stamped] #list container for sampled nodes of type PoseStamped
+        self.nodes_poses = [charging_pose_stamped]  # list container for sampled nodes of type PoseStamped, where 0 is the charging station for that robot
 
         #Pickle load the sampled area poses
         with open('{}.pkl'.format(rospy.get_param("/file_sampled_areas")), 'rb') as f:
             sampled_areas_coords = pickle.load(f)
-        for area_coords in sampled_areas_coords['n{}_p{}'.format(self.nareas, rospy.get_param("/placement"))]:
-            pose_stamped = pu.convert_coords_to_PoseStamped(area_coords)
-            self.sampled_nodes_poses.append(pose_stamped)
+        nareas = rospy.get_param("/nareas")
 
-        self.x, self.y = 0.0, 0.0 #Initialize robot pose
+        for area_coords in sampled_areas_coords['n{}_p{}'.format(nareas, rospy.get_param("/placement"))]:
+            pose_stamped = pu.convert_coords_to_PoseStamped(area_coords)
+            self.nodes_poses.append(pose_stamped)
+
+        self.x, self.y = self.init_x, self.init_y #Initialize robot pose
         self.charging_station = 0
-        self.curr_loc = self.charging_station #Initial location robot is the charging station
+        self.curr_loc_idx = self.charging_station  # Initial location robot is the charging station
         self.battery = self.max_battery #Initialize battery at max, then gets updated by subscribed battery topic
         self.optimal_path = [] #container for the decided optimal path
         self.dist_matrix = None
         self.graph_areas = None #TODO: Graph of connected among vertices
-        self.mission_area = None
+        self.mission_area_idx = None
         self.robot_status = robotStatus.IDLE.value
         self.available = True
+        self.state = list()  # list of states
+        self.nareas = None
+
+        #TODO: These are codes potential to be inserted in instantiate_variables
+        """
         self.curr_fmeasures = dict() #container of current F-measure of areas
         self.decay_rates_dict = dict() #dictionary for decay rates
         self.tlapses = dict()
@@ -91,14 +113,17 @@ class Robot:
             self.tlapses[area] = 0
             self.decay_rates_dict[area] = None
         self.decay_rates_counter = 0 #counter for stored decay rates; should be equal to number of areas
+        """
+
         self.decisions_made, self.decisions_accomplished, self.status_history = [], [], [] #record of data
         self.total_dist_travelled = 0 #total distance travelled
         self.process_time_counter = [] #container for time it took to come up with decision
 
         #We sum this up
         self.environment_status = dict()
-        for node in range(self.nareas+1):
-            self.environment_status[node] = 999
+        self.environment_status[self.charging_station] = 999
+
+        self.requested_pause = False  # indicator variable whether requested Stage to pause simulation
 
         #Publishers/Subscribers
         rospy.Subscriber('/robot_{}/odom'.format(self.robot_id), Odometry, self.distance_travelled_cb, queue_size=1)
@@ -112,18 +137,22 @@ class Robot:
         rospy.Subscriber('/robot_{}/battery_status'.format(self.robot_id), Int8, self.battery_status_cb)
         rospy.Subscriber('/robot_{}/battery'.format(self.robot_id), Float32, self.battery_level_cb)
 
-        for area in self.areas:
-            rospy.Subscriber('/area_{}/decay_rate'.format(area), Float32, self.decay_rate_cb, area)
-            rospy.Subscriber('/area_{}/fmeasure'.format(area), Float32, self.area_fmeasure_cb, area) #REMARK: Here we assume that we have live measurements of the F-measures
-            rospy.Subscriber('/area_{}/status'.format(area), Int8, self.area_status_cb, area)
+        # for area in self.areas:
+        #     rospy.Subscriber('/area_{}/decay_rate'.format(area), Float32, self.decay_rate_cb, area)
+        #     rospy.Subscriber('/area_{}/fmeasure'.format(area), Float32, self.area_fmeasure_cb, area) #REMARK: Here we assume that we have live measurements of the F-measures
+        #     rospy.Subscriber('/area_{}/status'.format(area), Int8, self.area_status_cb, area)
 
         self.robot_status_pub = rospy.Publisher('/robot_{}/robot_status'.format(self.robot_id), Int8, queue_size=1)
         self.mission_area_pub = rospy.Publisher('/robot_{}/mission_area'.format(self.robot_id), Int8, queue_size=1)
+        self.location_pub = rospy.Publisher('/robot_{}/location'.format(self.robot_id), Int8, queue_size=1)
 
         #Action client to move_base
         self.robot_goal_client = actionlib.SimpleActionClient('/robot_' + str(self.robot_id) + '/move_base', MoveBaseAction)
         self.robot_goal_client.wait_for_server()
 
+        # Server for assigned cluster to monitor/preserve
+        self.cluster_assignment_server = rospy.Service("/cluster_assignment_server_" + str(self.robot_id),
+                                                       clusterAssignment, self.cluster_assignment_cb)
 
         """
         On charging:
@@ -139,6 +168,49 @@ class Robot:
                 those other areas not the mission area will have their F continually decay 
         """
 
+    def register_to_central(self):
+        """
+        Register robot info to central
+        :return:
+        """
+        if self.task_scheduler == "central_planner":
+            rospy.wait_for_service('/robots_registry_server')
+            try:
+                register_request = rospy.ServiceProxy('/robots_registry_server', registerRobot)
+                self.debug("Registering robot info to central (id, x, y): {}, {}, {}".format(self.robot_id, self.init_x, self.init_y))
+                resp = register_request(self.robot_id, self.init_x, self.init_y)
+                self.debug("Registry to central success: {}".format(resp.registered))
+            except rospy.ServiceException as e:
+                rospy.logerr(f"Register to central service call failed: {e}")
+
+    def area_assignment_notice(self, assigned_areas):
+        """
+        Tags areas with the assigned robot
+        :param assigned_areas:
+        :return:
+        """
+        for area_id in assigned_areas:
+            rospy.wait_for_service("/area_assignment_server_" + str(area_id))
+            try:
+                area_assign = rospy.ServiceProxy("/area_assignment_server_" + str(area_id), areaAssignment)
+                resp = area_assign(self.robot_id)
+                self.debug("Noted assigned Area {}".format(resp))
+            except rospy.ServiceException as e:
+                rospy.logerr(f"Service call failed: {e}")
+
+    def cluster_assignment_cb(self, msg):
+        """
+        Sets the cluster assignment as the areas for restoration/preservation
+        :param msg:
+        :return:
+        """
+        self.robot_status = robotStatus.IDLE.value #Halts all operations of the robot to re-consider new assignment
+        assigned_areas, decay_rates, tlapses = msg.cluster, msg.decay_rates, msg.tlapses
+        assigned_areas, decay_rates, tlapses = list(assigned_areas), list(decay_rates), list(tlapses)
+        self.debug("Cluster assignment: {}, {}. Decay rates: {}. Tlapses: {}".format(type(assigned_areas), assigned_areas, decay_rates, tlapses))
+        self.instantiate_variables(assigned_areas=assigned_areas, decay_rates=decay_rates, tlapses=tlapses)
+        self.is_assigned = True
+        return clusterAssignmentResponse(self.is_assigned)
 
     # METHODS: Node poses and distance matrix
     def get_plan_request(self, start_pose, goal_pose, tolerance):
@@ -252,28 +324,29 @@ class Robot:
         :return:
         """
         if state == SUCCEEDED:
-            self.curr_loc = self.mission_area
+            self.curr_loc_idx = self.mission_area_idx
             self.update_robot_status(robotStatus.RESTORING_F)
 
-            if self.mission_area == self.charging_station:
+            if self.mission_area_idx == self.charging_station:
                 self.update_robot_status(robotStatus.CHARGING)
-            self.decisions_accomplished.append(self.mission_area)
-            # self.best_decision = None
+            mission_area = self.get_assigned_area_id(self.mission_area_idx)
+            self.decisions_accomplished.append(mission_area)
+            # self.best_decision_idx = None
 
-    def consume_battery(self, start_area, next_area, curr_measure, noise):
+    def consume_battery(self, start_area_idx, next_area_idx, curr_measure, noise):
         """
         Estimates battery consumption for the duration of the visit next_area from start_area.
         This duration includes the distance plus F-measure restoration, if any
         """
 
         #Batt consumed in travel
-        distance = self.dist_matrix[int(start_area), int(next_area)]
+        distance = self.dist_matrix[int(start_area_idx), int(next_area_idx)]
         distance += noise * distance
         travel_time = (distance / self.robot_velocity)
         battery_consumed = self.batt_consumed_per_travel_time * travel_time
 
         #Batt consumed in area restoration
-        if next_area != self.charging_station:
+        if next_area_idx != self.charging_station:
             battery_consumed += self.batt_consumed_per_restored_f * (self.max_fmeasure - curr_measure)
 
         return battery_consumed
@@ -282,6 +355,8 @@ class Robot:
         """
         Creates graph among areas (excluding charging station) given distance matrix
         """
+        #TODO: Check whether the idx and id are consistently associated
+
         graph = nx.Graph()
         graph.add_nodes_from(list(range(len(dist_matrix))))
         self.debug("Nodes: {}".format(graph.nodes))
@@ -306,6 +381,7 @@ class Robot:
                 duration_matrix - travel duration from one node to another
                 k - schedule length
         """
+        # TODO: Check whether the idx and id are consistently associated
 
         nareas = len(G.nodes)
         assert k <= nareas, "Constraint error: schedule length <= number of areas, since an area is to be visited at most once"
@@ -377,6 +453,9 @@ class Robot:
         """
         Returns the path that yields the minimal loss in a DAG of length k starting from the root node, which is the current location
         """
+        #TODO: Check here whether we are associating the right area id with idx, and vice-versa
+        # Seems correct. We just get the pre-computed losses of the nodes and then add them up
+        # We then get the optimal path
         root_name = '{}_{}'.format(current_loc, 0)
         for node in sorted_nodes:
             if node.name == root_name:  # root node
@@ -449,6 +528,10 @@ class Robot:
         >> PO2 is easier to implement but also practical
         """
 
+        #TODO: Assess here whether we are associating the right id and idx
+        # Should be right? Since our principle is that for all the containers processed on the assigned_areas we are using idx,
+        # While for those methods, containers, msgs that refer to the actual area ids, we retrieve the area ids
+
         #Step 1
         duration_matrix = self.dist_matrix/self.robot_velocity
         # tlapses_init = dict()
@@ -464,14 +547,129 @@ class Robot:
         min_path = self.min_loss_path(dag, ordered, self.curr_loc)
         return min_path
 
+    ### UP TO HERE FOR THE DECISION MAKING 
+
     def update_tlapses_areas(self):
         """
         Lapses all time elapsed for each area
         :return:
         """
-        for area in self.areas:
-            self.tlapses[area] += 1
-        self.debug("Time elapsed since last restored: {}".format(self.tlapses))
+        self.sim_t += 1
+        for area_idx in self.tlapses:
+            self.tlapses[area_idx] += 1
+        self.debug("Sim t: {}. Time elapsed since last restored: {}".format(self.sim_t, self.tlapses))
+
+    def instantiate_variables(self, assigned_areas, decay_rates, tlapses):
+        """
+        Instantiates variables for every new assigned areas/cluster
+        :param self:
+        :param assigned_areas:
+        :return:
+        """
+        self.debug("Instantiating variables")
+
+        self.assigned_areas = assigned_areas  # Has the same list indexing with self.areas
+        self.nareas = len(self.assigned_areas)  # Sample nodes from voronoi equal to area count #STAR
+        self.areas = [int(i + 1) for i in range(self.nareas)]  # list of int area indexes, starting at index=1
+
+        # Send notice to areas about their robot assignment
+        self.area_assignment_notice(self.assigned_areas)
+
+        self.curr_fmeasures = dict()  # container of current F-measure of areas
+        self.decay_rates_dict = dict()  # dictionary for decay rates
+        self.tlapses = dict()  # dictionary containing tlapses of areas
+
+        for area_idx in self.areas:
+            self.decay_rates_dict[area_idx] = decay_rates[area_idx-1] #Instantiate provided decay rates
+            self.tlapses[area_idx] = tlapses[area_idx-1] #Instantiate provided tlapses
+
+        # Environment status intialization
+        environment_status = dict()
+        environment_status[self.charging_station] = self.environment_status[self.charging_station]
+        for node in range(self.nareas):
+            self.environment_status[node+1] = 999
+        self.environment_status = environment_status
+
+        # Unsubscribe from previous area topics
+        self.subscribe_fmeasures = dict()
+        self.subscribe_statuses = dict()
+
+        for area_idx in self.areas:
+            area_id = self.get_assigned_area_id(area_idx)
+            # Decay rates provided by central.
+            # rospy.Subscriber('/area_{}/decay_rate'.format(area_id), Float32, self.decay_rate_cb, area_id)
+            self.subscribe_fmeasures[area_id] = rospy.Subscriber('/area_{}/fmeasure'.format(area_id), Float32, self.area_fmeasure_cb, area_id)  # REMARK: Here we assume that we have live measurements of the F-measures
+            self.subscribe_statuses[area_id] = rospy.Subscriber('/area_{}/status'.format(area_id), Int8, self.area_status_cb, area_id)
+
+        #Wait for self.curr_fmeasures to be populated
+        while set(list(self.curr_fmeasures.keys())) != set(self.areas):
+            self.debug("Subscribing to area topics...")
+            rospy.sleep(1)
+
+        # Sampled node poses and distance matrix
+        self.sampled_nodes_poses = self.extract_sampled_node_poses(self.assigned_areas)
+        self.build_dist_matrix()
+
+    def extract_sampled_node_poses(self, assigned_areas):
+        """
+        Extracts the node poses of the assigned clusters into a list where index 0 is the charging station pose
+        :param cluster:
+        :return:
+        """
+        poses = list()
+        poses.append(self.nodes_poses[0])
+        for area_id in assigned_areas:
+            poses.append(self.nodes_poses[area_id])
+        return poses
+
+    def get_assigned_area_index(self, area_id):
+        """
+        Gets area index of assigned area, (note area index starts at 1)
+        :param area_id:
+        :return:
+        """
+        area_idx = self.assigned_areas.index(area_id) + 1
+        return area_idx
+
+    def get_assigned_area_id(self, area_idx):
+        """
+        Gets actual assigned area id given area index, (note area index starts at 1)
+        :param self:
+        :param area_idx:
+        :return:
+        """
+        area_id = self.assigned_areas[area_idx-1]
+        return area_id
+
+    def get_current_state(self):
+        """
+        Retrieves current state
+        :return:
+        """
+        tlapses = dict()
+        decay_rates = dict()
+        for area_idx in self.areas:
+            area_id = self.get_assigned_area_id(area_idx)
+            tlapses[area_id] = self.tlapses[area_idx]
+            decay_rates[area_id] = self.decay_rates_dict[area_idx]
+
+        state = (self.sim_t, self.get_assigned_area_id(self.curr_loc_idx), self.battery, tlapses, decay_rates)
+        return state
+
+    def request_pause(self, is_pause=True):
+        """
+        Sends pause request to pause_simulation
+        :return:
+        """
+        self.requested_pause = is_pause
+        rospy.wait_for_service('/pause_queue_server')
+        try:
+            pause_request = rospy.ServiceProxy('/pause_queue_server', pauseSimulation)
+            agent_id = self.robot_id
+            resp = pause_request(is_pause, agent_id)
+            return resp.pause_result
+        except rospy.ServiceException as e:
+            rospy.logerr(f"Pause service call failed: {e}")
 
 
     #Methods: Run operation
@@ -479,35 +677,47 @@ class Robot:
         """
         :return:
         """
-
         if self.robot_id < 999:
             rate = rospy.Rate(freq)
-            while self.decay_rates_counter != self.nareas and len(self.sampled_nodes_poses) != self.nareas+1:
-                self.debug("Insufficient data. Decay rates: {}/{}. Sampled nodes poses: {}/{}".format(len(self.decay_rates_counter), self.nareas,
-                                                                                                      len(self.sampled_nodes_poses), self.nareas+1))
-                rate.sleep() #Data for decay rates haven't registered yet
+            rospy.sleep(5)  # Wait for nodes to register
 
-            self.debug("Sufficent data. Decay rates: {}. Sampled nodes poses: {}".format(self.decay_rates_dict, self.sampled_nodes_poses))
-            self.build_dist_matrix()
-            t = 0
-            while not rospy.is_shutdown() and t<self.t_operation:
+            self.register_to_central()
+
+            while self.dist_matrix is None:
+                self.debug("Initialization: No cluster assignment yet. Waiting for assignment...")
+                rospy.sleep(1)
+
+            # self.debug("Sufficent data. Decay rates: {}. Sampled nodes poses: {}".format(self.decay_rates_dict, self.sampled_nodes_poses))
+            # self.build_dist_matrix()
+            self.sim_t = 0
+            while not rospy.is_shutdown():
+                curr_state = self.get_current_state()
+                self.state.append(curr_state)
+                self.debug("Curr state: {}".format(curr_state))
                 self.robot_status_pub.publish(self.robot_status)
+                self.location_pub.publish(self.get_assigned_area_id(self.curr_loc_idx))
                 self.status_history.append(self.robot_status)
+
                 if self.robot_status == robotStatus.IDLE.value:
                     self.debug('Robot idle')
                     if self.dist_matrix is not None:
                         if self.graph_areas is None:
-                            self.graph_areas = self.create_graph(self.dist_matrix)
+                            self.graph_areas = self.create_graph(self.dist_matrix) #TODO: Check whether self.graph_areas is correct
                         self.update_robot_status(robotStatus.READY)
 
                 elif self.robot_status == robotStatus.READY.value:
                     self.debug('Robot ready')
+                    self.request_pause(True)  # Request pause simulation
                     think_start = process_time()
                     self.think_decisions()
                     think_end = process_time()
                     think_elapsed = self.time_elapsed(think_start, think_end)
                     self.process_time_counter.append(think_elapsed)
                     self.debug('Best path: {}. Process time: {}s'.format(self.optimal_path, think_elapsed))
+
+                    if self.requested_pause:
+                        self.request_pause(False)
+
                     self.update_robot_status(robotStatus.IN_MISSION)
 
                 elif self.robot_status == robotStatus.IN_MISSION.value:
@@ -524,25 +734,18 @@ class Robot:
                 if len(self.decisions_made)>0 or (self.robot_status != robotStatus.IDLE.value) and (
                         self.robot_status != robotStatus.READY.value) and (
                         self.robot_status != robotStatus.CONSIDER_REPLAN.value):
-                    self.update_tlapses_areas()  # Update the tlapse per area
-                    self.compute_curr_fmeasures()
+                    self.update_tlapses_areas()  # Update the tlapse per area #TODO: The update of tlapses would include sim_t+=1
+                    self.compute_curr_fmeasures() # TODO: Fix this
 
-                t += 1
+                # Store results
+                if self.save:
+                    pu.dump_data(self.process_time_counter, '{}_robot{}_process_time'.format(filename, self.robot_id))
+                    pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
+                    pu.dump_data((self.decisions_accomplished, self.total_dist_travelled), '{}_robot{}_decisions_acc_travel'.format(filename, self.robot_id))
+                    pu.dump_data(self.status_history, '{}_robot{}_status_history'.format(filename, self.robot_id))
+                    self.debug("Dumped all data.".format(self.robot_id))
+
                 rate.sleep()
-
-            #Store results
-            self.update_robot_status(robotStatus.SHUTDOWN)
-            self.robot_status_pub.publish(self.robot_status)
-            self.status_history.append(self.robot_status)
-
-            #Wait before all other nodes have finished dumping their data
-            if self.save:
-                pu.dump_data(self.process_time_counter, '{}_robot{}_process_time'.format(filename, self.robot_id))
-                pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
-                pu.dump_data((self.decisions_accomplished, self.total_dist_travelled), '{}_robot{}_decisions_acc_travel'.format(filename, self.robot_id))
-                pu.dump_data(self.status_history, '{}_robot{}_status_history'.format(filename, self.robot_id))
-                self.debug("Dumped all data.".format(self.robot_id))
-            self.shutdown(sleep=10)
 
     def think_decisions(self):
         """
@@ -572,9 +775,9 @@ class Robot:
         Sends the robot to the next area in the optimal path:
         :return:
         """
-
+        #TODO: Here
         if len(self.optimal_path):
-            self.mission_area = self.optimal_path.pop(0)
+            self.mission_area = self.optimal_path.pop(0) #TODO: Q, what are the indices of the optimal path, are these area ids or area idxs?
             if self.mission_area is not self.charging_station:
                 battery_consumed = self.consume_battery(self.curr_loc, self.mission_area, self.curr_fmeasures[self.mission_area], self.noise)
                 if not is_feasible(self.battery, battery_consumed, self.battery_reserve):
@@ -630,6 +833,7 @@ class Robot:
         :param msg:
         :return:
         """
+        #TODO: Here
         self.environment_status[area_id] = msg.data
         if msg.data == areaStatus.RESTORED_F.value:
             if self.robot_id < 999: self.debug("Area fully restored!")
@@ -644,6 +848,7 @@ class Robot:
         :param area_id:
         :return:
         """
+        #TODO: Here
         # Store the decay rates at instance, (prior knowledge)
         if self.decay_rates_dict[area_id] == None and msg.data is not None:
             if self.robot_id < 999: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
@@ -664,6 +869,7 @@ class Robot:
         :param area_id:
         :return:
         """
+        #TODO: Here
         if self.inference == 'oracle':
             self.curr_fmeasures[area_id] = msg.data
 
@@ -672,10 +878,26 @@ class Robot:
         Computes current fmeasures based on tlapse and decay rates
         :return:
         """
+        #TODO: Here
         for area in self.areas:
             self.curr_fmeasures[area] = decay(self.decay_rates_dict[area], self.tlapses[area], self.max_fmeasure)
         self.debug("Used for computation. Tlapses: {}. Decay rates: {}".format(self.tlapses, self.decay_rates_dict))
         self.debug("Computed current f-measures: {}".format(self.curr_fmeasures))
+
+    def notify_assignment_accomplishment(self, area_id):
+        """
+        Assigns clusters to robots
+        :param clusters:
+        :return:
+        """
+
+        rospy.wait_for_service("/assignment_accomplishment_server")
+        try:
+            notify_server = rospy.ServiceProxy("/assignment_accomplishment_server", assignmentAccomplishment)
+            resp = notify_server(self.robot_id, area_id)
+            self.debug("Robot: {}. Accomplished assignment: {}. Notified server: {}".format(self.robot_id, area_id, resp.confirmation))
+        except rospy.ServiceException as e:
+            rospy.logerr(f"Service call failed: {e}")
 
     def debug(self, msg):
         pu.log_msg('robot', self.robot_id, msg, self.debug_mode)

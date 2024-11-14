@@ -87,7 +87,7 @@ class Robot:
         self.battery = self.max_battery #Initialize battery at max, then gets updated by subscribed battery topic
         self.best_decision_idx = None
         self.dist_matrix = None
-        self.sampled_nodes_poses = None
+        # self.sampled_nodes_poses = None
         self.mission_area_idx = None
         self.robot_status = robotStatus.IDLE.value
         self.available = True
@@ -120,7 +120,6 @@ class Robot:
 
         self.robot_status_pub = rospy.Publisher('/robot_{}/robot_status'.format(self.robot_id), Int8, queue_size=1)
         self.mission_area_idx_pub = rospy.Publisher('/robot_{}/mission_area'.format(self.robot_id), Int8, queue_size=1)
-
         self.location_pub = rospy.Publisher('/robot_{}/location'.format(self.robot_id), Int8, queue_size=1)
 
         #Action client to move_base
@@ -130,7 +129,7 @@ class Robot:
         #Server for assigned cluster to monitor/preserve
         self.cluster_assignment_server = rospy.Service("/cluster_assignment_server_" + str(self.robot_id), clusterAssignment, self.cluster_assignment_cb)
 
-        #TODO: Need to publish assignment_status
+        #TODO: Need to publish assignment_status for the re-assignment case
 
         """
         On charging:
@@ -152,12 +151,12 @@ class Robot:
         :return:
         """
         if self.task_scheduler == "central_planner":
-            rospy.wait_for_service('/robots_registry_server') #TODO
+            rospy.wait_for_service('/robots_registry_server')
             try:
-                register_request = rospy.ServiceProxy('/robots_registry_server', registerRobot) #TODO
+                register_request = rospy.ServiceProxy('/robots_registry_server', registerRobot)
                 self.debug("Registering robot info to central (id, x, y): {}, {}, {}".format(self.robot_id, self.init_x, self.init_y))
-                resp = register_request(self.robot_id, self.init_x, self.init_y) #TODO
-                self.debug("Registry to central success: {}".format(resp.registered)) #TODO
+                resp = register_request(self.robot_id, self.init_x, self.init_y)
+                self.debug("Registry to central success: {}".format(resp.registered))
             except rospy.ServiceException as e:
                 rospy.logerr(f"Register to central service call failed: {e}")
 
@@ -613,7 +612,7 @@ class Robot:
         self.environment_status = environment_status
 
         # Unsubscribe from previous area topics
-        # self.unsubscribe_previous_area_topics() TODO: Debug this one
+        # self.unsubscribe_previous_area_topics() TODO: Debug this one for the case with re-assignment
         self.subscribe_fmeasures = dict()
         self.subscribe_statuses = dict()
 
@@ -726,13 +725,13 @@ class Robot:
                     self.debug('Best decision: {}. Process time: {}s'.format(self.get_assigned_area_id(self.best_decision_idx), think_elapsed))
 
                     if self.requested_pause:
-                        self.request_pause(False) #TODO: Request un-pause simulation
+                        self.request_pause(False)
 
                     self.update_robot_status(robotStatus.IN_MISSION)
 
                 elif self.robot_status == robotStatus.IN_MISSION.value:
                     self.debug('Robot in mission. Total distance travelled: {}'.format(self.total_dist_travelled))
-                    if self.available: #TODO: Insert the variable self.assigned
+                    if self.available: #TODO: Insert the variable self.assigned for re-assignment case
                         self.commence_mission()
 
                 elif self.robot_status == robotStatus.CHARGING.value:
