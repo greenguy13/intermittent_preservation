@@ -72,9 +72,10 @@ from nav_msgs.srv import GetPlan
 from std_msgs.msg import Int8, Float32
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from int_preservation.srv import clusterAssignment
-from int_preservation.srv import assignmentAccomplishment
+from int_preservation.srv import assignmentAccomplishment, assignmentAccomplishmentResponse
 from int_preservation.srv import registerRobot, registerRobotResponse
 from int_preservation.srv import pauseSimulation
+from int_preservation.srv import collectedEnoughData, collectedEnoughDataResponse
 from status import centralStatus, battStatus, robotStatus, robotAssignStatus
 from reset_simulation import *
 from heuristic_fcns import *
@@ -175,6 +176,10 @@ class CentralPlanner:
         for area in self.areas:
             self.decay_rates[area] = None
 
+        self.collected_enough_data = dict() #Whether we have collected enough data for shutdown
+        for area in self.areas:
+            self.collected_enough_data[area] = False
+
         self.clusters = None #Clustering of areas
         self.clusters_assignment = dict() #Assignment of clusters (keys) to robots (values)
         self.robots_assignment = dict() #Assignment of robots (keys) to clusters (values)
@@ -184,6 +189,7 @@ class CentralPlanner:
         # Server
         self.robots_registry_server = rospy.Service('/robots_registry_server', registerRobot, self.register_robots_cb)
         self.assignment_accomplishment_server = rospy.Service('/assignment_accomplishment_server', assignmentAccomplishment, self.assignment_accomplishment_cb)
+        self.shutdown_server = rospy.Service('/shutdown_server', collectedEnoughData, self.collected_enough_data_cb)
 
         # Publishers/Subscribers
         self.central_status_pub = rospy.Publisher('/central_status', Int8, queue_size=1)
@@ -195,7 +201,7 @@ class CentralPlanner:
         self.debug("Getplan service: {}".format(self.get_plan_service))
 
         for robot_id in self.robot_ids:
-            # rospy.Subscriber('/robot_{}/assignment_status'.format(robot_id), Int8, self.assign_status_cb, robot_id)
+            # rospy.Subscriber('/robot_{}/assignment_status'.format(robot_id), Int8, self.assign_status_cb, robot_id) #TODO: To be updated
             rospy.Subscriber('/robot_{}/mission_area'.format(robot_id), Int8, self.mission_area_cb, robot_id)
             rospy.Subscriber('/robot_{}/robot_status'.format(robot_id), Int8, self.robot_status_cb, robot_id)
             rospy.Subscriber('/robot_{}/location'.format(robot_id), Int8, self.robot_location_cb, robot_id)
@@ -333,9 +339,10 @@ class CentralPlanner:
         """
         #Tlapse reset if area is assigned area
         robot_id = msg.robot_id
-        area_id = msg.area_accomplished
+        area_id = msg.area_accomplished #TODO: Is this the correct area index?
         self.tlapses[area_id] = 0
-        self.debug("Robot: {} restored Area: {}. Tlapse reset: {}".format(robot_id, area_id, self.tlapses[area_id]))
+        self.debug("Received notice from Robot: {} restored Area: {}. Tlapse reset: {}".format(robot_id, area_id, self.tlapses[area_id]))
+        return assignmentAccomplishmentResponse(True)
 
     def assign_status_cb(self, msg, robot_id):
         """
@@ -454,22 +461,23 @@ class CentralPlanner:
         Updates the tlapses of areas based on robot's status and mission area/assignment status
         :return:
         """
-        for robot_id in self.robot_ids:
-            cluster = self.robots_assignment[robot_id]
-            for area in self.clusters[cluster]:
-                self.tlapses[area] += 1 #TODO: Update tlapses here based on rospy.get_time(). Actually there is no need. Since the time is maintained at per second
-
-            self.sim_t += 1
+        # for robot_id in self.robot_ids:
+        #     cluster = self.robots_assignment[robot_id]
+        #     for area in self.clusters[cluster]:
+        #         self.tlapses[area] += 1 #TODO: Update tlapses here based on rospy.get_time(). Actually there is no need. Since the time is maintained at per second
+        #
+        #     self.sim_t += 1
 
         # if self.status != centralStatus.IDLE.value and self.status != centralStatus.CONSIDER_REPLAN.value:
-        #     for robot_id in self.robot_ids:
-        #         #Case 1: Elapse time when robots are assigned and not idle/ready and central is not thinking
-        #         if self.assign_statuses[robot_id] == robotAssignStatus.ASSIGNED.value and (self.robot_statuses[robot_id] != robotStatus.IDLE.value and self.robot_statuses[robot_id] != robotStatus.READY.value):
-        #             cluster = self.robots_assignment[robot_id]
-        #             for area in self.clusters[cluster]:
-        #                 self.tlapses[area] += 1 #TODO: Update tlapses here based on rospy.get_time(). Actually there is no need. Since the time is maintained at per second
-        #
-        #             self.sim_t += 1  # TODO: Update tlapses here. Question should it be simulation time? Actually there is no need. Maintained per second
+        for robot_id in self.robot_ids:
+            #Case 1: Elapse time when robots are assigned and not idle/ready and central is not thinking
+            # if self.assign_statuses[robot_id] == robotAssignStatus.ASSIGNED.value and (self.robot_statuses[robot_id] != robotStatus.IDLE.value and self.robot_statuses[robot_id] != robotStatus.READY.value):
+            if self.robot_statuses[robot_id] != robotStatus.IDLE.value and self.robot_statuses[robot_id] != robotStatus.READY.value and self.robot_statuses[robot_id] != robotStatus.CONSIDER_REPLAN.value:
+                cluster = self.robots_assignment[robot_id]
+                for area in self.clusters[cluster]:
+                    self.tlapses[area] += 1 #TODO: Update tlapses here based on rospy.get_time(). Actually there is no need. Since the time is maintained at per second
+
+        self.sim_t += 1  # TODO: Update tlapses here. Question should it be simulation time? Actually there is no need. Maintained per second
 
                 #Case 2: Elapse time for unassigned areas when robot is charging and central is not thinking
                 # elif self.assign_statuses[robot_id] == robotAssignStatus.UNASSIGNED.value and (self.robot_statuses[robot_id] != robotStatus.IDLE.value and self.robot_statuses[robot_id] != robotStatus.READY.value) and self.mission_areas[robot_id] == self.charging_station:
@@ -619,7 +627,7 @@ class CentralPlanner:
 
         #TODO: PO. Is it possible to pause simulation until all areas have registered nodes? Although this might interfere in the publication of information/topics/msgs
 
-        while not rospy.is_shutdown() and self.sim_t < self.t_operation:
+        while not rospy.is_shutdown():
             self.central_status_pub.publish(self.status)
             self.print_state()
 
@@ -639,14 +647,35 @@ class CentralPlanner:
                 self.debug("Central in mission...")
 
                 self.update_tlapses_areas() #TODO: Update tlapses here. Yea this is correct should be +=1. Or could be from time. Yea we can use from time
-                #TODO: I think the tlapse of area should only tick the simulation time. The rest should not be.
 
             elif self.status == centralStatus.CONSIDER_REPLAN.value:
                 self.debug("Central considers re-assignment...")
 
+            #TODO: Check whether enough data have been collected. Then we shutdown.
+            self.shutdown_check()
+
             rospy.sleep(1)
         # TODO: Save central data if any
-        self.shutdown(sleep=10)
+        # self.shutdown(sleep=10)
+
+    def shutdown_check(self):
+        """
+        Checks whether all areas have collected enough data points. If True, we shutdown all nodes
+        :return:
+        """
+        if False not in list(self.collected_enough_data.values()):
+            self.shutdown(sleep=10)
+
+    def collected_enough_data_cb(self, msg):
+        """
+        Updates area that has collected enough data
+        :return:
+        """
+        area = msg.area_id
+        collected_enough = msg.collected_enough
+        self.collected_enough_data[area] = collected_enough
+        self.debug("Received notice Area {}. Collected enough data".format(area))
+        return collectedEnoughDataResponse(True)
 
     def check_pause(self):
         """
@@ -717,7 +746,7 @@ class CentralPlanner:
         pu.log_msg(type='task_scheduler', id=None, msg=msg, debug=self.debug_mode)
 
     def shutdown(self, sleep):
-        self.debug("Reached {} time operation. Shutting down...".format(self.t_operation))
+        self.debug("Collected enough data. Shutting down...".format(self.t_operation))
         kill_nodes(sleep)
 
 

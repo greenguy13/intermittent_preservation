@@ -785,7 +785,7 @@ class Robot:
         rospy.wait_for_service('/pause_queue_server')
         try:
             pause_request = rospy.ServiceProxy('/pause_queue_server', pauseSimulation)
-            agent_id = 999
+            agent_id = self.robot_id
             resp = pause_request(is_pause, agent_id)
             return resp.pause_result
         except rospy.ServiceException as e:
@@ -873,9 +873,9 @@ class Robot:
 
         rospy.wait_for_service("/assignment_accomplishment_server")
         try:
-            notify_server = rospy.ServiceProxy("/cluster_assignment_server", assignmentAccomplishment)
+            notify_server = rospy.ServiceProxy("/assignment_accomplishment_server", assignmentAccomplishment)
             resp = notify_server(self.robot_id, area_id)
-            self.debug("Robot: {}. Accomplished assignment: {}. Notified server".format(self.robot_id, area_id))
+            self.debug("Robot: {}. Accomplished assignment: {}. Notified server: {}".format(self.robot_id, area_id, resp.confirmation))
         except rospy.ServiceException as e:
             rospy.logerr(f"Service call failed: {e}")
 
@@ -892,8 +892,8 @@ class Robot:
         if msg.data == areaStatus.RESTORED_F.value:
             if self.robot_id < 999: self.debug("Area {} fully restored!".format(area_id))
             self.tlapses[area_idx] = 0  # Reset the tlapse since last restored for the newly restored area
-
-            self.notify_assignment_accomplishment(area_id) #Notifies central that recent assignment is accomplished
+            self.debug("Notifying server for accomplishment of restoring Area {}".format(area_id))
+            self.notify_assignment_accomplishment(area_id) #Notifies central that recent assignment is accomplished #TODO: This is correct. Why did this not register?
 
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)

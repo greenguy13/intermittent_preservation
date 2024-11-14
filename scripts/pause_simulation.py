@@ -30,36 +30,28 @@ class PauseSimulation:
         """
         is_pause = msg.is_pause #Receives message from agent whether thinking or done thinking
         agent_id = msg.agent_id #Agent id
+        self.debug("Request received: {}. is_pause: {}".format(agent_id, is_pause))
 
         #Agent is thinking, so we pause simulation, if not yet
         is_pause = bool(is_pause)
-        if is_pause is True:
+        if is_pause is True: #Pause request
+            self.pause_queue.append(agent_id) #Insert into agents that are thinking
             if self.is_simulation_paused is False:
                 self.request_pause_simulation(is_pause) #Request Stage to pause simulation
                 self.is_simulation_paused = True
-            self.pause_queue.append(agent_id) #Insert into agents that are thinking
+                self.debug("Simulation paused. Thinking agents: {}".format(self.pause_queue))
 
         #Agent is done thinking, and so resume simulation if all agents concurrently thinking are likewise done
-        else:
+        else: #Un-pause request
             self.pause_queue.remove(agent_id) #Remove the agent that finished thinking from those that are still thinking
-            if len(self.pause_queue) == 0:
+            if len(self.pause_queue) == 0: #Everyone is finished thinking, and so we unpause simulation
                 self.request_pause_simulation(is_pause)
                 self.is_simulation_paused = False
+                self.debug("Simulation un-paused. All agents finished thinking")
+            else:
+                self.debug("Simulation still paused. Some agents still thinking: {}".format(self.pause_queue))
 
-        #TODO: For consideration. What happens if we issue an unpause request, but since not everyone has finished processing, then the simulation remains un-paused.
-        # If this is the case, then the FSM for all of the decision-makers should remain as is.
-
-
-        # Diagnostics
-        # time = rospy.Time.now()
-        if self.is_simulation_paused:
-            self.debug("Simulation paused. Requested by: {}".format(agent_id))
-        else:
-            self.debug("Simulation un-paused. Requested by: {}".format(agent_id))
-
-
-        #TODO: Send out the response of this pause/unpause request
-        return pauseSimulationResponse(self.is_simulation_paused) #TODO: If this is the result, then we should match this with the client input/msg
+        return pauseSimulationResponse(self.is_simulation_paused)
 
     def request_pause_simulation(self, is_pause):
         """

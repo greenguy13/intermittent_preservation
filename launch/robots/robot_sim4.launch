@@ -1,13 +1,14 @@
 <launch>
     <arg name="world"/>
     <arg name="method"/>
+
     <group ns="robot_0">
         <group if="$(eval world == 'office')">
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
                 <arg name="robot" value="1"/>
                 <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="-25.0"/>
-                <arg name="initial_pose_y" value="-23.0"/>
+                <arg name="initial_pose_x" value="-3.0"/>
+                <arg name="initial_pose_y" value="-5.0"/>
             </include>
         </group>
 
@@ -33,16 +34,16 @@
     <group ns="robot_1">
         <group if="$(eval world == 'office')">
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
-                <arg name="robot" value="1"/>
+                <arg name="robot" value="2"/>
                 <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="-5.0"/>
+                <arg name="initial_pose_x" value="-7.0"/>
                 <arg name="initial_pose_y" value="-5.0"/>
             </include>
         </group>
 
         <group if="$(eval world == 'open')">
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
-                <arg name="robot" value="1"/>
+                <arg name="robot" value="2"/>
                 <arg name="method" value="$(arg method)"/>
                 <arg name="initial_pose_x" value="0.0"/>
                 <arg name="initial_pose_y" value="0.0"/>
@@ -51,7 +52,7 @@
 
         <group if="$(eval world == 'cluttered')">
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
-                <arg name="robot" value="1"/>
+                <arg name="robot" value="2"/>
                 <arg name="method" value="$(arg method)"/>
                 <arg name="initial_pose_x" value="2.0"/>
                 <arg name="initial_pose_y" value="0.0"/>
@@ -62,7 +63,7 @@
     <group ns="robot_2">
         <group if="$(eval world == 'office')">
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
-                <arg name="robot" value="1"/>
+                <arg name="robot" value="3"/>
                 <arg name="method" value="$(arg method)"/>
                 <arg name="initial_pose_x" value="-5.0"/>
                 <arg name="initial_pose_y" value="-8.0"/>
@@ -71,7 +72,7 @@
 
         <group if="$(eval world == 'open')">
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
-                <arg name="robot" value="1"/>
+                <arg name="robot" value="3"/>
                 <arg name="method" value="$(arg method)"/>
                 <arg name="initial_pose_x" value="0.0"/>
                 <arg name="initial_pose_y" value="0.0"/>
@@ -80,7 +81,7 @@
 
         <group if="$(eval world == 'cluttered')">
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
-                <arg name="robot" value="1"/>
+                <arg name="robot" value="3"/>
                 <arg name="method" value="$(arg method)"/>
                 <arg name="initial_pose_x" value="2.0"/>
                 <arg name="initial_pose_y" value="0.0"/>
@@ -91,7 +92,7 @@
     <group ns="robot_3">
         <group if="$(eval world == 'office')">
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
-                <arg name="robot" value="1"/>
+                <arg name="robot" value="4"/>
                 <arg name="method" value="$(arg method)"/>
                 <arg name="initial_pose_x" value="-7.0"/>
                 <arg name="initial_pose_y" value="-8.0"/>
@@ -100,7 +101,7 @@
 
         <group if="$(eval world == 'open')">
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
-                <arg name="robot" value="1"/>
+                <arg name="robot" value="4"/>
                 <arg name="method" value="$(arg method)"/>
                 <arg name="initial_pose_x" value="0.0"/>
                 <arg name="initial_pose_y" value="0.0"/>
@@ -109,7 +110,7 @@
 
         <group if="$(eval world == 'cluttered')">
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
-                <arg name="robot" value="1"/>
+                <arg name="robot" value="4"/>
                 <arg name="method" value="$(arg method)"/>
                 <arg name="initial_pose_x" value="2.0"/>
                 <arg name="initial_pose_y" value="0.0"/>

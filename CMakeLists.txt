@@ -65,6 +65,7 @@ add_service_files(
         assignmentAccomplishment.srv
         pauseSimulation.srv
         registerRobot.srv
+        collectedEnoughData.srv
 )
 
 

@@ -27,6 +27,7 @@ import pickle
 from status import areaStatus, robotStatus, centralStatus
 from int_preservation.srv import flevel, flevelResponse
 from int_preservation.srv import areaAssignment, areaAssignmentResponse
+from int_preservation.srv import collectedEnoughData
 from loss_fcns import *
 
 class Area():
@@ -181,6 +182,17 @@ class Area():
         """
         self.status = status.value
 
+    def collected_enough_data_notice(self):
+        """
+
+        """
+        rospy.wait_for_service("/shutdown_server")
+        try:
+            shutdown_server = rospy.ServiceProxy("/shutdown_server", collectedEnoughData)
+            shutdown_server(self.area, True)
+        except rospy.ServiceException as e:
+            rospy.logerr(f"Service call failed: {e}")
+
     def run_operation(self, filename, freq_hz=1):
         """
         Statuses:
@@ -228,10 +240,11 @@ class Area():
                     self.fmeasure = min(self.fmeasure+self.restoration, self.max_fmeasure)
                     f_record.append(self.fmeasure)
                     self.publish_fmeasure()
+                    self.sim_t += 1 #simulation time elapses
                     rate.sleep()
                 # Restore parameters
                 self.tlapse = 0
-                self.update_status(areaStatus.RESTORED_F)
+                self.update_status(areaStatus.RESTORED_F) #TODO: It seems self.sim_t will overcount by 1
 
             elif self.status == areaStatus.RESTORED_F.value:
                 self.update_status(areaStatus.IDLE)
@@ -246,6 +259,11 @@ class Area():
                 pu.dump_data(decay_rates_record, '{}_area{}_decay_rates'.format(filename, self.area))
                 pu.dump_data(f_record, '{}_area{}_fmeasure'.format(filename, self.area))
                 pu.dump_data(status_record, '{}_area{}_status'.format(filename, self.area))
+
+            if len(f_record) >= self.t_operation:
+                #TODO: Send notice to central that we have collected enough data points
+                self.debug("Collected enough data: {}. Notifying central".format(len(f_record)))
+                self.collected_enough_data_notice()
             rate.sleep()
 
     def debug(self, msg):

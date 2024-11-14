@@ -1,0 +1,4 @@
+int8 area_id
+bool collected_enough
+---
+bool acknowledged
