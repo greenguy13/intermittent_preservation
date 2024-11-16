@@ -42,7 +42,8 @@ class Robot:
         self.debug_mode = rospy.get_param("/debug_mode")
         self.robot_velocity = rospy.get_param(
             "/robot_velocity")  # Linear velocity of robot; we assume linear and angular are relatively equal
-        self.gamma = rospy.get_param("/gamma")  # discount factor
+        self.gamma = rospy.get_param("/gamma")
+        self.gamma = float(self.gamma) # discount factor
         self.max_fmeasure = rospy.get_param("/max_fmeasure")  # Max F-measure of an area
         self.max_battery = rospy.get_param("/max_battery")  # Max battery
         self.battery_reserve = rospy.get_param("/battery_reserve")  # Battery reserve
@@ -324,13 +325,19 @@ class Robot:
                 # Immediate loss in i=1
                 duration = self.compute_duration(self.curr_loc, decision, self.curr_fmeasures[decision],
                                                  self.restoration, self.noise)
-                updated_fmeasures = self.adjust_fmeasures(self.curr_fmeasures.copy(), decision,
-                                                          duration)  # F-measure of areas adjusted accordingly, i.e., consequence of decision
-                immediate_cost_decision = self.compute_opportunity_cost(updated_fmeasures)  # immediate opportunity cost
-                # self.debug("Current F-measures: {}".format(self.curr_fmeasures))
-                self.debug("Feasible decision: {}. Duration: {}. Updated F: {}. Immediate loss: {}".format(decision, duration, updated_fmeasures, immediate_cost_decision))
+
+                #TODO: So here is the immediate cost is computed.
+                # What we can do is create a total_loss method then use it for the computation for the immediate cost
+                # Then for the next k-1 steps, we just use adjust_fmeasures
+                all_areas_decay = self.all_areas_decay(self.curr_fmeasures.copy(), decision, duration)
+                immediate_cost_decision = self.compute_opportunity_cost(all_areas_decay)  # immediate opportunity cost
+                self.debug("Current F-measures: {}".format(self.curr_fmeasures))
+                self.debug("Feasible decision: {}. Duration: {}. Immediate loss: {}".format(decision, duration, immediate_cost_decision))
 
                 # Heuristic loss for i=2...k
+                updated_fmeasures = self.adjust_fmeasures(self.curr_fmeasures.copy(), decision, duration)  # F-measure of areas adjusted accordingly, i.e., consequence of decision
+                self.debug("Updated f_measures: {}, {}".format(list(updated_fmeasures.values())[0], type(list(updated_fmeasures.values())[0])))
+                #TODO: The bug is here
                 forecasted_cost_decision = 0
                 if self.dec_steps > 1:
                     forecasted_cost_decision = heuristic_cost_decision(updated_fmeasures, self.decay_rates_dict,
@@ -395,6 +402,23 @@ class Robot:
 
         return battery_consumed
 
+    def all_areas_decay(self, fmeasures, visit_area, duration):
+        """
+        Adjusts the F-measures of all areas in robot's mind. The visit area will be restored to max, while the other areas will decay for
+        t duration. Note that the charging station is not part of the areas to monitor. And so, if the visit_area is the
+        charging station, then all of the areas will decay as duration passes by.
+        :param fmeasures:
+        :param visit_area:
+        :param t:
+        :return:
+        """
+        for area in self.areas:
+            tlapse_decay = get_time_given_decay(self.max_fmeasure, fmeasures[area],
+                                                self.decay_rates_dict[area]) + duration
+            fmeasures[area] = decay(self.decay_rates_dict[area], tlapse_decay, self.max_fmeasure)
+        self.debug("Duration: {}. All areas decayed: {}: ".format(duration, fmeasures))
+        return fmeasures
+
     def adjust_fmeasures(self, fmeasures, visit_area, duration):
         """
         Adjusts the F-measures of all areas in robot's mind. The visit area will be restored to max, while the other areas will decay for
@@ -437,8 +461,7 @@ class Robot:
         sorted_decisions = sorted(dec_arr, key=lambda x: (x[-2], -x[-1]))
         # self.debug("Decisions sorted by cost: {}".format(sorted_decisions))
         # self.debug("Best decision (branch info): {}".format(sorted_decisions[0]))
-        best_decision = sorted_decisions[0][
-            0]  # pick the decision with least net loss and most available feasible battery
+        best_decision = sorted_decisions[0][0]  # pick the decision with least net loss and most available feasible battery
         return best_decision
 
     def update_tlapses_areas(self, sim_t):
@@ -499,6 +522,7 @@ class Robot:
         for i in range(1, self.dec_steps + 1):
             tlapse += min_duration
             fmeasure = decay(min_decay_rate, tlapse, self.max_fmeasure)
+            # self.debug("Gamma: {}, {}".format(type(self.gamma), self.gamma))
             discounted_loss = (self.gamma ** (i - 1)) * loss_fcn(self.max_fmeasure, fmeasure)
             strict_lower_bound += discounted_loss
         strict_lower_bound *= (self.nareas - 1)
@@ -527,7 +551,7 @@ class Robot:
 
         if self.robot_id == 0:
             rate = rospy.Rate(freq)
-            rospy.sleep(15)  # Wait for nodes to register
+            rospy.sleep(5)  # Wait for nodes to register
 
             wait_registry = True
             while (wait_registry is True) and (len(self.sampled_nodes_poses) != self.nareas + 1):

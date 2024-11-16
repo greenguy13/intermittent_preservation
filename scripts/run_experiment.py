@@ -61,7 +61,7 @@ def run_experiment(method, world, nareas, placement, decay, tframe, inference=No
                 if method == 'treebased_decision':
                     params.append('discount:={}'.format(discount))
 
-                elif (method == 'heuristic_uncertainty' and inference == 'timeseries') or method == 'heuristic_decision':
+                elif (method == 'heuristic_uncertainty' and inference == 'timeseries') or method == 'heuristic_decision' or method == 'heuristic_decision_total_loss':
                     fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_disc{}_exp{}_nvisits{}'.format(method, inference, world, nareas, placement, decay,
                                                                      dec_steps, i + 1, discount, exploration, nvisits)
                     params.append('discount:={}'.format(discount))
@@ -228,8 +228,11 @@ if __name__ == '__main__':
     # run_experiment('heuristic_decision', 'office', 4, placement, 'non_uniform', 2100,
     #                inference='oracle', dec_steps=1, discount=0.00, exploration=None, nvisits=None, ntrials=(0, 3), save=True)
 
-    run_experiment('heuristic_decision', 'office', 4, placement, 'non_uniform', 2100,
-                   inference='oracle', dec_steps=4, discount=0.25, exploration=None, nvisits=None, ntrials=(0, 2), save=True)
+    run_experiment('heuristic_decision', 'office', 4, placement, 'non_uniform', 50,
+                   inference='oracle', dec_steps=1, discount=0.00, exploration=None, nvisits=None, ntrials=(0, 1), save=False)
+
+    # run_experiment('heuristic_decision_total_loss', 'office', 4, placement, 'non_uniform', 50,
+    #                inference='oracle', dec_steps=1, discount=0.0, exploration=None, nvisits=None, ntrials=(0, 1), save=False)
 
     # run_experiment('dynamic_programming', 'office', 4, placement, 'non_uniform', 2100,
     #                inference=None, dec_steps=4, ntrials=(0, 3), save=True)
@@ -254,9 +257,9 @@ if __name__ == '__main__':
     #                inference='oracle', dec_steps=1, discount=0.00, exploration=None, nvisits=None, ntrials=(0, 3),
     #                save=True)
 
-    run_experiment('heuristic_decision', 'office', 9, placement, 'non_uniform', 2100,
-                   inference='oracle', dec_steps=3, discount=0.25, exploration=None, nvisits=None, ntrials=(0, 2),
-                   save=True)
+    # run_experiment('heuristic_decision', 'office', 9, placement, 'non_uniform', 2100,
+    #                inference='oracle', dec_steps=3, discount=0.25, exploration=None, nvisits=None, ntrials=(0, 2),
+    #                save=True)
 
     # run_experiment('dynamic_programming', 'office', 12, placement, 'non_uniform', 2100,
     #                inference=None, dec_steps=4, ntrials=(0, 3), save=True)
