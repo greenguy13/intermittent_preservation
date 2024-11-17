@@ -44,6 +44,8 @@ class Robot:
             1. Instantiate vars
             2. Request of pause simulation
             3. Re-structure the FSM
+            
+        Sanity check
         """
 
         rospy.init_node(node_name, anonymous=True)
@@ -95,33 +97,15 @@ class Robot:
         self.curr_loc_idx = self.charging_station  # Initial location robot is the charging station
         self.battery = self.max_battery #Initialize battery at max, then gets updated by subscribed battery topic
         self.optimal_path = [] #container for the decided optimal path
-        self.dist_matrix = None
-        self.graph_areas = None #TODO: Graph of connected among vertices
         self.mission_area_idx = None
         self.robot_status = robotStatus.IDLE.value
         self.available = True
         self.state = list()  # list of states
-        self.nareas = None
-
-        #TODO: These are codes potential to be inserted in instantiate_variables
-        """
-        self.curr_fmeasures = dict() #container of current F-measure of areas
-        self.decay_rates_dict = dict() #dictionary for decay rates
-        self.tlapses = dict()
-
-        for area in self.areas:
-            self.tlapses[area] = 0
-            self.decay_rates_dict[area] = None
-        self.decay_rates_counter = 0 #counter for stored decay rates; should be equal to number of areas
-        """
+        self.dist_matrix = None
 
         self.decisions_made, self.decisions_accomplished, self.status_history = [], [], [] #record of data
         self.total_dist_travelled = 0 #total distance travelled
         self.process_time_counter = [] #container for time it took to come up with decision
-
-        #We sum this up
-        self.environment_status = dict()
-        self.environment_status[self.charging_station] = 999
 
         self.requested_pause = False  # indicator variable whether requested Stage to pause simulation
 
@@ -355,8 +339,6 @@ class Robot:
         """
         Creates graph among areas (excluding charging station) given distance matrix
         """
-        #TODO: Check whether the idx and id are consistently associated
-
         graph = nx.Graph()
         graph.add_nodes_from(list(range(len(dist_matrix))))
         self.debug("Nodes: {}".format(graph.nodes))
@@ -381,7 +363,6 @@ class Robot:
                 duration_matrix - travel duration from one node to another
                 k - schedule length
         """
-        # TODO: Check whether the idx and id are consistently associated
 
         nareas = len(G.nodes)
         assert k <= nareas, "Constraint error: schedule length <= number of areas, since an area is to be visited at most once"
@@ -453,9 +434,6 @@ class Robot:
         """
         Returns the path that yields the minimal loss in a DAG of length k starting from the root node, which is the current location
         """
-        #TODO: Check here whether we are associating the right area id with idx, and vice-versa
-        # Seems correct. We just get the pre-computed losses of the nodes and then add them up
-        # We then get the optimal path
         root_name = '{}_{}'.format(current_loc, 0)
         for node in sorted_nodes:
             if node.name == root_name:  # root node
@@ -528,9 +506,6 @@ class Robot:
         >> PO2 is easier to implement but also practical
         """
 
-        #TODO: Assess here whether we are associating the right id and idx
-        # Should be right? Since our principle is that for all the containers processed on the assigned_areas we are using idx,
-        # While for those methods, containers, msgs that refer to the actual area ids, we retrieve the area ids
 
         #Step 1
         duration_matrix = self.dist_matrix/self.robot_velocity
@@ -538,13 +513,13 @@ class Robot:
         # for area in self.areas:
         #     tlapses_init[area] = get_time_given_decay(max_fmeasure=self.max_fmeasure, decayed_fmeasure=self.curr_fmeasures[area], rate=self.decay_rates_dict[area])
         self.debug("Initial tlapses, spatio-temporal DAG: {}".format(self.tlapses))
-        dag = self.create_spatio_temporal_DAG(self.curr_loc, self.graph_areas, duration_matrix, self.decay_rates_dict, self.tlapses, self.dec_steps)
+        dag = self.create_spatio_temporal_DAG(self.curr_loc_idx, self.graph_areas, duration_matrix, self.decay_rates_dict, self.tlapses, self.dec_steps)
 
         #Step 2
         ordered = self.topological_sort_dag(dag)
 
         #Step 3
-        min_path = self.min_loss_path(dag, ordered, self.curr_loc)
+        min_path = self.min_loss_path(dag, ordered, self.curr_loc_idx)
         return min_path
 
     ### UP TO HERE FOR THE DECISION MAKING 
@@ -579,16 +554,11 @@ class Robot:
         self.decay_rates_dict = dict()  # dictionary for decay rates
         self.tlapses = dict()  # dictionary containing tlapses of areas
 
+        self.graph_areas = None
+
         for area_idx in self.areas:
             self.decay_rates_dict[area_idx] = decay_rates[area_idx-1] #Instantiate provided decay rates
             self.tlapses[area_idx] = tlapses[area_idx-1] #Instantiate provided tlapses
-
-        # Environment status intialization
-        environment_status = dict()
-        environment_status[self.charging_station] = self.environment_status[self.charging_station]
-        for node in range(self.nareas):
-            self.environment_status[node+1] = 999
-        self.environment_status = environment_status
 
         # Unsubscribe from previous area topics
         self.subscribe_fmeasures = dict()
@@ -701,8 +671,8 @@ class Robot:
                 if self.robot_status == robotStatus.IDLE.value:
                     self.debug('Robot idle')
                     if self.dist_matrix is not None:
-                        if self.graph_areas is None:
-                            self.graph_areas = self.create_graph(self.dist_matrix) #TODO: Check whether self.graph_areas is correct
+                        if self.graph_areas is None: #Instantiated in self.instantiate_variables
+                            self.graph_areas = self.create_graph(self.dist_matrix)
                         self.update_robot_status(robotStatus.READY)
 
                 elif self.robot_status == robotStatus.READY.value:
@@ -734,8 +704,8 @@ class Robot:
                 if len(self.decisions_made)>0 or (self.robot_status != robotStatus.IDLE.value) and (
                         self.robot_status != robotStatus.READY.value) and (
                         self.robot_status != robotStatus.CONSIDER_REPLAN.value):
-                    self.update_tlapses_areas()  # Update the tlapse per area #TODO: The update of tlapses would include sim_t+=1
-                    self.compute_curr_fmeasures() # TODO: Fix this
+                    self.update_tlapses_areas()  # Update the tlapse per area
+                    self.compute_curr_fmeasures()
 
                 # Store results
                 if self.save:
@@ -775,20 +745,24 @@ class Robot:
         Sends the robot to the next area in the optimal path:
         :return:
         """
-        #TODO: Here
         if len(self.optimal_path):
-            self.mission_area = self.optimal_path.pop(0) #TODO: Q, what are the indices of the optimal path, are these area ids or area idxs?
-            if self.mission_area is not self.charging_station:
-                battery_consumed = self.consume_battery(self.curr_loc, self.mission_area, self.curr_fmeasures[self.mission_area], self.noise)
-                if not is_feasible(self.battery, battery_consumed, self.battery_reserve):
-                    self.debug('Not enough battery to visit {}. Heading back to charging station and resetting schedule...'.format(self.mission_area))
-                    self.optimal_path = []
-                    self.mission_area = self.charging_station
+            #Retrieve mission area id
+            self.mission_area_idx = self.optimal_path.pop(0)
+            mission_area_id = self.get_assigned_area_id(self.mission_area_idx)
 
-            self.mission_area_pub.publish(self.mission_area)
-            self.debug('Heading to: {}. {}'.format(self.mission_area, self.sampled_nodes_poses[self.mission_area]))
-            self.decisions_made.append(self.mission_area) #store decisions made
-            self.go_to_target(self.mission_area)
+            #If it is not the charging station, check whether it is feasible. If not, then set the mission area as the charging station
+            if self.mission_area_idx is not self.charging_station:
+                battery_consumed = self.consume_battery(self.curr_loc_idx, self.mission_area_idx, self.curr_fmeasures[self.mission_area_idx], self.noise)
+                if not is_feasible(self.battery, battery_consumed, self.battery_reserve):
+                    self.debug('Not enough battery to visit {}. Heading back to charging station and resetting schedule...'.format(mission_area_id))
+                    self.optimal_path = []
+                    self.mission_area_idx = self.charging_station
+                    mission_area_id = self.charging_station
+
+            self.mission_area_pub.publish(mission_area_id)
+            self.debug('Heading to: {}. {}'.format(mission_area_id, self.sampled_nodes_poses[self.mission_area_idx]))
+            self.decisions_made.append(mission_area_id) #store decisions made
+            self.go_to_target(self.mission_area_idx)
             return 1
         return 0
 
@@ -821,7 +795,6 @@ class Robot:
         :param msg:
         :return:
         """
-        self.environment_status[self.charging_station] = msg.data
         if msg.data == battStatus.FULLY_CHARGED.value:
             if self.robot_id < 999: self.debug("Fully charged!")
             self.available = True
@@ -833,11 +806,14 @@ class Robot:
         :param msg:
         :return:
         """
-        #TODO: Here
-        self.environment_status[area_id] = msg.data
+        area_idx = self.get_assigned_area_index(area_id)
+        status = msg.data
+
         if msg.data == areaStatus.RESTORED_F.value:
-            if self.robot_id < 999: self.debug("Area fully restored!")
-            self.tlapses[area_id] = 0  # Reset the tlapse since last restored for the newly restored area
+            if self.robot_id < 999: self.debug("Area {} fully restored!".format(area_id))
+            self.tlapses[area_idx] = 0  # Reset the tlapse since last restored for the newly restored area
+            self.debug("Notifying server for accomplishment of restoring Area {}".format(area_id))
+            self.notify_assignment_accomplishment(area_id)  # Notifies central that recent assignment is accomplished
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 
@@ -848,18 +824,10 @@ class Robot:
         :param area_id:
         :return:
         """
-        #TODO: Here
-        # Store the decay rates at instance, (prior knowledge)
-        if self.decay_rates_dict[area_id] == None and msg.data is not None:
+        area_idx = self.get_assigned_area_index(area_id)
+        if self.assigned_areas is not None and self.decay_rates_dict[area_idx] == None:
             if self.robot_id < 999: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
-            self.decay_rates_dict[area_id] = msg.data
-            self.decay_rates_counter += 1
-        else:
-            # If we are now on mission and oracle, we immediately update the decay rates for any evolution
-            if self.inference == 'oracle':
-                if self.decay_rates_dict[area_id] != msg.data: self.debug(
-                    "Oracle knowledge, change in decay in area {}: {}".format(area_id, msg.data))
-                self.decay_rates_dict[area_id] = msg.data  # A subscribed topic. Oracle knows exactly the decay rate happening in area
+            self.decay_rates_dict[area_idx] = msg.data
 
 
     def area_fmeasure_cb(self, msg, area_id):
@@ -869,18 +837,17 @@ class Robot:
         :param area_id:
         :return:
         """
-        #TODO: Here
         if self.inference == 'oracle':
-            self.curr_fmeasures[area_id] = msg.data
+            area_idx = self.get_assigned_area_index(area_id)
+            self.curr_fmeasures[area_idx] = msg.data
 
     def compute_curr_fmeasures(self):
         """
         Computes current fmeasures based on tlapse and decay rates
         :return:
         """
-        #TODO: Here
-        for area in self.areas:
-            self.curr_fmeasures[area] = decay(self.decay_rates_dict[area], self.tlapses[area], self.max_fmeasure)
+        for area_idx in self.areas:
+            self.curr_fmeasures[area_idx] = decay(self.decay_rates_dict[area_idx], self.tlapses[area_idx], self.max_fmeasure)
         self.debug("Used for computation. Tlapses: {}. Decay rates: {}".format(self.tlapses, self.decay_rates_dict))
         self.debug("Computed current f-measures: {}".format(self.curr_fmeasures))
 

@@ -94,15 +94,11 @@ class Robot:
 
         self.state = list() #list of states
         self.strict_bounds_list = list() #list of strict lower and upper bounds
-        self.nareas = None #number of assigned areas will be supplied
 
         self.decisions_made, self.decisions_accomplished, self.status_history = [], [], [] #record of data
         self.total_dist_travelled = 0 #total distance travelled
         self.process_time_counter = [] #container for time it took to come up with decision
         self.assigned_areas = None
-
-        self.environment_status = dict()
-        self.environment_status[self.charging_station] = 999
 
         self.requested_pause = False #indicator variable whether requested Stage to pause simulation
 
@@ -604,13 +600,6 @@ class Robot:
             self.decay_rates_dict[area_idx] = decay_rates[area_idx-1] #Instantiate provided decay rates
             self.tlapses[area_idx] = tlapses[area_idx-1] #Instantiate provided tlapses
 
-        # Environment status intialization
-        environment_status = dict()
-        environment_status[self.charging_station] = self.environment_status[self.charging_station]
-        for node in range(self.nareas):
-            self.environment_status[node+1] = 999
-        self.environment_status = environment_status
-
         # Unsubscribe from previous area topics
         # self.unsubscribe_previous_area_topics() TODO: Debug this one for the case with re-assignment
         self.subscribe_fmeasures = dict()
@@ -819,8 +808,10 @@ class Robot:
         :return:
         """
         if self.best_decision_idx is not None:
-            self.mission_area_idx = self.best_decision_idx
-            mission_area_id = self.get_assigned_area_id(self.mission_area_idx)
+            self.mission_area_idx = self.best_decision_idx #TODO: Will the robot charge up battery?
+            mission_area_id = self.charging_station
+            if self.mission_area_idx != self.charging_station:
+                mission_area_id = self.get_assigned_area_id(self.mission_area_idx) #TODO: Will the robot charge up battery?
             self.mission_area_idx_pub.publish(mission_area_id)
             self.debug('Heading to: {}. {}'.format(mission_area_id, self.sampled_nodes_poses[self.mission_area_idx]))
             self.decisions_made.append(mission_area_id) #store decisions made
@@ -857,7 +848,6 @@ class Robot:
         :param msg:
         :return:
         """
-        self.environment_status[self.charging_station] = msg.data
         if msg.data == battStatus.FULLY_CHARGED.value:
             if self.robot_id < 999: self.debug("Fully charged!")
             self.available = True
@@ -886,14 +876,12 @@ class Robot:
         """
         area_idx = self.get_assigned_area_index(area_id)
         status = msg.data
-        self.environment_status[area_idx+1] = int(status)
 
         if msg.data == areaStatus.RESTORED_F.value:
             if self.robot_id < 999: self.debug("Area {} fully restored!".format(area_id))
             self.tlapses[area_idx] = 0  # Reset the tlapse since last restored for the newly restored area
             self.debug("Notifying server for accomplishment of restoring Area {}".format(area_id))
-            self.notify_assignment_accomplishment(area_id) #Notifies central that recent assignment is accomplished #TODO: This is correct. Why did this not register?
-
+            self.notify_assignment_accomplishment(area_id) #Notifies central that recent assignment is accomplished
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)
 
