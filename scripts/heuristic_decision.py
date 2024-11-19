@@ -492,13 +492,11 @@ class Robot:
         Lapses all time elapsed for each area
         :return:
         """
-        #TODO: I think the sim_t should likewise be elapsed only when we elapsed time on the areas. This is within simulation
-        self.sim_t += 1  # TODO: I think this should be together when elapse the tlapse in each area. After all, this is what the ideal simulation about where there is no idle state for the robot.
-
+        self.sim_t += 1
         for area_idx in self.tlapses:
             self.tlapses[area_idx] += 1
-        self.debug("Sim t: {}. Time elapsed since last restored: {}".format(self.sim_t, self.tlapses))
-
+        # self.debug("Sim t: {}. Time elapsed since last restored: {}".format(self.sim_t, self.tlapses))
+        self.debug("Time elapsed since last restored: {}".format(self.tlapses))
 
     def strict_bounds(self):
         """
@@ -652,7 +650,8 @@ class Robot:
             tlapses[area_id] = self.tlapses[area_idx]
             decay_rates[area_id] = self.decay_rates_dict[area_idx]
 
-        state = (self.sim_t, self.get_assigned_area_id(self.curr_loc_idx), self.battery, tlapses, decay_rates)
+        # state = (self.sim_t, self.get_assigned_area_id(self.curr_loc_idx), self.battery, tlapses, decay_rates)
+        state = (self.get_assigned_area_id(self.curr_loc_idx), self.battery, tlapses, decay_rates)
         return state
 
     #Methods: Run operation

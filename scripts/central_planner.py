@@ -478,7 +478,7 @@ class CentralPlanner:
                     self.tlapses[area] += 1 #TODO: Update tlapses here based on rospy.get_time(). Actually there is no need. Since the time is maintained at per second
 
         self.sim_t += 1  # TODO: Update tlapses here. Question should it be simulation time? Actually there is no need. Maintained per second
-
+        # TODO: But this can also be rospy.get_time()
                 #Case 2: Elapse time for unassigned areas when robot is charging and central is not thinking
                 # elif self.assign_statuses[robot_id] == robotAssignStatus.UNASSIGNED.value and (self.robot_statuses[robot_id] != robotStatus.IDLE.value and self.robot_statuses[robot_id] != robotStatus.READY.value) and self.mission_areas[robot_id] == self.charging_station:
                 #     cluster = self.robots_assignment[robot_id]
