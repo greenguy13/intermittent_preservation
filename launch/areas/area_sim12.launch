@@ -50,44 +50,42 @@
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="7"/>
             <arg name="decay_rate" value="0.00203"/>
-            <arg name="decay_evolution" value="[-0.15, -0.15]"/>
+            <arg name="decay_evolution" value="[]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="8"/>
             <arg name="decay_rate" value="0.00225"/>
-            <arg name="decay_evolution" value="[-0.15, -0.15]"/>
+            <arg name="decay_evolution" value="[]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="9"/>
             <arg name="decay_rate" value="0.00219"/>
-            <arg name="decay_evolution" value="[-0.15, -0.15]"/>
+            <arg name="decay_evolution" value="[]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="10"/>
             <arg name="decay_rate" value="0.00264"/>
-            <arg name="decay_evolution" value="[-0.15, -0.15]"/>
+            <arg name="decay_evolution" value="[]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="11"/>
             <arg name="decay_rate" value="0.00271"/>
-            <arg name="decay_evolution" value="[-0.15, -0.15]"/>
+            <arg name="decay_evolution" value="[]"/>
         </include>
 
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="12"/>
             <arg name="decay_rate" value="0.00250"/>
-            <arg name="decay_evolution" value="[-0.15, -0.15]"/>
+            <arg name="decay_evolution" value="[]"/>
         </include>
     </group>
-
-
 </launch>

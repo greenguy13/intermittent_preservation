@@ -7,7 +7,7 @@
                 <arg name="robot" value="1"/>
                 <arg name="method" value="$(arg method)"/>
                 <arg name="initial_pose_x" value="-10.0"/>
-                <arg name="initial_pose_y" value="-8.0"/>
+                <arg name="initial_pose_y" value="-10.0"/>
             </include>
         </group>
 
@@ -36,7 +36,7 @@
                 <arg name="robot" value="2"/>
                 <arg name="method" value="$(arg method)"/>
                 <arg name="initial_pose_x" value="-5.0"/>
-                <arg name="initial_pose_y" value="-5.0"/>
+                <arg name="initial_pose_y" value="-3.0"/>
             </include>
         </group>
 

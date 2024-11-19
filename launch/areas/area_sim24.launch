@@ -49,7 +49,7 @@
         <include file="$(find int_preservation)/launch/areas/area.launch">
             <arg name="robot_id" value="0"/>
             <arg name="area_id" value="7"/>
-            <arg name="decay_rate" value="0.00109"/>
+            <arg name="decay_rate" value="0.00160"/>
             <arg name="decay_evolution" value="[]"/>
         </include>
 
