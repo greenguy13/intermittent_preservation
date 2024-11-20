@@ -255,6 +255,10 @@ if __name__ == '__main__':
     #                nrobots=2, inference='oracle', dec_steps=6, discount=0.75, exploration=0.0, ntrials=(0, 1), task_scheduler='central_planner', save=False) #3100
 
     run_experiment('dynamic_programming', 'office', 12, placement, 'non_uniform', 2100,
+                   nrobots=2, inference='oracle', dec_steps=4, ntrials=(0, 3),
+                   task_scheduler='central_planner', save=True)  # 3100
+
+    run_experiment('dynamic_programming', 'office', 12, placement, 'non_uniform', 2100,
                    nrobots=2, inference='oracle', dec_steps=6, ntrials=(0, 3),
                    task_scheduler='central_planner', save=True)  # 3100
 
