@@ -417,9 +417,12 @@ class CentralPlanner:
         self.debug("Unassigned robots: {}".format(self.unassigned_robots))
         self.debug("Clusters: {}".format(clusters))
         assigned = 0
-        for robot_id in self.unassigned_robots:
+
+        #TODO: Do a while loop here, while assigned < len(self.unassigned_robots):
+        unassigned = self.unassigned_robots.copy()
+        robot_id = unassigned.pop()
+        while len(self.unassigned_robots) > 0:
             self.robots_assignment[robot_id] = 'C' + str(robot_id+1) #Assignment of robot to a cluster #TODO: For now, the assignment is 1:1, not yet K-means cluster
-            self.unassigned_robots.remove(robot_id)
             rospy.wait_for_service("/cluster_assignment_server_" + str(robot_id))
             try:
                 cluster_assign = rospy.ServiceProxy("/cluster_assignment_server_" + str(robot_id), clusterAssignment)
@@ -427,12 +430,42 @@ class CentralPlanner:
                 tlapses_areas = self.retrieve_tlapses(areas_assigned)
                 decay_rates = self.retrieve_decay_rates(areas_assigned)
                 resp = cluster_assign(areas_assigned, tlapses_areas, decay_rates)
-                self.debug("Robot: {}. Assigned: {}, Robot availability: {}".format(robot_id, areas_assigned, resp.availability))
-                self.debug("Remaining unassigned: {}".format(self.unassigned_robots))
+                if resp.availability:
+                    assigned += 1
+                    self.unassigned_robots.remove(robot_id)
+                    self.debug("Robot: {}. Assigned: {}, Robot availability: {}".format(robot_id, areas_assigned, resp.availability))
+                    self.debug("Remaining unassigned: {}".format(self.unassigned_robots))
+                    if len(self.unassigned_robots) > 0:
+                        robot_id = unassigned.pop()
             except rospy.ServiceException as e:
                 rospy.logerr(f"Service call failed: {e}")
-            assigned += 1
-        self.debug("Assignment of {} robots to clusters: {}".format(assigned, self.robots_assignment))
+                self.debug("Assignment of {} robots to clusters: {}".format(assigned, self.robots_assignment))
+
+            # # TODO: Do a while loop here, while assigned < len(self.unassigned_robots):
+            # unassigned = self.unassigned_robots.copy()
+            # robot_id = unassigned.pop()
+            # for robot_id in self.unassigned_robots:
+            #     self.robots_assignment[robot_id] = 'C' + str(
+            #         robot_id + 1)  # Assignment of robot to a cluster #TODO: For now, the assignment is 1:1, not yet K-means cluster
+            #     self.unassigned_robots.remove(robot_id)
+            #     rospy.wait_for_service("/cluster_assignment_server_" + str(robot_id))
+            #     try:
+            #         cluster_assign = rospy.ServiceProxy("/cluster_assignment_server_" + str(robot_id),
+            #                                             clusterAssignment)
+            #         areas_assigned = clusters[self.robots_assignment[robot_id]]
+            #         tlapses_areas = self.retrieve_tlapses(areas_assigned)
+            #         decay_rates = self.retrieve_decay_rates(areas_assigned)
+            #         resp = cluster_assign(areas_assigned, tlapses_areas, decay_rates)
+            #         if resp.success:
+            #             assigned += 1
+            #             self.debug(
+            #                 "Robot: {}. Assigned: {}, Robot availability: {}".format(robot_id, areas_assigned,
+            #                                                                          resp.availability))
+            #             self.debug("Remaining unassigned: {}".format(self.unassigned_robots))
+            #             robot_id = unassigned.pop()
+            #     except rospy.ServiceException as e:
+            #         rospy.logerr(f"Service call failed: {e}")
+            #         self.debug("Assignment of {} robots to clusters: {}".format(assigned, self.robots_assignment))
 
     def retrieve_tlapses(self, areas):
         """

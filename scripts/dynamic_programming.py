@@ -13,7 +13,7 @@ from nav_msgs.msg import Odometry
 from nav_msgs.srv import GetPlan
 from std_msgs.msg import Int8, Float32
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
-from status import areaStatus, battStatus, robotStatus
+from status import areaStatus, battStatus, robotStatus, centralStatus
 from reset_simulation import *
 from heuristic_fcns import *
 from graph_node import *
@@ -54,7 +54,6 @@ class Robot:
         self.robot_id = rospy.get_param("~robot_id")
         self.debug_mode = rospy.get_param("/debug_mode")
         self.robot_velocity = rospy.get_param("/robot_velocity") #Linear velocity of robot; we assume linear and angular are relatively equal
-        self.gamma = rospy.get_param("/gamma") #discount factor
         self.max_fmeasure = rospy.get_param("/max_fmeasure")  # Max F-measure of an area
         self.max_battery = rospy.get_param("/max_battery") #Max battery
         self.battery_reserve = rospy.get_param("/battery_reserve") #Battery reserve
@@ -102,6 +101,7 @@ class Robot:
         self.available = True
         self.state = list()  # list of states
         self.dist_matrix = None
+        self.central_status = centralStatus.IDLE.value
 
         self.decisions_made, self.decisions_accomplished, self.status_history = [], [], [] #record of data
         self.total_dist_travelled = 0 #total distance travelled
@@ -120,6 +120,7 @@ class Robot:
 
         rospy.Subscriber('/robot_{}/battery_status'.format(self.robot_id), Int8, self.battery_status_cb)
         rospy.Subscriber('/robot_{}/battery'.format(self.robot_id), Float32, self.battery_level_cb)
+        rospy.Subscriber('/central_status', Int8, self.central_status_cb)
 
         # for area in self.areas:
         #     rospy.Subscriber('/area_{}/decay_rate'.format(area), Float32, self.decay_rate_cb, area)
@@ -195,6 +196,14 @@ class Robot:
         self.instantiate_variables(assigned_areas=assigned_areas, decay_rates=decay_rates, tlapses=tlapses)
         self.is_assigned = True
         return clusterAssignmentResponse(self.is_assigned)
+
+    def central_status_cb(self, msg):
+        """
+        Subscribes to status of central planner
+        :param msg:
+        :return:
+        """
+        self.central_status = msg.data
 
     # METHODS: Node poses and distance matrix
     def get_plan_request(self, start_pose, goal_pose, tolerance):
@@ -573,7 +582,7 @@ class Robot:
 
         #Wait for self.curr_fmeasures to be populated
         while set(list(self.curr_fmeasures.keys())) != set(self.areas):
-            self.debug("Subscribing to area topics...")
+            self.debug("Subscribing to area topics...") #TODO: Debug here? It just keeps on looping.
             rospy.sleep(1)
 
         # Sampled node poses and distance matrix
@@ -653,8 +662,11 @@ class Robot:
 
             self.register_to_central()
 
-            while self.dist_matrix is None:
-                self.debug("Initialization: No cluster assignment yet. Waiting for assignment...")
+            while self.dist_matrix is None or self.central_status == centralStatus.IDLE.value:
+                message = 'Initialization...'
+                if self.dist_matrix is None:
+                    message += "No cluster assignment yet. Waiting for assignment..."
+                self.debug(message)
                 rospy.sleep(1)
 
             # self.debug("Sufficent data. Decay rates: {}. Sampled nodes poses: {}".format(self.decay_rates_dict, self.sampled_nodes_poses))
