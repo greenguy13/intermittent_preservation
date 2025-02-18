@@ -58,7 +58,9 @@ def run_experiment(method, world, nareas, placement, decay, tframe, nrobots=1, i
                           'nrobots:={}'.format(nrobots),
                           'dsteps:={}'.format(dec_steps),
                           'tframe:={}'.format(tframe), 'placement:={}'.format(placement),
-                          'fileposes:={}'.format(fileposes), 'task_scheduler:={}'.format(task_scheduler), 'save:={}'.format(save)] #TODO: Insert task_scheduler for uncertainty solution. Although, we haven't worked on a script for this yet
+                          'fileposes:={}'.format(fileposes),
+                          'task_scheduler:={}'.format(task_scheduler),
+                          'save:={}'.format(save)] #TODO: Insert task_scheduler for uncertainty solution. Although, we haven't worked on a script for this yet
                 fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_{}robots_{}'.format(method, inference, world, nareas, placement, decay, dec_steps, i + 1, nrobots, task_scheduler)
 
                 if method == 'treebased_decision':
@@ -95,7 +97,8 @@ def run_experiment(method, world, nareas, placement, decay, tframe, nrobots=1, i
                           'dsteps:={}'.format(dec_steps),
                           'tframe:={}'.format(tframe), 'placement:={}'.format(placement),
                           'fileposes:={}'.format(fileposes), 'fileresult:={}'.format(fileresult),
-                          'task_scheduler:={}'.format(task_scheduler), 'save:={}'.format(save)]
+                          'task_scheduler:={}'.format(task_scheduler),
+                          'save:={}'.format(save)]
                 print("Launching...method: {}, world: {}, nareas: {}, nrobots: {}, task_scheduler: {}, decay: {}, dsteps: {}, tframe: {}, placement: {}, trial: {}, save: {}".format(
                         method, world, nareas, nrobots, task_scheduler, decay, dec_steps, tframe, placement, i + 1, save))
             logfile = fileresult + '.txt'
