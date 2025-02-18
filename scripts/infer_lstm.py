@@ -10,6 +10,8 @@ import project_utils as pu
 
 torch.manual_seed(42)
 
+#Question: What is the runtime? How to cut it down to be efficient?
+
 # Define dataset
 class DecayDataset(Dataset):
   def __init__(self, data, seq_length):

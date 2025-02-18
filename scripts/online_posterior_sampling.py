@@ -117,15 +117,14 @@ class Robot:
         self.total_dist_travelled = 0  # total distance travelled
         self.process_time_counter = []  # container for time it took to come up with decision
 
-        # Variables for UCB
-        self.inference = rospy.get_param("/inference")
-        self.exploration = rospy.get_param("/exploration")
-        self.mean_losses = dict()
-        self.recorded_losses = dict()
-        self.counts_visited = np.zeros(self.nareas)
+        #Variables for online PSRL
+        self.inference = rospy.get_param("/inference") #Whether oracle or None; toggle CONSIDER_REPLAN which updates decay belief by posterior sampling
+        self.observations_dict = dict()
+        self.posterior_belief_disbn = dict()
+        init_mean, init_sd = 0.001875, 0.000875 #Prior data/mission (params are based on actual experimental settings)
         for area in self.areas:
-            self.mean_losses[area] = 0.0  # Initiate at 0
-            self.recorded_losses[area] = list()
+            self.observations_dict[area] = list()
+            self.posterior_belief_disbn[area] = (init_mean, init_sd)
 
         # We sum this up
         self.environment_status = dict()
@@ -156,6 +155,7 @@ class Robot:
         self.robot_goal_client = actionlib.SimpleActionClient('/robot_' + str(self.robot_id) + '/move_base',
                                                               MoveBaseAction)
         self.robot_goal_client.wait_for_server()
+
 
     # METHODS: Node poses and distance matrix
     def get_plan_request(self, start_pose, goal_pose, tolerance):
@@ -264,7 +264,7 @@ class Robot:
 
     def action_send_done_cb(self, state, result, robot_id):
         """
-
+        What happens after robot succeeded in fulfilling assigned action (recharge or restore area)
         :param msg:
         :return:
         """
@@ -279,25 +279,13 @@ class Robot:
                 data = request_fmeasure(self.curr_loc)
                 measured_f = float(data)
                 self.recorded_fdata[self.curr_loc].append(measured_f)
-                loss = loss_fcn(self.max_fmeasure, measured_f)
-                self.recorded_losses[self.curr_loc].append(loss)
-                self.counts_visited[self.curr_loc-1] += 1 #zero-indexed array
+                observed_decay_rate = get_decay_rate(self.max_fmeasure, measured_f, self.tlapses[self.curr_loc])
+                self.observations_dict[self.curr_loc].append(observed_decay_rate)
 
+                self.debug("Prior belief decay distribution: {}".format(self.posterior_belief_disbn[self.curr_loc]))
+                self.bayesian_belief_update(self.curr_loc)
+                self.debug("Observed decay rate: {}. Decay rate history: {}. Updated posterior decay distribution: {}".format(observed_decay_rate, self.observations_dict[self.curr_loc], self.posterior_belief_disbn[self.curr_loc]))
                 self.update_robot_status(robotStatus.RESTORING_F)
-
-    def update_mean_loss(self, area):
-        """
-        Updates the mean loss of the area (or arm) using the recorded_loss
-        :param area:
-        :param recorded_loss:
-        :return:
-        """
-        mean_loss = self.mean_losses[area]
-        new_mean_loss = np.mean(self.recorded_losses[area])
-
-        # self.debug('Recorded losses: {}. Current mean: {}. New mean: {}'.format(self.recorded_losses[area], mean_loss,
-        #                                                                         new_mean_loss))
-        self.mean_losses[area] = new_mean_loss
 
     def mean_duration_decay(self, duration_matrix, area):
         """
@@ -332,21 +320,22 @@ class Robot:
 
         return total_battery_consumption, feasible_battery
 
-    def greedy_best_decision(self):
+    def compute_reward(self, fmeasure):
         """
-
+        Computes reward of action based on loss that has been saved up
+        :param area:
+        :param duration:
         :return:
         """
-        # Measure duration matrix
-        duration_matrix = self.dist_matrix / self.robot_velocity
+        reward = -loss_fcn(self.max_fmeasure, fmeasure)
+        return reward
 
-        # Measure the average duration an area decays
-        # Estimates the time/duration it takes to areas
-        mean_duration_decay_dict = dict()
-        for area in self.areas:
-            mean_duration_decay_dict[area] = self.mean_duration_decay(duration_matrix, area)
-
-        # Evaluate decision
+    def policy_max_value(self):
+        """
+        Policy that takes the feasible action that has the max value
+        :return:
+        """
+        # Evaluate feasible decisions
         decision_array = []
         for decision in self.areas:
             # Battery consumption
@@ -355,16 +344,17 @@ class Robot:
             # self.debug("Batt consumption: {}. Feasible batt: {}".format(battery_consumption, feasible_battery))
 
             if not prune(self.battery, battery_consumption, self.battery_reserve) and decision != self.curr_loc:
-                bound = np.sqrt(2 * np.log(sum(self.counts_visited) + 1) / (self.counts_visited[decision-1] + 1e-5))
-                ucb_value = self.mean_losses[decision] - self.exploration * bound
-                # self.debug("Feasible decision, Mean loss, Feasible battery: {}, {}, {}".format(decision, ucb_value,
-                #                                                                                feasible_battery))
-                decision_array.append((decision, ucb_value, feasible_battery))
+                #Compute the value based on belief decay rate`
+                duration = self.compute_duration(self.curr_loc, decision, self.curr_fmeasures[decision],
+                                                 self.restoration, self.noise)
+                updated_fmeasures = self.adjust_fmeasures(self.curr_fmeasures.copy(), decision, duration)  # F-measure of areas adjusted accordingly, i.e., consequence of decision
+                value = self.compute_reward(updated_fmeasures[decision])
+                decision_array.append((decision, value, feasible_battery))
 
         best_decision = self.charging_station
 
         if len(decision_array) > 0:
-            best_decision = self.get_best_decision(decision_array) #Here, we pick the arm with least mean loss
+            best_decision = self.get_max_value(decision_array)
 
         return best_decision
 
@@ -447,16 +437,16 @@ class Robot:
         netloss = compute_cost_fmeasures(fmeasures, self.fsafe, self.fcrit)
         return netloss
 
-    def get_best_decision(self, dec_arr):
+    def get_max_value(self, dec_arr):
         """
-        Returns the best decision in an array by sorting forecasted_loss ascendingly first then by remaining feasible battery.
+        Returns the best decision in an array by sorting values descendingly first then by remaining feasible battery.
         :param tree:
         :return:
         """
         # Sort the decisions: the cost is key while the value is decision
-        sorted_decisions = sorted(dec_arr, key=lambda x: (x[-2], -x[-1]))
-        # self.debug("Decisions sorted by mean loss, feasible batt: {}".format(sorted_decisions))
-        # self.debug("Best decision (branch info): {}".format(sorted_decisions[0]))
+        sorted_decisions = sorted(dec_arr, key=lambda x: (-x[-2], -x[-1]))
+        self.debug("Decisions sorted by value, feasible batt: {}".format(sorted_decisions))
+        self.debug("Best decision (branch info): {}".format(sorted_decisions[0]))
         best_decision = sorted_decisions[0][0]  # pick the decision with least net loss and most available feasible battery
         return best_decision
 
@@ -469,7 +459,40 @@ class Robot:
             self.tlapses[area] += 1
         self.debug("Time elapsed since last restored: {}".format(self.tlapses))
 
-    # Methods: Run operation
+    def bayesian_belief_update(self, area):
+        """
+        Performs bayesian update on belief decay distribution for area
+
+        Note: Design assumes we have a new observation for
+
+        :return:
+        """
+        #Prior
+        prior_mean, prior_sd = self.posterior_belief_disbn[area] #list of current posterior belief per area, now set as prior
+
+        #Empirical mean and sd
+        n = len(self.observations_dict[area])
+        mean_data = np.mean(self.observations_dict[area]) #list of observations per area
+        sd_data = np.std(self.observations_dict[area], ddof=1)
+
+        #Bayesian udpate
+        sd_posterior_sq = 1 / (1/prior_sd**2 + n/sd_data**2)
+        mean_posterior = ((prior_mean / prior_sd**2) + ((n*mean_data) / sd_data**2)) * sd_posterior_sq
+        sd_posterior = np.sqrt(sd_posterior_sq)
+
+        #Update belief
+        self.posterior_belief_disbn[area] = (mean_posterior, sd_posterior)
+
+    def sample_posterior_belief(self, area):
+        """
+        Samples decay rate from current posterior belief on decay distribution
+        :return:
+        """
+
+        mean_belief, sd_belief = self.posterior_belief_disbn[area]
+        decay_rate = np.random.normal(loc=mean_belief, scale=sd_belief)
+        return decay_rate
+
     def run_operation(self, filename, freq=1):
         """
         :return:
@@ -477,14 +500,19 @@ class Robot:
 
         if self.robot_id < 999:
             rate = rospy.Rate(freq)
-            while self.decay_rates_counter < self.nareas and len(self.sampled_nodes_poses) != self.nareas + 1:
-                self.debug("Insufficient data. Decay rates: {}/{}. Sampled nodes poses: {}/{}".format(
-                    self.decay_rates_counter, self.nareas,
-                    len(self.sampled_nodes_poses), self.nareas + 1))
+
+            while len(self.sampled_nodes_poses) != self.nareas + 1:
+                self.debug("Insufficient data. Sampled nodes poses: {}/{}".format(len(self.sampled_nodes_poses), self.nareas + 1))
                 rate.sleep()  # Data for decay rates haven't registered yet
+
+            for area in self.areas:
+                belief_decay = self.sample_posterior_belief(area) #Sample posterior belief based on prior knowledge
+                self.decay_rates_dict = belief_decay
+                self.observations_dict[area].append(belief_decay) #Append to history of observed decay, (set as initial)
 
             self.debug("Sufficent data. Decay rates: {}. Sampled nodes poses: {}".format(self.decay_rates_dict,
                                                                                          self.sampled_nodes_poses))  # Prior knowledge of decay rates
+
             self.build_dist_matrix()
             t = 0
             while not rospy.is_shutdown() and t < self.t_operation:
@@ -518,10 +546,12 @@ class Robot:
 
                 elif self.robot_status == robotStatus.CONSIDER_REPLAN.value:
                     self.debug('Consider re-plan...')
-                    self.debug("Mission area: {}. Current mean losses: {}".format(self.mission_area,
-                                                                                  self.mean_losses))
-                    self.update_mean_loss(self.mission_area)
-                    self.update_robot_status(robotStatus.IN_MISSION)  # Verified
+                    #Posterior sampling of decay rates based on belief
+                    for area in self.areas:
+                        belief_decay = self.sample_posterior_belief(area)
+                        self.decay_rates_dict = belief_decay
+                    self.debug("Sampled posterior decay rates: {}".format(self.decay_rates_dict))
+                    self.update_robot_status(robotStatus.IN_MISSION)
 
                 if len(self.decisions_made)>0 or (self.robot_status != robotStatus.IDLE.value) and (
                         self.robot_status != robotStatus.READY.value) and (
@@ -539,7 +569,7 @@ class Robot:
             # Wait before all other nodes have finished dumping their data
             if self.save:
                 if self.inference is not None:
-                    pu.dump_data((self.recorded_fdata, self.recorded_losses),
+                    pu.dump_data((self.recorded_fdata, self.observations_dict),
                                  '{}_robot{}_recorded_data'.format(filename, self.robot_id))
 
                 pu.dump_data(self.process_time_counter, '{}_robot{}_process_time'.format(filename, self.robot_id))
@@ -555,7 +585,7 @@ class Robot:
         Thinks of the best decision before starting mission
         :return:
         """
-        self.best_decision = self.greedy_best_decision()  # So inside here we can
+        self.best_decision = self.policy_max_value()
 
     def time_elapsed(self, think_start, think_end):
         """
@@ -646,17 +676,10 @@ class Robot:
         :param area_id:
         :return:
         """
-        # Store the decay rates at instance, (prior knowledge)
-        if self.decay_rates_dict[area_id] == None and msg.data is not None:
-            if self.robot_id < 999: self.debug("Area {} decay rate: {}".format(area_id, msg.data))
-            self.decay_rates_dict[area_id] = msg.data
-            self.decay_rates_counter += 1
-        else:
-            # If we are now on mission and oracle, we immediately update the decay rates for any evolution
-            if self.inference == 'oracle':
-                if self.decay_rates_dict[area_id] != msg.data: self.debug(
-                    "Oracle knowledge, change in decay in area {}: {}".format(area_id, msg.data))
-                self.decay_rates_dict[area_id] = msg.data  # A subscribed topic. Oracle knows exactly the decay rate happening in area
+        if self.inference == 'oracle':
+            if self.decay_rates_dict[area_id] != msg.data: self.debug(
+                "Oracle knowledge, change in decay in area {}: {}".format(area_id, msg.data))
+            self.decay_rates_dict[area_id] = msg.data  # A subscribed topic. Oracle knows exactly the decay rate happening in area
 
     def area_fmeasure_cb(self, msg, area_id):
         """
@@ -689,4 +712,4 @@ class Robot:
 if __name__ == '__main__':
     os.chdir('/root/catkin_ws/src/results/int_preservation')
     filename = rospy.get_param('/file_data_dump')
-    Robot('multiarmed_ucb').run_operation(filename)
+    Robot('online_posterior_sampling').run_operation(filename)
