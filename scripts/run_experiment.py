@@ -66,7 +66,7 @@ def run_experiment(method, world, nareas, placement, decay, tframe, nrobots=1, i
                 if method == 'treebased_decision':
                     params.append('discount:={}'.format(discount))
 
-                elif (method == 'heuristic_uncertainty' and inference == 'timeseries') or method == 'heuristic_decision': #TODO: Insert nrobots and task_scheduler
+                elif (method == 'heuristic_uncertainty' and inference == 'timeseries') or method == 'heuristic_decision' or method == 'online_posterior_sampling': #TODO: Insert nrobots and task_scheduler
                     fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_disc{}_exp{}_nvisits{}_{}robots_{}'.format(method, inference, world, nareas, placement, decay,
                                                                      dec_steps, i + 1, discount, exploration, nvisits, nrobots, task_scheduler)
                     params.append('discount:={}'.format(discount))
@@ -246,9 +246,13 @@ if __name__ == '__main__':
     # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100, nrobots=2,
     #                inference='oracle', dec_steps=1, discount=0.00, exploration=0.0, ntrials=(0, 3), task_scheduler='central_planner', save=True)
     #
-    run_experiment('online_posterior_sampling', 'office', 12, placement, 'non_uniform', 100, nrobots=1,
-                   inference='oracle', dec_steps=4, discount=0.75, exploration=0.0, ntrials=(0, 1),
-                   task_scheduler='central_planner', save=False)
+    run_experiment('online_posterior_sampling', 'office', 12, placement, 'non_uniform', 2100, nrobots=1,
+                   inference='bayesian', dec_steps=1, discount=0.95, exploration=20, ntrials=(0, 5),
+                   task_scheduler='central_planner', save=True)
+
+    run_experiment('online_posterior_sampling', 'cluttered', 12, placement, 'non_uniform', 2100, nrobots=1,
+                   inference='bayesian', dec_steps=1, discount=0.95, exploration=20, ntrials=(0, 5),
+                   task_scheduler='central_planner', save=True)
     #
     # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100, nrobots=2,
     #                inference='oracle', dec_steps=6, discount=0.75, exploration=0.0, ntrials=(0, 3), task_scheduler='central_planner', save=True)
@@ -313,6 +317,8 @@ if __name__ == '__main__':
     # run_experiment('dynamic_programming', 'cluttered', 8, placement, 'non_uniform', 3100,
     #                inference=None, dec_steps=4, ntrials=1, save=True)
 
-
+    # run_experiment('online_posterior_sampling', 'cluttered', 12, placement, 'non_uniform', 2100, nrobots=1,
+    #                inference='bayesian', dec_steps=1, discount=0.95, exploration=20, ntrials=(0, 5),
+    #                task_scheduler='central_planner', save=True)
     #Open
     #Adjust acml laser_max_range=20

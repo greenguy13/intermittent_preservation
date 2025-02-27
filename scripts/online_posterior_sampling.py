@@ -83,6 +83,8 @@ class Robot:
         self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
         self.save = rospy.get_param("/save")  # Whether to save data
         self.task_scheduler = rospy.get_param("/task_scheduler") #task scheduler
+        self.exploration = rospy.get_param("/exploration") #exploration constant
+        self.gamma = rospy.get_param("/gamma") #discount rate
 
         #Initialize variables
         self.init_x, self.init_y = rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y") #Initialize robot pose
@@ -103,7 +105,6 @@ class Robot:
         self.charging_station = 0
         self.curr_loc_idx = self.charging_station #Initial location robot is the charging station
         self.battery = self.max_battery #Initialize battery at max, then gets updated by subscribed battery topic
-        self.best_decision_idx = None
         self.dist_matrix = None
         # self.sampled_nodes_poses = None
         self.mission_area_idx = None
@@ -275,7 +276,6 @@ class Robot:
                     dist = self.compute_dist_bet_areas(area_i, area_j, self.tolerance)
                     self.dist_matrix[i, j] = dist
 
-        self.duration_matrix = self.dist_matrix / self.robot_velocity
 
         self.debug("Dist matrix: {}".format(self.dist_matrix))
 
@@ -321,7 +321,6 @@ class Robot:
             self.debug("Arrived at mision_area: {}".format(self.mission_area_idx))
             self.curr_loc_idx = self.mission_area_idx
             self.decisions_accomplished.append(self.mission_area_idx)
-            self.best_decision_idx = None
 
             if self.mission_area_idx == self.charging_station:
                 self.update_robot_status(robotStatus.CHARGING)
@@ -444,8 +443,10 @@ class Robot:
         init_true_state = STARState(self.curr_fmeasures, location=max(1, self.curr_loc_idx)) #Assumed location 1 is initial location
 
         num_particles = 1000
-        mu_F = np.mean(np.array(self.curr_fmeasures.values()))
-        sd_F = max(10, np.std(np.array(self.curr_fmeasures.values())))
+        # self.debug("Curr F: {}. Array: {}".format(self.curr_fmeasures.values(), np.array(self.curr_fmeasures.values())))
+        fmeasures = list(self.curr_fmeasures.values())
+        mu_F = np.mean(np.array(fmeasures))
+        sd_F = max(10, np.std(np.array(fmeasures)))
         init_belief = STARParticleBelief(num_particles, self.nareas, mu_F, sd_F, max(1, self.curr_loc_idx), noise_std=10) #Charging excluded from action space as we are enforcing the robot to recharge when no feasible actions
 
         #Agent and Problem
@@ -461,9 +462,9 @@ class Robot:
         STAR = self.build_pomdp()
         pomcp = pomdp_py.POMCP(
             max_depth=10,  # Increased search depth
-            discount_factor=0.95,
-            num_simsx=500,  # Increased simulations to improve planning
-            exploration_const=20,  # Reduced exploration for stability
+            discount_factor=self.gamma,
+            num_sims=500,  # Increased simulations to improve planning
+            exploration_const=self.exploration, # Reduced exploration for stability
             rollout_policy=STAR.agent.policy_model,
             show_progress=True,
             pbar_update_interval=500,
@@ -678,6 +679,8 @@ class Robot:
         # Send notice to areas about their robot assignment
         self.area_assignment_notice(self.assigned_areas)
 
+        self.schedule = list() #Schedule container to computed by POMDP solver
+
         self.curr_fmeasures = dict()  # container of current F-measure of areas
         self.decay_rates_dict = dict()  # dictionary for decay rates
         self.tlapses = dict()  # dictionary containing tlapses of areas
@@ -695,7 +698,7 @@ class Robot:
             area_id = self.get_assigned_area_id(area_idx)
             self.subscribe_fmeasures[area_id] = rospy.Subscriber('/area_{}/fmeasure'.format(area_id), Float32,
                                                                  self.area_fmeasure_cb,
-                                                                 area_id)  # REMARK: Here we assume that we have live measurements of the F-measures
+                                                                 area_id)  # REMARK: If oracle knowledge this is toggled to receive actual F
             self.subscribe_statuses[area_id] = rospy.Subscriber('/area_{}/status'.format(area_id), Int8, self.area_status_cb, area_id)
 
         #Variables for online PSRL
@@ -754,7 +757,9 @@ class Robot:
             decay_rates[area_id] = self.decay_rates_dict[area_idx]
 
         # state = (self.sim_t, self.get_assigned_area_id(self.curr_loc_idx), self.battery, tlapses, decay_rates)
-        state = (self.get_assigned_area_id(self.curr_loc_idx), self.battery, tlapses, decay_rates)
+
+        state = (self.curr_loc_idx if self.curr_loc_idx == self.charging_station else self.get_assigned_area_id(self.curr_loc_idx),
+                 self.battery, tlapses, decay_rates)
         return state
 
     #TODO: Adapt online PSRL
@@ -773,6 +778,8 @@ class Robot:
             while self.dist_matrix is None:
                 self.debug("Initialization: No cluster assignment yet. Waiting for assignment...")
                 rospy.sleep(1)
+
+            self.duration_matrix = self.dist_matrix / self.robot_velocity
 
             # Posterior sample
             for area_idx in self.areas:
@@ -817,7 +824,7 @@ class Robot:
 
                     self.process_time_counter.append(think_elapsed)
 
-                    self.debug('Best decision: {}. Process time: {}s'.format(self.get_assigned_area_id(self.best_decision_idx), think_elapsed))
+                    self.debug('Schedule POMDP: {}. Process time: {}s'.format(self.schedule, think_elapsed))
 
                     if self.requested_pause:
                         self.request_pause(False)
@@ -901,7 +908,8 @@ class Robot:
         Thinks of the best decision before starting mission
         :return:
         """
-        self.best_decision_idx = self.policy_max_value()
+        self.schedule = self.pomcp_solver() #This is a list actually
+        self.debug("POMCP solver schedule: {}".format(self.schedule))
 
     def time_elapsed(self, think_start, think_end):
         """
@@ -924,14 +932,26 @@ class Robot:
         Sends the robot to the next area in the optimal path:
         :return:
         """
-        if self.best_decision_idx is not None:
-            self.mission_area_idx = self.best_decision_idx #TODO: Will the robot charge up battery?
-            mission_area_id = self.charging_station
-            if self.mission_area_idx != self.charging_station:
-                mission_area_id = self.get_assigned_area_id(self.mission_area_idx) #TODO: Will the robot charge up battery?
+        if len(self.schedule):
+            # Retrieve mission area id
+            self.mission_area_idx = self.schedule.pop(0)
+            mission_area_id = self.get_assigned_area_id(self.mission_area_idx)
+
+            # If it is not the charging station, check whether it is feasible. If not, then set the mission area as the charging station
+            if self.mission_area_idx is not self.charging_station:
+                battery_consumed = self.consume_battery(self.curr_loc_idx, self.mission_area_idx,
+                                                        self.curr_fmeasures[self.mission_area_idx], self.noise)
+                if not is_feasible(self.battery, battery_consumed, self.battery_reserve):
+                    self.debug(
+                        'Not enough battery to visit {}. Heading back to charging station and resetting schedule...'.format(
+                            mission_area_id))
+                    self.schedule = []
+                    self.mission_area_idx = self.charging_station
+                    mission_area_id = self.charging_station
+
             self.mission_area_idx_pub.publish(mission_area_id)
             self.debug('Heading to: {}. {}'.format(mission_area_id, self.sampled_nodes_poses[self.mission_area_idx]))
-            self.decisions_made.append(mission_area_id) #store decisions made
+            self.decisions_made.append(mission_area_id)  # store decisions made
             self.go_to_target(self.mission_area_idx)
             return 1
         return 0
