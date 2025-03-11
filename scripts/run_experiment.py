@@ -246,13 +246,13 @@ if __name__ == '__main__':
     # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100, nrobots=2,
     #                inference='oracle', dec_steps=1, discount=0.00, exploration=0.0, ntrials=(0, 3), task_scheduler='central_planner', save=True)
     #
-    run_experiment('online_posterior_sampling', 'office', 12, placement, 'non_uniform', 2100, nrobots=1,
-                   inference='bayesian', dec_steps=1, discount=0.95, exploration=20, ntrials=(0, 5),
-                   task_scheduler='central_planner', save=True)
+    run_experiment('heuristic_decision', 'office', 4, placement, 'non_uniform', 200, nrobots=2,
+                   inference='oracle', dec_steps=1, discount=0.95, exploration=20, ntrials=(0, 5),
+                   task_scheduler='central_planner', save=False)
 
-    run_experiment('online_posterior_sampling', 'cluttered', 12, placement, 'non_uniform', 2100, nrobots=1,
-                   inference='bayesian', dec_steps=1, discount=0.95, exploration=20, ntrials=(0, 5),
-                   task_scheduler='central_planner', save=True)
+    # run_experiment('online_posterior_sampling', 'cluttered', 12, placement, 'non_uniform', 2100, nrobots=1,
+    #                inference='bayesian', dec_steps=1, discount=0.95, exploration=20, ntrials=(0, 5),
+    #                task_scheduler='central_planner', save=True)
     #
     # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100, nrobots=2,
     #                inference='oracle', dec_steps=6, discount=0.75, exploration=0.0, ntrials=(0, 3), task_scheduler='central_planner', save=True)
