@@ -29,7 +29,6 @@ from int_preservation.srv import pauseSimulation
 from int_preservation.srv import flevel, flevelRequest
 from pomdp_star import *
 import pomdp_py
-from pomdp_py.utils import TreeDebugger
 
 def request_fmeasure(area, msg=True):
     """
@@ -143,8 +142,6 @@ class Robot:
 
         #Server for assigned cluster to monitor/preserve
         self.cluster_assignment_server = rospy.Service("/cluster_assignment_server_" + str(self.robot_id), clusterAssignment, self.cluster_assignment_cb)
-
-        #TODO: Need to publish assignment_status for the re-assignment case
 
         """
         On charging:
@@ -373,7 +370,6 @@ class Robot:
 
         return total_battery_consumption, feasible_battery
 
-    #TODO: Insert methods for online PSRL
     def compute_reward(self, fmeasure):
         """
         Computes reward of action based on loss that has been saved up
@@ -384,62 +380,27 @@ class Robot:
         reward = -loss_fcn(self.max_fmeasure, fmeasure)
         return reward
 
-    # def policy_max_value(self):
-    #     """
-    #     Policy that takes the feasible action that has the max value
-    #     :return:
-    #     """
-    #     # Evaluate feasible decisions
-    #     decision_array = []
-    #     for decision_idx in self.areas:
-    #         # Battery consumption
-    #         battery_consumption, feasible_battery = self.estimate_battery_params(decision_idx, self.battery, self.curr_loc_idx,
-    #                                                                              self.curr_fmeasures, self.noise) #TODO: Here we are using self.curr_fmeasures. Ensure that this is computed and updated based on observed data and belief, not oracle
-    #         # self.debug("Batt consumption: {}. Feasible batt: {}".format(battery_consumption, feasible_battery))
-    #
-    #         if not prune(self.battery, battery_consumption, self.battery_reserve) and decision_idx != self.curr_loc_idx:
-    #             #Compute the value based on belief decay rate`
-    #             duration = self.compute_duration(self.curr_loc_idx, decision_idx, self.curr_fmeasures[decision_idx],
-    #                                              self.restoration, self.noise)
-    #             updated_fmeasures = self.adjust_fmeasures(self.curr_fmeasures.copy(), decision_idx, duration)  # F-measure of areas adjusted accordingly, i.e., consequence of decision
-    #             value = self.compute_reward(updated_fmeasures[decision_idx])
-    #             decision_array.append((decision_idx, value, feasible_battery))
-    #
-    #     best_decision_idx = self.charging_station
-    #
-    #     if len(decision_array) > 0:
-    #         best_decision_idx = self.get_max_value(decision_array)
-    #
-    #     return best_decision_idx
-
     def construct_transition_model(self):
         # Transition
-        # decay_rates = {0: 1.5, 1: 1.0, 2: 2.0, 3: 1.2} #This is based on the belief
-        # duration_matrix = 10 * np.ones((len(decay_rates), len(decay_rates)))
-        # F_max = 100.0
         transition_model = STARTransitionModel(self.duration_matrix, self.decay_rates_dict, self.max_fmeasure)
         return transition_model
 
     def build_pomdp(self):
 
         #Transition Model
-        transition_model = self.construct_transition_model() #TODO: Agent transition model
-        env_transition_model = self.construct_transition_model() #TODO: Environment transition model
+        transition_model = self.construct_transition_model()
+        env_transition_model = self.construct_transition_model()
 
         #Observation Model
         observation_model = STARObservationModel(noise_std=15)
 
         #Policy model
-        policy_model = STARPolicyModel(num_areas=self.nareas)
+        policy_model = STARPolicyModel(num_areas=self.nareas) #Action space would be the areas to restore. Charging becomes the action when no feasible battery remaining
 
         #Reward model
         reward_model = STARRewardModel(self.duration_matrix, self.fcrit, self.batt_consumed_per_travel_time)
 
         #Initialize true state and belief
-        # F_initial = {0: 30.0, 1: 60.0, 2: 45.0, 3: 90.0} #TODO: This needs to have curr_fmeasures. But we know that this should not be oracle. Only computed based on beliefs
-
-        #TODO: Measure the belief curr_fmeasures based on belief decay rates and tlapse per area
-
         init_true_state = STARState(self.curr_fmeasures, location=max(1, self.curr_loc_idx)) #Assumed location 1 is initial location
 
         num_particles = 1000
@@ -447,7 +408,7 @@ class Robot:
         fmeasures = list(self.curr_fmeasures.values())
         mu_F = np.mean(np.array(fmeasures))
         sd_F = max(10, np.std(np.array(fmeasures)))
-        init_belief = STARParticleBelief(num_particles, self.nareas, mu_F, sd_F, max(1, self.curr_loc_idx), noise_std=10) #Charging excluded from action space as we are enforcing the robot to recharge when no feasible actions
+        init_belief = STARParticleBelief(num_particles, self.nareas, mu_F, sd_F, max(1, self.curr_loc_idx), noise_std=10) #Charging excluded from action space as recharge only when no feasible actions
 
         #Agent and Problem
         STAR = STARProblem(init_true_state, init_belief, policy_model=policy_model, transition_model=transition_model,
@@ -456,7 +417,7 @@ class Robot:
 
         return STAR
 
-    def pomcp_solver(self, debug=False):
+    def pomcp_solver(self):
         self.debug("** Testing POMCP **")
 
         STAR = self.build_pomdp()
@@ -469,17 +430,8 @@ class Robot:
             show_progress=True,
             pbar_update_interval=500,
         )
-
         schedule = test_planner(STAR, pomcp, nsteps=self.dec_steps)
-        if debug:
-            TreeDebugger(STAR.agent.tree).pp
-
         return schedule #This is the schedule to be followed by the robot
-
-        #TODO: Question: What does this return? A set of actions for a given number of steps? Is this k then
-        # Idea: Is we run the solver for k steps using current parameters.
-        # After that, we update the parameters from the k observtions--this is PSRL
-        # Q: What are the parameters to udpate then?
 
     def compute_duration(self, start_area_idx, next_area_idx, curr_measure, restoration, noise):
         """
@@ -536,14 +488,6 @@ class Robot:
         :param t:
         :return:
         """
-
-        """
-        Verify:
-            1. visit_area index - area_idx
-            2. fmeasure area key - area_idx
-            3. decay_rates_dict key - area_idx
-        """
-
         for area_idx in self.areas:
             if area_idx == visit_area_idx:
                 fmeasures[area_idx] = self.max_fmeasure
@@ -613,9 +557,6 @@ class Robot:
         #Update belief
         self.posterior_belief_disbn[area_idx] = (mean_posterior, sd_posterior)
 
-        #Update belief decay rates? This we shall use in the POMDP solver
-        #TODO: Update decay rates
-
     def sample_posterior_belief(self, area_idx):
         """
         Samples decay rate from current posterior belief on decay distribution
@@ -662,7 +603,6 @@ class Robot:
                 self.subscribe_statuses[area_id].unsubscribe()
                 self.debug("Unsubscribed from previously assigned Area {} status topic".format(area_id))
 
-    #I am here
     def instantiate_variables(self, assigned_areas, decay_rates, tlapses):
         """
         Instantiates variables for every new assigned areas/cluster
@@ -689,7 +629,7 @@ class Robot:
             self.tlapses[area_idx] = tlapses[area_idx-1] #Instantiate provided tlapses
 
         # Unsubscribe from previous area topics
-        # self.unsubscribe_previous_area_topics() TODO: Debug this one for the case with re-assignment
+        # self.unsubscribe_previous_area_topics()
         self.subscribe_fmeasures = dict()
         self.subscribe_statuses = dict()
 
@@ -712,11 +652,6 @@ class Robot:
             self.recorded_fdata[area_idx] = list()
             self.observations_dict[area_idx] = list()
             self.posterior_belief_disbn[area_idx] = (init_mean, init_sd)
-
-        # # Wait for self.curr_fmeasures to be populated
-        # while set(list(self.curr_fmeasures.keys())) != set(self.areas):
-        #     self.debug("Subscribing to area topics...")
-        #     rospy.sleep(1)
 
         # Sampled node poses and distance matrix
         self.sampled_nodes_poses = self.extract_sampled_node_poses(self.assigned_areas)
@@ -756,13 +691,10 @@ class Robot:
             # self.debug("Area id: {}. idx: {}. Decay rates: {}".format(area_id, area_idx, self.decay_rates_dict))
             decay_rates[area_id] = self.decay_rates_dict[area_idx]
 
-        # state = (self.sim_t, self.get_assigned_area_id(self.curr_loc_idx), self.battery, tlapses, decay_rates)
-
         state = (self.curr_loc_idx if self.curr_loc_idx == self.charging_station else self.get_assigned_area_id(self.curr_loc_idx),
                  self.battery, tlapses, decay_rates)
         return state
 
-    #TODO: Adapt online PSRL
     #Methods: Run operation
     def run_operation(self, filename, freq=1):
         """
@@ -791,7 +723,6 @@ class Robot:
                                                                                          self.sampled_nodes_poses))  # Prior knowledge of decay rates
 
             self.sim_t = 0
-            # while not rospy.is_shutdown() and self.sim_t<self.t_operation:
             while not rospy.is_shutdown():
                 curr_state = self.get_current_state()
                 self.state.append(curr_state)
@@ -813,10 +744,7 @@ class Robot:
 
                 elif self.robot_status == robotStatus.READY.value:
                     self.debug('Robot ready')
-
-                    #TODO: Insert pause request here
                     self.request_pause(True) #Request pause simulation
-
                     think_start = process_time()
                     self.think_decisions()
                     think_end = process_time()
@@ -833,7 +761,7 @@ class Robot:
 
                 elif self.robot_status == robotStatus.IN_MISSION.value:
                     self.debug('Robot in mission. Total distance travelled: {}'.format(self.total_dist_travelled))
-                    if self.available: #TODO: Insert the variable self.assigned for re-assignment case
+                    if self.available:
                         self.commence_mission()
 
                 elif self.robot_status == robotStatus.CONSIDER_REPLAN.value:
@@ -846,7 +774,6 @@ class Robot:
                     self.update_robot_status(robotStatus.IN_MISSION)
 
                 elif self.robot_status == robotStatus.CHARGING.value:
-                    #TODO: Po, we insert self.assign_status = unassigned here for central's reconsideration. HERE!
                     self.debug('Waiting for battery to charge up')
 
                 elif self.robot_status == robotStatus.RESTORING_F.value:
@@ -867,23 +794,6 @@ class Robot:
                     pu.dump_data(self.status_history, '{}_robot{}_status_history'.format(filename, self.robot_id))
 
                 rate.sleep()
-
-            # #Store results
-            # self.update_robot_status(robotStatus.SHUTDOWN) #TODO: There should be a notice that come from central actually
-            # self.robot_status_pub.publish(self.robot_status)
-            # self.location_pub.publish(self.get_assigned_area_id(self.curr_loc_idx))
-            # self.status_history.append(self.robot_status)
-            #
-            # #Wait before all other nodes have finished dumping their data
-            # if self.save:
-            #     pu.dump_data(self.strict_bounds_list, '{}_strict_bounds'.format(filename))
-            #     pu.dump_data(self.state, '{}_environment_state'.format(filename))
-            #     pu.dump_data(self.process_time_counter, '{}_robot{}_process_time'.format(filename, self.robot_id))
-            #     pu.dump_data(self.decisions_made, '{}_robot{}_decisions'.format(filename, self.robot_id))
-            #     pu.dump_data((self.decisions_accomplished, self.total_dist_travelled), '{}_robot{}_decisions_acc_travel'.format(filename, self.robot_id))
-            #     pu.dump_data(self.status_history, '{}_robot{}_status_history'.format(filename, self.robot_id))
-            #     self.debug("Dumped all data.".format(self.robot_id))
-            # self.shutdown(sleep=10)
 
     """
     NOTE: For the subscribed/published topics and data storages, as well as self.debugs! use assigned area ids! All else area index
@@ -908,7 +818,7 @@ class Robot:
         Thinks of the best decision before starting mission
         :return:
         """
-        self.schedule = self.pomcp_solver() #This is a list actually
+        self.schedule = self.pomcp_solver()
         self.debug("POMCP solver schedule: {}".format(self.schedule))
 
     def time_elapsed(self, think_start, think_end):
@@ -1032,9 +942,8 @@ class Robot:
         :param area_id:
         :return:
         """
-        # if self.inference == 'oracle':
         area_idx = self.get_assigned_area_index(area_id)
-        if self.assigned_areas is not None and self.decay_rates_dict[area_idx] == None and self.robot_id < 999:
+        if self.assigned_areas is not None and self.decay_rates_dict[area_idx] is None and self.robot_id < 999:
             self.debug("Area {} decay rate: {}".format(area_id, msg.data))
             self.decay_rates_dict[area_idx] = msg.data
 
@@ -1065,7 +974,6 @@ class Robot:
         kill_nodes(sleep)
 
 if __name__ == '__main__':
-    # os.chdir('/home/ameldocena/.ros/int_preservation/results')
     os.chdir('/root/catkin_ws/src/results/int_preservation')
     filename = rospy.get_param('/file_data_dump')
     Robot('online_posterior_sampling').run_operation(filename)

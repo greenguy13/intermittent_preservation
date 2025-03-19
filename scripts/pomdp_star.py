@@ -7,7 +7,6 @@ This implements STAR as a POMDP and uses POMCP to solve the POMDP
 import pomdp_py
 import random
 import numpy as np
-from pomdp_py.utils import TreeDebugger
 import random
 
 random.seed(1234) #For reproducibility
@@ -76,11 +75,8 @@ class STARTransitionModel(pomdp_py.TransitionModel):
         for i, F_i in state.F_values.items():
             if i == target_area:
                 new_F_values[i] = self.F_max  # Reset to max upon restoration
-                # new_F_values[i] = min(self.F_max - random.gauss(0, 25), self.F_max)
-                # new_F_values[i] = min(self.F_max, random.gauss(self.F_max - 5, 10)) #Area restored back to max value, added with Gaussian noise to prevent particle depletion
             else:
                 new_F_values[i] = max(0, F_i - self.decay_rates[i] * travel_time)  # Other areas decay by the duration based on belief decay rates
-                # new_F_values[i] = min(max(0, F_i - (self.decay_rates[i] + random.gauss(0, 2)) * travel_time), self.F_max) #Other areas decay for the duration, added Gaussian noise to prevent particle depletion
 
         # Update robot's location
         new_location = target_area
@@ -98,7 +94,6 @@ class STARObservation(pomdp_py.Observation):
         """
         self.observed_F = observed_F  # The exact F value observed upon restoration.
         self.area = area
-        # self.name = str(self.area) + " " + str(observed_F)
 
     def __hash__(self):
         """ Hash function for storing observations in sets/dictionaries. """
@@ -331,7 +326,7 @@ class STARProblem(pomdp_py.POMDP):
 
 
 #### Test planner
-def test_planner(STAR_problem, planner, nsteps=3, debug_tree=False):
+def test_planner(STAR_problem, planner, nsteps=3):
     """
     Runs the action-feedback loop of STAR problem POMDP
 
@@ -346,8 +341,6 @@ def test_planner(STAR_problem, planner, nsteps=3, debug_tree=False):
     for i in range(nsteps):
         action = planner.plan(STAR_problem.agent)
         schedule.append(action.target_area)
-        if debug_tree:
-            from pomdp_py.utils import TreeDebugger
 
         print("==== Step %d ====" % (i + 1))
         print(f"True state: {STAR_problem.env.state}")
