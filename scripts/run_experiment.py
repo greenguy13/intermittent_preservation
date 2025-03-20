@@ -60,13 +60,13 @@ def run_experiment(method, world, nareas, placement, decay, tframe, nrobots=1, i
                           'tframe:={}'.format(tframe), 'placement:={}'.format(placement),
                           'fileposes:={}'.format(fileposes),
                           'task_scheduler:={}'.format(task_scheduler),
-                          'save:={}'.format(save)] #TODO: Insert task_scheduler for uncertainty solution. Although, we haven't worked on a script for this yet
+                          'save:={}'.format(save)]
                 fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_{}robots_{}'.format(method, inference, world, nareas, placement, decay, dec_steps, i + 1, nrobots, task_scheduler)
 
                 if method == 'treebased_decision':
                     params.append('discount:={}'.format(discount))
 
-                elif (method == 'heuristic_uncertainty' and inference == 'timeseries') or method == 'heuristic_decision' or method == 'online_posterior_sampling': #TODO: Insert nrobots and task_scheduler
+                elif (method == 'heuristic_uncertainty' and inference == 'timeseries') or method == 'heuristic_decision' or method == 'online_posterior_sampling':
                     fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_disc{}_exp{}_nvisits{}_{}robots_{}'.format(method, inference, world, nareas, placement, decay,
                                                                      dec_steps, i + 1, discount, exploration, nvisits, nrobots, task_scheduler)
                     params.append('discount:={}'.format(discount))
@@ -76,7 +76,7 @@ def run_experiment(method, world, nareas, placement, decay, tframe, nrobots=1, i
                         params.append('history_data:={}'.format(history_data))
                         params.append('history_decisions:={}'.format(history_decisions))
 
-                elif method == 'multiarmed_ucb' or method == 'correlated_ucb': #TODO: Insert nrobots and task_scheduler
+                elif method == 'multiarmed_ucb' or method == 'correlated_ucb':
                     fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_exp{}_{}robots_{}'.format(method, inference, world,
                                                                                             nareas, placement, decay,
                                                                                             dec_steps, i + 1, exploration,
@@ -88,7 +88,7 @@ def run_experiment(method, world, nareas, placement, decay, tframe, nrobots=1, i
                     "Launching...method: {}, inference: {}, world: {}, nareas: {}, nrobots: {}, task_scheduler: {}, decay: {}, dsteps: {}, discount: {}, exploration: {}, nvisits: {}, tframe: {}, placement: {}, trial: {}, save: {}".format(
                         method, inference, world, nareas, nrobots, task_scheduler, decay, dec_steps, discount, exploration, nvisits, tframe, placement, i + 1, save))
 
-            else: #TODO: Insert here task_scheduler for methods without inference (heuristic_decision, multi_op solns)
+            else:
                 fileresult = '{}_{}_n{}_p{}_{}_k{}_{}_{}robots_{}'.format(method, world, nareas, placement, decay, dec_steps, i + 1, nrobots, task_scheduler)
                 params = ['method:={}'.format(method),
                           'world:={}'.format(world), 'nareas:={}'.format(nareas),
@@ -148,8 +148,6 @@ if __name__ == '__main__':
     # placement = 1
     # run_experiment('rma_search', 'office', 12, placement, 'non_uniform', 50,
     #                inference=None, dec_steps=4, ntrials=(0, 1), save=True)
-
-    # #TODO: We can potentially set discount and exploration rates as parameter to run_experiment
 
     placement = 1
     #
@@ -251,9 +249,14 @@ if __name__ == '__main__':
     #                inference='oracle', dec_steps=1, discount=0.95, exploration=20, ntrials=(0, 5),
     #                task_scheduler='central_planner', save=False)
 
-    run_experiment('online_posterior_sampling', 'office', 12, placement, 'non_uniform', 500, nrobots=2,
-                   inference='bayesian', dec_steps=1, discount=0.95, exploration=20, ntrials=(0, 1),
-                   task_scheduler='central_planner', save=False)
+    # run_experiment('online_posterior_sampling', 'office', 12, placement, 'non_uniform', 500, nrobots=2,
+    #                inference='bayesian', dec_steps=1, discount=0.95, exploration=20, ntrials=(0, 1),
+    #                task_scheduler='central_planner', save=False)
+
+    run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 150,
+                   inference='optimistic', dec_steps=1, exploration=0.90, ntrials=(0,1), save=False,
+                   task_scheduler='central_planner', nrobots=2)
+
     #
     # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100, nrobots=2,
     #                inference='oracle', dec_steps=6, discount=0.75, exploration=0.0, ntrials=(0, 3), task_scheduler='central_planner', save=True)
