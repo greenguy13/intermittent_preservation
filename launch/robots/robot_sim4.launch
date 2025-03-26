@@ -7,8 +7,8 @@
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
                 <arg name="robot" value="1"/>
                 <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="-3.0"/>
-                <arg name="initial_pose_y" value="-5.0"/>
+                <arg name="initial_pose_x" value="-12.0"/>
+                <arg name="initial_pose_y" value="-15.0"/>
             </include>
         </group>
 
@@ -36,8 +36,8 @@
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
                 <arg name="robot" value="2"/>
                 <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="-7.0"/>
-                <arg name="initial_pose_y" value="-5.0"/>
+                <arg name="initial_pose_x" value="-18.0"/>
+                <arg name="initial_pose_y" value="-2.0"/>
             </include>
         </group>
 
@@ -65,8 +65,8 @@
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
                 <arg name="robot" value="3"/>
                 <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="-5.0"/>
-                <arg name="initial_pose_y" value="-8.0"/>
+                <arg name="initial_pose_x" value="-6.0"/>
+                <arg name="initial_pose_y" value="-3.0"/>
             </include>
         </group>
 
@@ -94,8 +94,8 @@
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
                 <arg name="robot" value="4"/>
                 <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="-7.0"/>
-                <arg name="initial_pose_y" value="-8.0"/>
+                <arg name="initial_pose_x" value="-5.0"/>
+                <arg name="initial_pose_y" value="-10.0"/>
             </include>
         </group>
 

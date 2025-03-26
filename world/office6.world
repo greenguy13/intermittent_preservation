@@ -28,3 +28,17 @@ pioneer3at
   color "DarkBlue"
   pose [-5.0 -10.0 0.0 0.0]
 )
+
+pioneer3at
+(
+  name "robot5"
+  color "DarkBlue"
+  pose [-18.0 -7.0 0.0 0.0]
+)
+
+pioneer3at
+(
+  name "robot6"
+  color "DarkBlue"
+  pose [-13.0 -2.0 0.0 0.0]
+)

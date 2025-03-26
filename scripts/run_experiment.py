@@ -249,14 +249,61 @@ if __name__ == '__main__':
     #                inference='oracle', dec_steps=1, discount=0.95, exploration=20, ntrials=(0, 5),
     #                task_scheduler='central_planner', save=False)
 
-    # run_experiment('online_posterior_sampling', 'office', 12, placement, 'non_uniform', 500, nrobots=2,
-    #                inference='bayesian', dec_steps=1, discount=0.95, exploration=20, ntrials=(0, 1),
+    # 2 robots, cluttered, 12 areas, no decay evolution/uncertainty
+    # run_experiment('heuristic_decision', 'cluttered', 12, placement, 'non_uniform', 2100, nrobots=2,
+    #                inference='oracle', dec_steps=1, discount=0.75, exploration=0.0, ntrials=(0, 5),
+    #                task_scheduler='central_planner', save=True)
+    #
+    # run_experiment('heuristic_decision', 'cluttered', 12, placement, 'non_uniform', 2100, nrobots=2,
+    #                inference='oracle', dec_steps=2, discount=0.75, exploration=0.0, ntrials=(0, 5),
+    #                task_scheduler='central_planner', save=True)
+    #
+    # run_experiment('heuristic_decision', 'cluttered', 12, placement, 'non_uniform', 2100, nrobots=2,
+    #                inference='oracle', dec_steps=3, discount=0.75, exploration=0.0, ntrials=(0, 5),
+    #                task_scheduler='central_planner', save=True)
+    #
+    # run_experiment('dynamic_programming', 'cluttered', 12, placement, 'non_uniform', 2100,
+    #                nrobots=2, inference='oracle', dec_steps=3, ntrials=(0, 5),
+    #                task_scheduler='central_planner', save=True)  # 3100
+    #
+    # run_experiment('online_posterior_sampling', 'cluttered', 12, placement, 'non_uniform', 2100, nrobots=2,
+    #                inference='bayesian', dec_steps=1, discount=0.95, exploration=20, ntrials=(0, 5),
+    #                task_scheduler='central_planner', save=True)
+    #
+    # run_experiment('correlated_ucb', 'cluttered', 12, placement, 'non_uniform', 2100, nrobots=2,
+    #                inference='optimistic', dec_steps=1, exploration=0.90, ntrials=(0, 5),
+    #                task_scheduler='central_planner', save=True)
+
+    # Use for visualizing in placing the robot
+    # run_experiment('heuristic_decision', 'office', 4, placement, 'non_uniform', 100, nrobots=1,
+    #                inference='oracle', dec_steps=1, discount=0.75, exploration=0.0, ntrials=(0, 1),
     #                task_scheduler='central_planner', save=False)
 
-    run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 150,
-                   inference='optimistic', dec_steps=1, exploration=0.90, ntrials=(0,1), save=False,
-                   task_scheduler='central_planner', nrobots=2)
+    # 6 robots, office, 12 areas, no decay evolution/uncertainty
+    run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100, nrobots=6,
+                   inference='oracle', dec_steps=1, discount=0.75, exploration=0.0, ntrials=(0, 5),
+                   task_scheduler='central_planner', save=True)
 
+    run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100, nrobots=6,
+                   inference='oracle', dec_steps=2, discount=0.75, exploration=0.0, ntrials=(0, 5), task_scheduler='central_planner', save=True)
+
+    run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100, nrobots=6,
+                   inference='oracle', dec_steps=3, discount=0.75, exploration=0.0, ntrials=(0, 5),
+                   task_scheduler='central_planner', save=True)
+
+    run_experiment('dynamic_programming', 'office', 12, placement, 'non_uniform', 2100,
+                   nrobots=6, inference='oracle', dec_steps=3, ntrials=(0, 5),
+                   task_scheduler='central_planner', save=True)  # 3100
+
+    run_experiment('online_posterior_sampling', 'office', 12, placement, 'non_uniform', 2100, nrobots=6,
+                   inference='bayesian', dec_steps=1, discount=0.95, exploration=20, ntrials=(0, 5),
+                   task_scheduler='central_planner', save=True)
+
+    run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 2100, nrobots=6,
+                   inference='optimistic', dec_steps=1, exploration=0.90, ntrials=(0, 5), task_scheduler='central_planner', save=True)
+
+
+    # PREVIOUS PROJECT RUNS
     #
     # run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100, nrobots=2,
     #                inference='oracle', dec_steps=6, discount=0.75, exploration=0.0, ntrials=(0, 3), task_scheduler='central_planner', save=True)
