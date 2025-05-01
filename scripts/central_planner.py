@@ -103,7 +103,7 @@ class CentralPlanner:
         self.robot_velocity = rospy.get_param("/robot_velocity")  # Linear velocity of robot; we assume linear and angular are relatively equal
         self.gamma = rospy.get_param("/gamma")  # discount factor
         self.max_fmeasure = rospy.get_param("/max_fmeasure")  # Max F-measure of an area
-        self.max_battery = rospy.get_param("/max_battery")  # Max battery
+        # self.max_battery = rospy.get_param("/max_battery")  # Max battery
         self.battery_reserve = rospy.get_param("/battery_reserve")  # Battery reserve
         self.tolerance = rospy.get_param("/move_base_tolerance")
         self.charging_station = 0 #charging station index
@@ -384,9 +384,19 @@ class CentralPlanner:
             self.debug("Area {} decay rate: {}".format(area_id, msg.data))
             self.decay_rates[area_id] = msg.data
 
+
+    ### TODO: This part here for the novelty
     def create_clusters(self):
         """
         Creates clusters
+
+        #PO: We can start here. This is the truth.
+        UPNEXT
+        1. Collect the decay rates.
+        2. Distance from each other: x,y pose
+        3. Urgency: Heuristic, what if we postpone restoring this area?
+        If an area has the least valuation, then it is not urgent and can be postponed restoration for more urgent ones
+
         :return:
         """
 
@@ -635,10 +645,9 @@ class CentralPlanner:
             if self.status == centralStatus.IDLE.value:
                 self.debug("Idle central state. Creating and assigning clusters") #TODO: It should not create clusters anymore if already did previously
 
-                # TODO: Send pause simulation request here
                 self.request_pause(True)
                 self.clusters = self.create_clusters() #Thinking. Pause
-                self.request_pause(False)  # TODO: Un-pause simulation
+                self.request_pause(False)
                 self.assign_clusters(self.clusters)
 
                 if len(self.unassigned_robots) == 0: #TODO: We need a validation whether the pause/unpause mechanism works, given that we are working/dealing with a queue and we wait until all requests have been resolved
@@ -647,17 +656,15 @@ class CentralPlanner:
             elif self.status == centralStatus.IN_MISSION.value:
                 self.debug("Central in mission...")
 
-                self.update_tlapses_areas() #TODO: Update tlapses here. Yea this is correct should be +=1. Or could be from time. Yea we can use from time
+                self.update_tlapses_areas()
 
             elif self.status == centralStatus.CONSIDER_REPLAN.value:
                 self.debug("Central considers re-assignment...")
 
-            #TODO: Check whether enough data have been collected. Then we shutdown.
             self.shutdown_check()
 
             rospy.sleep(1)
         # TODO: Save central data if any
-        # self.shutdown(sleep=10)
 
     def shutdown_check(self):
         """

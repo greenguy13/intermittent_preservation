@@ -8,6 +8,7 @@
                 <arg name="method" value="$(arg method)"/>
                 <arg name="initial_pose_x" value="-10.0"/>
                 <arg name="initial_pose_y" value="-10.0"/>
+                <arg name="max_battery" value="100"/>
             </include>
         </group>
 
@@ -17,6 +18,7 @@
                 <arg name="method" value="$(arg method)"/>
                 <arg name="initial_pose_x" value="0.0"/>
                 <arg name="initial_pose_y" value="0.0"/>
+                <arg name="max_battery" value="100"/>
             </include>
         </group>
 
@@ -26,6 +28,7 @@
                 <arg name="method" value="$(arg method)"/>
                 <arg name="initial_pose_x" value="2.0"/>
                 <arg name="initial_pose_y" value="0.0"/>
+                <arg name="max_battery" value="100"/>
             </include>
         </group>
     </group>
@@ -37,6 +40,7 @@
                 <arg name="method" value="$(arg method)"/>
                 <arg name="initial_pose_x" value="-5.0"/>
                 <arg name="initial_pose_y" value="-3.0"/>
+                <arg name="max_battery" value="100"/>
             </include>
         </group>
 
@@ -46,6 +50,7 @@
                 <arg name="method" value="$(arg method)"/>
                 <arg name="initial_pose_x" value="0.0"/>
                 <arg name="initial_pose_y" value="0.0"/>
+                <arg name="max_battery" value="100"/>
             </include>
         </group>
 
@@ -55,6 +60,7 @@
                 <arg name="method" value="$(arg method)"/>
                 <arg name="initial_pose_x" value="2.0"/>
                 <arg name="initial_pose_y" value="0.0"/>
+                <arg name="max_battery" value="100"/>
             </include>
         </group>
     </group>

@@ -3,7 +3,8 @@
 <arg name="robot"/>
 <arg name="method"/>
 <arg name="initial_pose_x"/>
-<arg name="initial_pose_y" />
+<arg name="initial_pose_y"/>
+<arg name="max_battery"/>
 <arg name="robot_id" value="$(eval arg('robot') - 1)"/>
 <arg name="robot_prefix" value="robot_$(arg robot_id)"/>
 
@@ -40,12 +41,14 @@
 
 <node name="battery" pkg="int_preservation" type="battery.py">
     <param name="robot_id" value="$(arg robot_id)"/>
+    <param name="max_battery" value="$(arg max_battery)"/>
 </node>
 
 <node name="$(arg method)" pkg="int_preservation" type="$(arg method).py">
     <param name="robot_id" value="$(arg robot_id)"/>
     <param name="initial_pose_x" value="$(arg initial_pose_x)"/>
     <param name="initial_pose_y" value="$(arg initial_pose_y)"/>
+    <param name="max_battery" value="$(arg max_battery)"/>
 </node>
 
 </launch>

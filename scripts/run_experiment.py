@@ -129,10 +129,10 @@ if __name__ == '__main__':
     os.chdir('/root/catkin_ws/src/results/int_preservation')
 
     #Sample node poses
-    # worlds = ['office']
-    # nareas_list = [4]
-    # nplacements = 2000
-    # batch_sample_nodes_poses(worlds, nareas_list, nplacements)
+    worlds = ['office']
+    nareas_list = [36]
+    nplacements = 2000
+    batch_sample_nodes_poses(worlds, nareas_list, nplacements)
     #
     # worlds = ['cluttered']
     # nareas_list = [8, 12]
@@ -149,7 +149,6 @@ if __name__ == '__main__':
     # run_experiment('rma_search', 'office', 12, placement, 'non_uniform', 50,
     #                inference=None, dec_steps=4, ntrials=(0, 1), save=True)
 
-    placement = 1
     #
     # run_experiment('treebased_decision', 'office', 8, placement, 'non_uniform', 3100,
     #                inference='oracle', dec_steps=4, ntrials=1, save=True)
@@ -172,15 +171,6 @@ if __name__ == '__main__':
     # run_experiment('dynamic_programming', 'office', 8, placement, 'non_uniform', 3100,
     #                inference=None, dec_steps=4, ntrials=1, save=True)
 
-    """
-    TODO: Aug 6
-    Grid search parameters over e = [0.30, 0.60, 0.90]. For discount 0.0, means k=1
-        Fine-tune exploration for reinfocement learning UCB. To re-run: e = 0.90
-        Fine-tune exploration for our method for k=4, with equivalent discount as with oracle, to re-run: e = 0.00, 0.30, 0.60
-        Fine-tune k, discount, exploration. PENDING
-        
-        Oracle, trial = 0, 1, 2
-    """
     # e= 0.00, 0.30, 0.60, 0.90 params for our proposed method
 
     #For fine-tuning
@@ -279,28 +269,29 @@ if __name__ == '__main__':
     #                inference='oracle', dec_steps=1, discount=0.75, exploration=0.0, ntrials=(0, 1),
     #                task_scheduler='central_planner', save=False)
 
-    # 6 robots, office, 12 areas, no decay evolution/uncertainty
-    run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100, nrobots=6,
-                   inference='oracle', dec_steps=1, discount=0.75, exploration=0.0, ntrials=(0, 5),
+    # 6 robots, office, 20 areas, no decay evolution/uncertainty
+    placement = 1
+    run_experiment('heuristic_decision', 'office', 36, placement, 'non_uniform', 2100, nrobots=6,
+                   inference='oracle', dec_steps=1, discount=0.00, exploration=0.0, ntrials=(0, 5),
                    task_scheduler='central_planner', save=True)
 
-    run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100, nrobots=6,
-                   inference='oracle', dec_steps=2, discount=0.75, exploration=0.0, ntrials=(0, 5), task_scheduler='central_planner', save=True)
-
-    run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100, nrobots=6,
-                   inference='oracle', dec_steps=3, discount=0.75, exploration=0.0, ntrials=(0, 5),
-                   task_scheduler='central_planner', save=True)
-
-    run_experiment('dynamic_programming', 'office', 12, placement, 'non_uniform', 2100,
-                   nrobots=6, inference='oracle', dec_steps=3, ntrials=(0, 5),
-                   task_scheduler='central_planner', save=True)  # 3100
-
-    run_experiment('online_posterior_sampling', 'office', 12, placement, 'non_uniform', 2100, nrobots=6,
-                   inference='bayesian', dec_steps=1, discount=0.95, exploration=20, ntrials=(0, 5),
-                   task_scheduler='central_planner', save=True)
-
-    run_experiment('correlated_ucb', 'office', 12, placement, 'non_uniform', 2100, nrobots=6,
-                   inference='optimistic', dec_steps=1, exploration=0.90, ntrials=(0, 5), task_scheduler='central_planner', save=True)
+    # run_experiment('heuristic_decision', 'office', 20, placement, 'non_uniform', 2100, nrobots=4,
+    #                inference='oracle', dec_steps=4, discount=0.75, exploration=0.0, ntrials=(0, 3), task_scheduler='central_planner', save=True)
+    #
+    # run_experiment('heuristic_decision', 'office', 20, placement, 'non_uniform', 2100, nrobots=4,
+    #                inference='oracle', dec_steps=6, discount=0.75, exploration=0.0, ntrials=(0, 3),
+    #                task_scheduler='central_planner', save=True)
+    #
+    # run_experiment('dynamic_programming', 'office', 20, placement, 'non_uniform', 2100,
+    #                nrobots=4, inference='oracle', dec_steps=6, ntrials=(0, 3),
+    #                task_scheduler='central_planner', save=True)  # 3100
+    #
+    # run_experiment('online_posterior_sampling', 'office', 20, placement, 'non_uniform', 2100, nrobots=4,
+    #                inference='bayesian', dec_steps=1, discount=0.95, exploration=20, ntrials=(0, 3),
+    #                task_scheduler='central_planner', save=True)
+    #
+    # run_experiment('correlated_ucb', 'office', 20, placement, 'non_uniform', 2100, nrobots=4,
+    #                inference='optimistic', dec_steps=1, exploration=0.60, ntrials=(0, 3), task_scheduler='central_planner', save=True)
 
 
     # PREVIOUS PROJECT RUNS
