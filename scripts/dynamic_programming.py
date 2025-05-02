@@ -55,7 +55,7 @@ class Robot:
         self.debug_mode = rospy.get_param("/debug_mode")
         self.robot_velocity = rospy.get_param("/robot_velocity") #Linear velocity of robot; we assume linear and angular are relatively equal
         self.max_fmeasure = rospy.get_param("/max_fmeasure")  # Max F-measure of an area
-        self.max_battery = rospy.get_param("/max_battery") #Max battery
+        self.max_battery = rospy.get_param("~max_battery") #Max battery
         self.battery_reserve = rospy.get_param("/battery_reserve") #Battery reserve
 
         f_thresh = rospy.get_param("/f_thresh")
