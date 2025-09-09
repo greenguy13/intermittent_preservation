@@ -21,9 +21,6 @@ def get_elapsed_time(max_fmeasure, fmeasures, discount_arr):
         elapsed_time_dict[area] = get_time_given_decay(max_fmeasure, fmeasures[area], discount_arr[area])
     return elapsed_time_dict
 
-#TODO: Edit for the version where we sum up all losses.
-# For the comparison, we can just use the greedy part (k=1)
-
 def heuristic_forecast_cost(curr_fmeasures, average_duration_decay, decay_dict, fsafe, fcrit):
     """
     Forecast the fmeasures by some heuristic
@@ -156,8 +153,6 @@ def forecast_opportunity_cost(curr_fmeasures, tlapses, forecast_decay_dict, loss
     # max_tlapse = np.max(forecast_timesteps)
     # max_average_duration = np.max(list(average_duration_decay_dict.values()))
     # max_forecast_timesteps = int(max_tlapse + max_average_duration * (dec_steps-1))
-    #
-    # #TODO: Insert timer here
     # forecast_start = process_time()
     # forecast_decay_dict = forecast_decay_lstm(model, data, max_forecast_timesteps)
     # forecast_end = process_time()
@@ -172,7 +167,6 @@ def forecast_opportunity_cost(curr_fmeasures, tlapses, forecast_decay_dict, loss
     for i in range(1, dec_steps):
         #Forecast the decay rates at this time step
         # decay_dict = forecast_decay_timesteps(model, data, forecast_timesteps)  # Update decay_dict here
-        # TODO: We do a lookup here of the decay rate given their respective tlapses in the forecasted decay_dict
         decay_dict = lookup_forecasted_data(forecast_decay_dict, forecast_timesteps)
         # debug("Forecasted decay rate in step {}: {}".format(i, decay_dict))
 
@@ -227,7 +221,7 @@ def forecast_decay_timesteps(model, data, forecast_timesteps):
     decay_dict = dict()
     for area in range(len(forecast_timesteps)):
         forecast = forecast_decay_lstm(model, data, forecast_timesteps[area])
-        decay_dict[area+1] = forecast.iloc[-1][area+1] #TODO: Okay this is the one where we do an iloc
+        decay_dict[area+1] = forecast.iloc[-1][area+1]
 
     return decay_dict
 def debug(msg, robot_id=0):

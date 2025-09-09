@@ -61,6 +61,7 @@ add_service_files(
     FILES
         flevel.srv
         clusterAssignment.srv
+        clusterAssignment2.srv
         areaAssignment.srv
         assignmentAccomplishment.srv
         pauseSimulation.srv

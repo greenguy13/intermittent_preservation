@@ -12,22 +12,12 @@
             </include>
         </group>
 
-        <group if="$(eval world == 'open')">
-            <include file="$(find int_preservation)/launch/robots/nodes.launch">
-                <arg name="robot" value="1"/>
-                <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="0.0"/>
-                <arg name="initial_pose_y" value="0.0"/>
-                <arg name="max_battery" value="100"/>
-            </include>
-        </group>
-
         <group if="$(eval world == 'cluttered')">
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
                 <arg name="robot" value="1"/>
                 <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="0.0"/>
-                <arg name="initial_pose_y" value="0.0"/>
+                <arg name="initial_pose_x" value="5.10"/>
+                <arg name="initial_pose_y" value="7.70"/>
                 <arg name="max_battery" value="100"/>
             </include>
         </group>
@@ -44,22 +34,12 @@
             </include>
         </group>
 
-        <group if="$(eval world == 'open')">
-            <include file="$(find int_preservation)/launch/robots/nodes.launch">
-                <arg name="robot" value="2"/>
-                <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="0.0"/>
-                <arg name="initial_pose_y" value="0.0"/>
-                <arg name="max_battery" value="100"/>
-            </include>
-        </group>
-
         <group if="$(eval world == 'cluttered')">
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
                 <arg name="robot" value="2"/>
                 <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="0.0"/>
-                <arg name="initial_pose_y" value="0.0"/>
+                <arg name="initial_pose_x" value="-9.50"/>
+                <arg name="initial_pose_y" value="10.80"/>
                 <arg name="max_battery" value="100"/>
             </include>
         </group>
@@ -76,22 +56,12 @@
             </include>
         </group>
 
-        <group if="$(eval world == 'open')">
-            <include file="$(find int_preservation)/launch/robots/nodes.launch">
-                <arg name="robot" value="3"/>
-                <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="0.0"/>
-                <arg name="initial_pose_y" value="0.0"/>
-                <arg name="max_battery" value="100"/>
-            </include>
-        </group>
-
         <group if="$(eval world == 'cluttered')">
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
                 <arg name="robot" value="3"/>
                 <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="0.0"/>
-                <arg name="initial_pose_y" value="0.0"/>
+                <arg name="initial_pose_x" value="3.10"/>
+                <arg name="initial_pose_y" value="0.50"/>
                 <arg name="max_battery" value="100"/>
             </include>
         </group>
@@ -108,22 +78,12 @@
             </include>
         </group>
 
-        <group if="$(eval world == 'open')">
-            <include file="$(find int_preservation)/launch/robots/nodes.launch">
-                <arg name="robot" value="4"/>
-                <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="0.0"/>
-                <arg name="initial_pose_y" value="0.0"/>
-                <arg name="max_battery" value="100"/>
-            </include>
-        </group>
-
         <group if="$(eval world == 'cluttered')">
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
                 <arg name="robot" value="4"/>
                 <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="0.0"/>
-                <arg name="initial_pose_y" value="0.0"/>
+                <arg name="initial_pose_x" value="-7.80"/>
+                <arg name="initial_pose_y" value="-4.90"/>
                 <arg name="max_battery" value="100"/>
             </include>
         </group>
@@ -140,22 +100,12 @@
             </include>
         </group>
 
-        <group if="$(eval world == 'open')">
-            <include file="$(find int_preservation)/launch/robots/nodes.launch">
-                <arg name="robot" value="5"/>
-                <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="0.0"/>
-                <arg name="initial_pose_y" value="0.0"/>
-                <arg name="max_battery" value="100"/>
-            </include>
-        </group>
-
         <group if="$(eval world == 'cluttered')">
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
                 <arg name="robot" value="5"/>
                 <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="0.0"/>
-                <arg name="initial_pose_y" value="0.0"/>
+                <arg name="initial_pose_x" value="11.20"/>
+                <arg name="initial_pose_y" value="-3.00"/>
                 <arg name="max_battery" value="100"/>
             </include>
         </group>
@@ -172,22 +122,12 @@
             </include>
         </group>
 
-        <group if="$(eval world == 'open')">
-            <include file="$(find int_preservation)/launch/robots/nodes.launch">
-                <arg name="robot" value="6"/>
-                <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="0.0"/>
-                <arg name="initial_pose_y" value="0.0"/>
-                <arg name="max_battery" value="100"/>
-            </include>
-        </group>
-
         <group if="$(eval world == 'cluttered')">
             <include file="$(find int_preservation)/launch/robots/nodes.launch">
                 <arg name="robot" value="6"/>
                 <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="0.0"/>
-                <arg name="initial_pose_y" value="0.0"/>
+                <arg name="initial_pose_x" value="-7.60"/>
+                <arg name="initial_pose_y" value="3.40"/>
                 <arg name="max_battery" value="100"/>
             </include>
         </group>

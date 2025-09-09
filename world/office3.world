@@ -1,0 +1,23 @@
+include "office.world"
+
+# load catabot
+pioneer3at
+(
+  name "robot1"
+  color "DarkBlue"
+  pose [-12.0 -15.0 0.0 0.0]
+)
+
+pioneer3at
+(
+  name "robot2"
+  color "DarkBlue"
+  pose [-18.0 -2.0 0.0 0.0]
+)
+
+pioneer3at
+(
+  name "robot3"
+  color "DarkBlue"
+  pose [-6.0 -3.0 0.0 0.0]
+)

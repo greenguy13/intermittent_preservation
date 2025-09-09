@@ -1,65 +1,5 @@
 #!/usr/bin/env python
 
-"""
-Implements Clustered BFVG
-1. Cluster the areas in the environment based on some attributes
-    > In clustering we use K-means clustering algorithm
-    > Q: What do you think would these attributes be if we are to construct a simulation?
-
-2. We have available robots and unassigned clusters
-    > What defines an available/un-assigned robot? Actually, un-assigned robot would be better
-        + If the robot has no currently assigned cluster, either it is heading toward or parked in the charging station
-    > What defines an unassigned cluster?
-        + If there is no robot assigned to preserve that cluster of areas
-    > How do we make the assignment?
-        + We evaluate the cluster's value, we then assign them greedily, whichever has the highest value
-        + For each cluster, we evaluate among the robots (whose current task is not to charge up) based on their battery level
-            and current location. Among those, we evaluate the
-
-Algorithm sketch:
-    Among the areas in the environment, cluster them into n-clusters based on their attributes, where n is the number of robots
-    Among the unassigned clusters, we evaluate their score, and then assign an available robot to it
-        > Q1: Which unassigned clusters gets assignment first?
-        > Q2: Which available robot gets assigned to an unassigned cluster?
-
-data = inputs
-clusters = Cluster(data) #clusters would be a list containing cluster of areas, where the number of clusters is the number of robots
-
-PO: Evaluate the value of the unassigned clusters, and then store in a priority queue
-    + Evaluation would be a forecast of the expected opportunity cost for a given number of future visits
-if there is one unassigned cluster, we consider re-planning/re-assignment:
-    + Note that this means there is one un-assigned robot whose task is to charge up or just parked
-    + PO: Average distance within the cluster, Current location of each robot and their remaining battery,
-        and whether their battery level can cover the forecasted number of future visits
-
-Consider re-plan is triggered only when one robot is heading to a charging station
-
-for cluster in unassigned clusters with priority:
-    for robot in robots:
-        evalute their score for that unassigned cluster
-    assign the cluster to the robot with highest score
-
-Note: We assume that each robot will have an assigned cluster. We first assume that we have oracle knowledge.
-
-Initial assignment to robots
-while operation:
-    if at least one area is unassigned:
-        Consider re-assignment of clusters among robots who are not charging up
-
-Robot:
-    Input, cluster of areas to be monitored
-    d = best decision
-    if d = 0:
-        broadcast unassigned status
-
-Okay. Does this cover everything/all cases?
-What about if we have uncertainty? Perhaps we need to insert the assignment block inside? Yes, even the clustering part.
-
-How do we evaluate a cluster and its assignment to potential robots?
-    > Average/expected opportunity cost
-    > The location of the robot to get there plus the cost would be inversely proportional
-    > Or could even be the marginal opportunity cost / marginal battery consumption to get there, something like that
-"""
 
 import rospy
 from time import process_time
@@ -71,7 +11,8 @@ from nav_msgs.msg import Odometry
 from nav_msgs.srv import GetPlan
 from std_msgs.msg import Int8, Float32
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
-from int_preservation.srv import clusterAssignment
+# from int_preservation.srv import clusterAssignment
+from int_preservation.srv import clusterAssignment2
 from int_preservation.srv import assignmentAccomplishment, assignmentAccomplishmentResponse
 from int_preservation.srv import registerRobot, registerRobotResponse
 from int_preservation.srv import pauseSimulation
@@ -80,11 +21,99 @@ from status import centralStatus, battStatus, robotStatus, robotAssignStatus
 from reset_simulation import *
 from heuristic_fcns import *
 from loss_fcns import *
+import math
+from math import ceil
+import numpy as np
+from collections import defaultdict
+
+# SciPy clustering & assignment
+from scipy.cluster.vq import kmeans2
+from scipy.optimize import linear_sum_assignment
 
 INDEX_FOR_X = 0
 INDEX_FOR_Y = 1
 SUCCEEDED = 3  # GoalStatus ID for succeeded, http://docs.ros.org/en/api/actionlib_msgs/html/msg/GoalStatus.html
 SHUTDOWN_CODE = 99
+
+def _exp_decay(F_max, rate, t):
+    """Exponential decay g(δ, t)."""
+    return F_max * math.exp(-rate * max(0.0, t))
+
+def _area_current_F(area_id, tlapses, decay_rates, F_max):
+    """Current F estimate from tlapse & rate."""
+    return _exp_decay(F_max, decay_rates[area_id], tlapses[area_id])
+
+def _mean_duration_excluding_col(M, j):
+    """
+    taū_j := average duration entries when the 'committed' choice is NOT j.
+    (Delete column j per our definition and average the remainder.)
+    If you have per-robot matrices, average across them outside.
+    """
+    sub = np.delete(M, j, axis=1)
+    return float(np.mean(sub)) if sub.size > 0 else 0.0
+
+# def _tau_bar_from_robot_mats(self) -> dict[int, float]:
+#     mats = [m for m in self.dist_matrices.values() if m is not None]
+#     if not mats:
+#         return {}
+#     M = np.stack(mats, axis=0)   # (R, N, N)
+#     M_mean = np.mean(M, axis=0)  # (N, N)
+#     J = M_mean.shape[0] - 1      # 0=charging
+#     tau_bar = {}
+#     for aid in range(1, J+1):
+#         tau_bar[aid] = _mean_duration_excluding_col(M_mean, aid)
+#     return tau_bar
+
+def _closest_robot_to_area(robot_id_list, area_id, dist_matrices, robots_location):
+    """
+    Pick the robot (id) whose current location is closest (duration) to area_id.
+    Uses that robot’s own distance matrix, from its current 'node index' to 'area_id'.
+    robots_location[robot_id] should be a node index (0 = charging, 1..N = area).
+    """
+    best = None
+    best_cost = float('inf')
+    for rid in robot_id_list:
+        M = dist_matrices[rid]
+        if M is None or robots_location[rid] is None:
+            continue
+        src = int(robots_location[rid])  # node index now
+        dst = int(area_id)  # area index in matrix
+        cost = float(M[src, dst])
+        if cost < best_cost:
+            best_cost = cost
+            best = rid
+    return best, best_cost
+
+def _most_urgent_area_in_set(area_ids, tlapses, decay_rates, F_max):
+    """Return area id with min current F (most urgent)."""
+    return min(area_ids, key=lambda aid: _area_current_F(aid, tlapses, decay_rates, F_max))
+
+def _npv_cluster_loss(area_ids, z, gamma, delta_t, tau_bar, decay_rates, F_max):
+    """
+    NPV_c = Σ_j Σ_{h=1..H_j} gamma^h * max(0, z - g(δ_j, h*delta_t)),
+    with H_j = ceil(|c| * taū_j / delta_t).
+    """
+    if not area_ids:
+        return 0.0
+    size = max(1, len(area_ids))
+    tot = 0.0
+    for aid in area_ids:
+        H = int(ceil(size * float(tau_bar.get(aid, 0.0)) / max(1e-9, delta_t)))
+        rate = decay_rates[aid]
+        for h in range(1, H + 1):
+            F_pred = _exp_decay(F_max, rate, h * delta_t)
+            loss = max(0.0, z - F_pred)
+            tot += (gamma ** h) * loss
+    return tot
+
+def _will_be_urgent(aid, tlapses, decay_rates, F_max, z, tau_bar, k, delta_t):
+    """
+    Predict if area aid will drop below z within k * taū_a (lookahead).
+    """
+    look = max(1, int(ceil(float(k) * float(tau_bar.get(aid, 0.0)) / max(1e-9, delta_t))))
+    t_future = look * delta_t
+    F_future = _exp_decay(F_max, decay_rates[aid], tlapses[aid] + t_future)
+    return F_future <= z
 
 
 class CentralPlanner:
@@ -103,10 +132,10 @@ class CentralPlanner:
         self.robot_velocity = rospy.get_param("/robot_velocity")  # Linear velocity of robot; we assume linear and angular are relatively equal
         self.gamma = rospy.get_param("/gamma")  # discount factor
         self.max_fmeasure = rospy.get_param("/max_fmeasure")  # Max F-measure of an area
-        # self.max_battery = rospy.get_param("/max_battery")  # Max battery
+        self.max_battery = rospy.get_param("/max_battery")  # Max battery
         self.battery_reserve = rospy.get_param("/battery_reserve")  # Battery reserve
         self.tolerance = rospy.get_param("/move_base_tolerance")
-        self.charging_station = 0 #charging station index
+        self.charging_station = 0  # charging station index
 
         f_thresh = rospy.get_param("/f_thresh")
         self.fsafe, self.fcrit = f_thresh  # (safe, crit)
@@ -120,15 +149,19 @@ class CentralPlanner:
         self.nareas = rospy.get_param("/nareas")  # Sample nodes from voronoi equal to area count #STAR
         self.areas = [int(i + 1) for i in range(self.nareas)]  # list of int area IDs
 
+        # Crisis mitigation with surge binding release
+        self.surge_bindings = {}  # Surge stickiness: robot_id -> {'areas': set[int], 't_bind': int, 'home_cid': str|None}
+        self.last_reset_step = {aid: -1 for aid in self.areas}  # Track last time an area was restored (tlapse reset)
+
         # self.check_pause()
-        self.requested_pause = False  #indicator variable whether requested Stage to pause simulation
+        self.requested_pause = False  # indicator variable whether requested Stage to pause simulation
 
         self.debug("Nareas {}. Areas list: {}".format(self.nareas, self.areas))
         # self.tolerance = rospy.get_param("/move_base_tolerance")
         self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
         self.save = rospy.get_param("/save")  # Whether to save data
 
-        #Sampled nodes poses
+        # Sampled nodes poses
         # charging_station_coords = (0, 0) #rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y")  # rospy.get_param("/charging_station_coords")
         # charging_pose_stamped = pu.convert_coords_to_PoseStamped(charging_station_coords)
         # self.nodes_poses = [charging_pose_stamped]  # list container for sampled nodes of type PoseStamped, where 0 is the charging station for that robot
@@ -141,54 +174,56 @@ class CentralPlanner:
             pose_stamped = pu.convert_coords_to_PoseStamped(area_coords)
             self.areas_poses.append(pose_stamped)
 
-        self.dist_matrices = dict() #Initialize distance matrices of each registered robot to the areas + charging station
+        self.dist_matrices = dict()  # Initialize distance matrices of each registered robot to the areas + charging station
         for robot in range(self.nrobots):
             self.dist_matrices[robot] = None
 
         self.charging_station = 0
 
         # Initialize variables/containers
-        self.mission_areas = dict() #Mission areas of robots
+        self.mission_areas = dict()  # Mission areas of robots
         for robot_id in self.robot_ids:
             self.mission_areas[robot_id] = None
 
-        self.assign_statuses = dict() #Assignment statuses of robots
+        self.assign_statuses = dict()  # Assignment statuses of robots
         for robot_id in self.robot_ids:
             self.assign_statuses[robot_id] = None
 
-        self.tlapses = dict() #Tlapses of areas
+        self.tlapses = dict()  # Tlapses of areas
         for area in self.areas:
             self.tlapses[area] = 0
 
-        self.robot_statuses = dict() #Robot statuses
+        self.robot_statuses = dict()  # Robot statuses
         for robot_id in self.robot_ids:
             self.robot_statuses[robot_id] = None
 
-        self.robots_location = dict() #Robots location
+        self.robots_location = dict()  # Robots location
         for robot_id in self.robot_ids:
             self.robots_location[robot_id] = None
 
-        self.robots_battery = dict() #Robots battery
+        self.robots_battery = dict()  # Robots battery
         for robot_id in self.robot_ids:
             self.robots_battery[robot_id] = None
 
-        self.decay_rates = dict() #Decay rates
+        self.decay_rates = dict()  # Decay rates
         for area in self.areas:
             self.decay_rates[area] = None
 
-        self.collected_enough_data = dict() #Whether we have collected enough data for shutdown
+        self.collected_enough_data = dict()  # Whether we have collected enough data for shutdown
         for area in self.areas:
             self.collected_enough_data[area] = False
 
-        self.clusters = None #Clustering of areas
-        self.clusters_assignment = dict() #Assignment of clusters (keys) to robots (values)
-        self.robots_assignment = dict() #Assignment of robots (keys) to clusters (values)
-        self.unassigned_clusters = list() #List of unassigned clusters
-        self.unassigned_robots = list() #List of unassigned robots
+        self.clusters = None  # Clustering of areas
+        self.clusters_assignment = dict()  # Assignment of clusters (keys) to robots (values)
+        self.robots_assignment = dict()  # Assignment of robots (keys) to clusters (values)
+        self.unassigned_clusters = list()  # List of unassigned clusters
+        self.unassigned_robots = list()  # List of unassigned robots
 
         # Server
         self.robots_registry_server = rospy.Service('/robots_registry_server', registerRobot, self.register_robots_cb)
-        self.assignment_accomplishment_server = rospy.Service('/assignment_accomplishment_server', assignmentAccomplishment, self.assignment_accomplishment_cb)
+        self.assignment_accomplishment_server = rospy.Service('/assignment_accomplishment_server',
+                                                              assignmentAccomplishment,
+                                                              self.assignment_accomplishment_cb)
         self.shutdown_server = rospy.Service('/shutdown_server', collectedEnoughData, self.collected_enough_data_cb)
 
         # Publishers/Subscribers
@@ -207,25 +242,27 @@ class CentralPlanner:
             rospy.Subscriber('/robot_{}/location'.format(robot_id), Int8, self.robot_location_cb, robot_id)
             rospy.Subscriber('/robot_{}/battery'.format(robot_id), Float32, self.robot_battery_cb, robot_id)
 
-        #Here: It is assumed oracle knoweldge of decay rates
+        # Here: It is assumed oracle knoweldge of decay rates
         for area in self.areas:
             rospy.Subscriber('/area_{}/decay_rate'.format(area), Float32, self.decay_rate_cb, area)
+            # TODO: PO, we subscribe to area status, assignment status?
 
     def register_robots_cb(self, msg):
         """
         Register robots id
         :return:
         """
-        robot_id = msg.robot_id #robot id for registration
+        robot_id = msg.robot_id  # robot id for registration
         init_x = msg.init_x
         init_y = msg.init_y
 
         self.debug("Registry request received (id, x, y): {}, {}, {}".format(robot_id, init_x, init_y))
 
-        #Build distance matrix for that robot
+        # Build distance matrix for that robot
         self.dist_matrices[robot_id] = self.build_dist_matrix(robot_id, float(init_x), float(init_y))
+        self.robots_location[robot_id] = 0  # initial location
 
-        #Debug that robot has been registered
+        # Debug that robot has been registered
         self.debug("Robot registered: {}. Dist matrix: {}".format(robot_id, self.dist_matrices[robot_id]))
 
         return registerRobotResponse(True)
@@ -335,11 +372,14 @@ class CentralPlanner:
         Receives area accomplishment from robots. Central then updates tlapse for that area
         :return:
         """
-        #Tlapse reset if area is assigned area
+        # Tlapse reset if area is assigned area
         robot_id = msg.robot_id
         area_id = msg.area_accomplished
+        # Reset tlapse and stamp for surge-release logic
         self.tlapses[area_id] = 0
-        self.debug("Received notice from Robot: {} restored Area: {}. Tlapse reset: {}".format(robot_id, area_id, self.tlapses[area_id]))
+        self.on_area_restored(area_id)
+        self.debug("Received notice from Robot: {} restored Area: {}. Tlapse reset: {}".format(robot_id, area_id,
+                                                                                               self.tlapses[area_id]))
         return assignmentAccomplishmentResponse(True)
 
     def assign_status_cb(self, msg, robot_id):
@@ -384,70 +424,6 @@ class CentralPlanner:
             self.debug("Area {} decay rate: {}".format(area_id, msg.data))
             self.decay_rates[area_id] = msg.data
 
-
-    ### TODO: This part here for the novelty
-    def create_clusters(self):
-        """
-        Creates clusters
-
-        #PO: We can start here. This is the truth.
-        UPNEXT
-        1. Collect the decay rates.
-        2. Distance from each other: x,y pose
-        3. Urgency: Heuristic, what if we postpone restoring this area?
-        If an area has the least valuation, then it is not urgent and can be postponed restoration for more urgent ones
-
-        :return:
-        """
-
-        clusters = dict()
-        interval = self.nareas // self.nrobots
-        areas = self.areas.copy()
-        start = 0
-        self.debug("Areas: {}, No. of Robots: {}, Interval: {}".format(areas, self.nrobots, interval))
-        for i in range(self.nrobots):
-            clusters['C' + str(i+1)] = areas[start:start+interval]
-            start = start + interval
-        return clusters
-
-    def assign_clusters(self, clusters):
-        """
-        Assigns clusters to robots
-        :param clusters:
-        :return:
-        """
-
-        """
-        This is where we would assign clusters to robots. We do a greedy assignment where we choose the highly urgent more distant clusters first,
-            assigning them with the best robot that is closest and has more coverage capability
-        """
-
-        self.debug("Unassigned robots: {}".format(self.unassigned_robots))
-        self.debug("Clusters: {}".format(clusters))
-        assigned = 0
-
-        unassigned = self.unassigned_robots.copy()
-        robot_id = unassigned.pop()
-        while len(self.unassigned_robots) > 0: #TODO: We keep assigning if there is still some unassigned robots. What about if they are not available, say because of charging?
-            self.robots_assignment[robot_id] = 'C' + str(robot_id+1) #Assignment of robot to a cluster #TODO: For now, the assignment is 1:1, not yet K-means cluster
-            rospy.wait_for_service("/cluster_assignment_server_" + str(robot_id))
-            try:
-                cluster_assign = rospy.ServiceProxy("/cluster_assignment_server_" + str(robot_id), clusterAssignment)
-                areas_assigned = clusters[self.robots_assignment[robot_id]]
-                tlapses_areas = self.retrieve_tlapses(areas_assigned)
-                decay_rates = self.retrieve_decay_rates(areas_assigned)
-                resp = cluster_assign(areas_assigned, tlapses_areas, decay_rates)
-                if resp.availability:
-                    assigned += 1
-                    self.unassigned_robots.remove(robot_id)
-                    self.debug("Robot: {}. Assigned: {}, Robot availability: {}".format(robot_id, areas_assigned, resp.availability))
-                    self.debug("Remaining unassigned: {}".format(self.unassigned_robots))
-                    if len(self.unassigned_robots) > 0:
-                        robot_id = unassigned.pop()
-            except rospy.ServiceException as e:
-                rospy.logerr(f"Service call failed: {e}")
-                self.debug("Assignment of {} robots to clusters: {}".format(assigned, self.robots_assignment))
-
     def retrieve_tlapses(self, areas):
         """
         Retrieves the tlapses of areas
@@ -456,7 +432,7 @@ class CentralPlanner:
         """
         tlapses = list()
         for area in areas:
-            tlapses.append(self.tlapses[area])
+            tlapses.append(int(self.tlapses[area]))
         return tlapses
 
     def retrieve_decay_rates(self, areas):
@@ -470,148 +446,545 @@ class CentralPlanner:
             decay_rates.append(self.decay_rates[area])
         return decay_rates
 
-    def update_tlapses_areas(self):
+    def update_tlapses_areas(self, dt=1):
+        """Advance tlapses for all areas by dt. (No crisis logic here.)"""
+        for aid in self.areas:
+            self.tlapses[aid] += int(dt)
+
+    # Different methods for Heirarchichal approach with crisis mitigation
+    ## Clustering
+    def create_clusters(self, alpha_decay=1.0, seed=42, n_clusters=None):
         """
-        Updates the tlapses of areas based on robot's status and mission area/assignment status
-        :return:
+        Build jurisdictions using SciPy kmeans2 on features [x, y, alpha*decay].
+        Returns: dict {cluster_name: [area_ids]}
         """
+        n_clusters = n_clusters or self.nrobots
 
-        #TODO: We should also tlapse even those unassigned areas
+        # Build feature matrix
+        feats, ids = [], []
+        for aid in self.areas:
+            rate = float(self.decay_rates.get(aid, 0.0))
+            p = self.areas_poses[aid - 1].pose.position  # areas are 1..N; poses list is 0-based
+            feats.append([p.x, p.y, alpha_decay * rate])
+            ids.append(aid)
+        X = np.asarray(feats, dtype=float)
 
-        # if self.status != centralStatus.IDLE.value and self.status != centralStatus.CONSIDER_REPLAN.value:
-        for robot_id in self.robot_ids:
-            #Case 1: Elapse time when robots are assigned and not idle/ready and central is not thinking
-            # if self.assign_statuses[robot_id] == robotAssignStatus.ASSIGNED.value and (self.robot_statuses[robot_id] != robotStatus.IDLE.value and self.robot_statuses[robot_id] != robotStatus.READY.value):
-            if self.robot_statuses[robot_id] != robotStatus.IDLE.value and self.robot_statuses[robot_id] != robotStatus.READY.value and self.robot_statuses[robot_id] != robotStatus.CONSIDER_REPLAN.value:
-                cluster = self.robots_assignment[robot_id]
-                for area in self.clusters[cluster]:
-                    self.tlapses[area] += 1 #Another alternative is to use rospy.get_time(). Both the current approach and alternative tick the same since both tick per second
+        # SciPy kmeans2
+        # kmeans2 can be a bit sensitive to duplicate points; use minit='++' where available
+        centroids, labels = kmeans2(X, k=n_clusters, minit='++', iter=50, thresh=1e-05)
 
-        self.sim_t += 1
+        clusters = {}
+        for c in range(n_clusters):
+            clusters[f"C{c + 1}"] = [ids[i] for i, lab in enumerate(labels) if int(lab) == c]
 
-                #Case 2: Elapse time for unassigned areas when robot is charging and central is not thinking
-                # elif self.assign_statuses[robot_id] == robotAssignStatus.UNASSIGNED.value and (self.robot_statuses[robot_id] != robotStatus.IDLE.value and self.robot_statuses[robot_id] != robotStatus.READY.value) and self.mission_areas[robot_id] == self.charging_station:
-                #     cluster = self.robots_assignment[robot_id]
-                #     del self.clusters_assignment[cluster]
-                #     del self.robots_assignment[robot_id]
-                #     self.unassigned_clusters.append(cluster)
-                #     self.unassigned_robots.append(robot_id)
-                #
-                #     for area in self.clusters[cluster]:
-                #         self.tlapses[area] += 1
+        self.clusters = clusters
+        return clusters
 
-    #TODO: A method to consider re-assignment of robots
-    def intra_cluster_closeness(self, distance_matrix, cluster_areas):
+    def create_urgent_clusters(self, rho, K, alpha_decay=1.0, seed=42):
         """
-        Calculate the closeness centrality of each node within a given cluster.
-
-        Inputs:
-        distance_matrix (2D np.array): The distance matrix representing the whole network.
-        cluster_areas (list): The list of areas that belong to the cluster.
-
-        Returns:
-        dict: A dictionary where keys are node indices and values are their closeness centrality within the cluster.
+        Cluster the urgent set rho into K groups using SciPy kmeans2 on [x, y, alpha*decay].
+        Returns: dict { 'SURG_1': [area_ids], ... }
         """
-        # Extract the submatrix for the cluster
-        cluster_submatrix = distance_matrix[np.ix_(cluster_areas, cluster_areas)]
+        if not rho or K <= 0:
+            return {}
 
-        # Number of nodes in the cluster
-        num_nodes_in_cluster = cluster_submatrix.shape[0]
+        pts, idx2aid = [], []
+        for aid in rho:
+            p = self.areas_poses[aid - 1].pose.position
+            pts.append([p.x, p.y, alpha_decay * float(self.decay_rates[aid])])
+            idx2aid.append(aid)
 
-        # Dictionary to store closeness centrality for nodes in the cluster
-        cluster_centrality = {}
+        X = np.asarray(pts, dtype=float)
+        K = min(K, max(1, len(rho)))
+        _, labels = kmeans2(X, k=K, minit='++', iter=50, thresh=1e-05)
 
-        # Iterate over each node in the cluster
-        for idx, node in enumerate(cluster_areas):
-            total_distance = np.sum(cluster_submatrix[idx])
+        clusters = {}
+        for c in range(K):
+            clusters[f"SURG_{c + 1}"] = [idx2aid[i] for i, lab in enumerate(labels) if int(lab) == c]
+        return clusters
 
-            # Avoid division by zero for isolated nodes
-            if total_distance > 0:
-                cluster_centrality[node] = (num_nodes_in_cluster - 1) / total_distance
+    ## Cluster-robot assignment
+    def _area_current_F(self, aid):
+        rate = float(self.decay_rates[aid])
+        t = float(self.tlapses[aid])
+        return self.max_fmeasure * math.exp(-rate * t)
+
+    def _most_urgent_anchor(self, area_ids):
+        if not area_ids:
+            return None
+        return min(area_ids, key=lambda a: self._area_current_F(a))
+
+    def _closest_robot_to_area(self, candidate_rids, area_id):
+        best, best_cost = None, float('inf')
+        for rid in candidate_rids:
+            M = self.dist_matrices.get(rid, None)
+            src = self.robots_location.get(rid, None)
+            if M is None or src is None:
+                continue
+            cost = float(M[int(src), int(area_id)])
+            if cost < best_cost:
+                best, best_cost = rid, cost
+        return best, best_cost
+
+    def assign_clusters(self,
+                        clusters,
+                        method='greedy',
+                        candidate_rids=None,
+                        tag_prefix="C",
+                        surge=False):
+        """
+        Assign clusters to robots.
+
+        - method: 'greedy' or 'hungarian'
+        - candidate_rids: optional subset of robot ids to consider (e.g., surge set Ω).
+          If None, uses all currently unassigned robots (or all robots if none tracked).
+        - tag_prefix: prefix for cluster names when recording, e.g., "C" or "SURG_"
+        - surge: if True, we record sticky surge bindings (home_cid, t_bind, areas)
+        """
+        self.debug(f"Assigning clusters (method={method}, surge={surge}): {clusters}")
+
+        # 1) Choose an anchor (most urgent area) for each cluster
+        cluster_ids = list(clusters.keys())
+        anchors = {cid: self._most_urgent_anchor(clusters[cid]) for cid in cluster_ids}
+        valid_cids = [cid for cid in cluster_ids if anchors[cid] is not None]
+        if not valid_cids:
+            self.debug("No valid clusters to assign (no anchors).")
+            return
+
+        # 2) Which robots can we use?
+        if candidate_rids is None:
+            candidate_rids = (self.unassigned_robots.copy() or self.robot_ids.copy())
+
+        # 3) Utility to actually send an assignment to a robot
+        def _dispatch(rid, cid, area_ids):
+            try:
+                rospy.wait_for_service(f"/cluster_assignment_server_{rid}")
+                srv = rospy.ServiceProxy(f"/cluster_assignment_server_{rid}", clusterAssignment2)
+                tlapses = self.retrieve_tlapses(area_ids)
+                rates = self.retrieve_decay_rates(area_ids)
+                dist_matrix = self.dist_matrices[rid].astype(np.float32).ravel().tolist() #TODO: Here we are sending the dist_matrix for the robot
+                #TODO: Need to flatten this distance matrix
+                resp = srv(area_ids, tlapses, rates, dist_matrix)
+                if not resp.availability:
+                    return False
+
+                # If surge: remember where the robot came from and bind
+                named_cid = cid if cid.startswith(tag_prefix) else f"{tag_prefix}{cid}"
+                home_cid = self.robots_assignment.get(rid, None) if surge else None
+
+                # Bookkeeping
+                self.clusters[named_cid] = area_ids
+                self.robots_assignment[rid] = named_cid
+                self.clusters_assignment[named_cid] = rid
+                if rid in self.unassigned_robots:
+                    self.unassigned_robots.remove(rid)
+
+                if surge:
+                    if not hasattr(self, "surge_bindings"):
+                        self.surge_bindings = {}
+                    self.surge_bindings[rid] = {
+                        'home_cid': home_cid,
+                        'areas': set(int(a) for a in area_ids),
+                        # use sim time if you keep one; fall back to ROS time
+                        't_bind': int(getattr(self, "sim_t", rospy.get_time()))
+                    }
+                    self.debug(f"[SURGE-BIND] Robot {rid} → {named_cid} areas={area_ids} (home={home_cid})")
+                else:
+                    self.debug(f"[ASSIGN] Robot {rid} → {named_cid} areas={area_ids}")
+
+                return True
+            except rospy.ServiceException as e:
+                rospy.logerr(f"assign_clusters: service call failed for robot {rid}: {e}")
+                return False
+
+        # 4) Build assignment either via Hungarian or greedy
+        if method.lower() == "hungarian":
+            try:
+                rids = candidate_rids.copy()
+                cids = valid_cids.copy()
+
+                # Cost(i,j) = duration from robot i current node -> anchor of cluster j
+                C = np.full((len(rids), len(cids)), np.inf, dtype=float)
+                for i, rid in enumerate(rids):
+                    M = self.dist_matrices.get(rid, None)
+                    src = self.robots_location.get(rid, None)
+                    if M is None or src is None:
+                        continue
+                    src = int(src)
+                    for j, cid in enumerate(cids):
+                        aid_anchor = int(anchors[cid])
+                        if 0 <= src < M.shape[0] and 0 <= aid_anchor < M.shape[1]:
+                            C[i, j] = float(M[src, aid_anchor])
+
+                rr, cc = linear_sum_assignment(C)
+                used = set()
+                for i, j in zip(rr, cc):
+                    if not np.isfinite(C[i, j]):
+                        continue
+                    rid = rids[i]
+                    cid = cids[j]
+                    if rid in used:
+                        continue
+                    if _dispatch(rid, cid, clusters[cid]):
+                        used.add(rid)
+
+                # Update unassigned list
+                self.unassigned_robots = [rid for rid in self.robot_ids if rid not in used]
+
+            except Exception as e:
+                rospy.logwarn(f"Hungarian assignment failed ({e}); falling back to greedy.")
+                method = "greedy"  # fall through
+
+        if method.lower() == "greedy":
+            # sort clusters by urgency (min current F at anchor)
+            def cluster_urgency(cid):
+                aid = anchors[cid]
+                return self._area_current_F(aid) if aid is not None else float('inf')
+
+            cids_sorted = sorted(valid_cids, key=cluster_urgency)
+            free = candidate_rids.copy()
+
+            for cid in cids_sorted:
+                if not free:
+                    break
+                anchor = anchors[cid]
+                rid, _ = self._closest_robot_to_area(free, anchor)
+                if rid is None:
+                    continue
+                if _dispatch(rid, cid, clusters[cid]):
+                    free.remove(rid)
+
+            # any robot not used remains "unassigned"
+            used = set(candidate_rids) - set(free)
+            self.unassigned_robots = [rid for rid in self.robot_ids if rid not in used]
+
+    # def assign_clusters(self,
+    #                     clusters,
+    #                     method = 'hungarian',
+    #                     candidate_rids = None,
+    #                     tag_prefix = "C",
+    #                     surge = False):
+    #     """
+    #     Assign clusters to robots.
+    #       - method: 'greedy' or 'hungarian'
+    #       - candidate_rids: optional list of robot ids to use (e.g., Ω in crisis)
+    #       - tag_prefix: e.g., 'C' for jurisdictions, 'SURG_' for crisis clusters
+    #       - surge: if True, record sticky surge bindings (home_cid, t_bind, areas)
+    #     """
+    #     self.debug(f"Assigning clusters (method={method}, surge={surge}): {clusters}")
+    #
+    #     # Anchors (most urgent area per cluster)
+    #     cluster_ids = list(clusters.keys())
+    #     anchors = {cid: self._most_urgent_anchor(clusters[cid]) for cid in cluster_ids}
+    #     valid_cids = [cid for cid in cluster_ids if anchors[cid] is not None]
+    #     if not valid_cids:
+    #         self.debug("No valid clusters to assign (no anchors).")
+    #         return
+    #
+    #     # Candidate robots
+    #     if candidate_rids is None:
+    #         candidate_rids = (self.unassigned_robots.copy() or self.robot_ids.copy())
+    #
+    #     # Utility to actually send a cluster to a robot
+    #     def _dispatch(rid, cid, area_ids):
+    #         rospy.wait_for_service(f"/cluster_assignment_server_{rid}")
+    #         srv = rospy.ServiceProxy(f"/cluster_assignment_server_{rid}", clusterAssignment)
+    #         tlapses = self.retrieve_tlapses(area_ids)
+    #         rates = self.retrieve_decay_rates(area_ids)
+    #         resp = srv(area_ids, tlapses, rates)
+    #         if resp.availability:
+    #             # If surge: remember home cid before overwriting
+    #             home_cid = self.robots_assignment.get(rid, None) if surge else None
+    #             # Assign
+    #             named_cid = cid if cid.startswith(tag_prefix) else f"{tag_prefix}{cid}"
+    #             self.clusters[named_cid] = area_ids
+    #             self.robots_assignment[rid] = named_cid
+    #             self.clusters_assignment[named_cid] = rid
+    #             # Sticky surge binding
+    #             if surge:
+    #                 self.surge_bindings[rid] = {
+    #                     'areas': set(int(a) for a in area_ids),
+    #                     't_bind': int(self.sim_t),
+    #                     'home_cid': home_cid
+    #                 }
+    #                 self.debug(f"[SURGE-BIND] Robot {rid} ← {named_cid} (home={home_cid}) :: {area_ids}")
+    #             else:
+    #                 self.debug(f"[ASSIGN] Robot {rid} ← {named_cid} :: {area_ids}")
+    #             return True
+    #         return False
+    #
+    #     if method.lower() == 'hungarian':
+    #         rids = candidate_rids
+    #         K = len(valid_cids)
+    #         R = len(rids)
+    #         C = np.full((R, K), np.inf, dtype=float)
+    #
+    #         for i, rid in enumerate(rids):
+    #             M = self.dist_matrices.get(rid, None)
+    #             src = self.robots_location.get(rid, None)
+    #             if M is None or src is None:
+    #                 continue
+    #             src = int(src)
+    #             for j, cid in enumerate(valid_cids):
+    #                 a = int(anchors[cid])
+    #                 C[i, j] = float(M[src, a])
+    #
+    #         rr, cc = linear_sum_assignment(C)
+    #         used = set()
+    #         for i, j in zip(rr, cc):
+    #             if not np.isfinite(C[i, j]):
+    #                 continue
+    #             rid = rids[i]
+    #             cid = valid_cids[j]
+    #             if rid in used:
+    #                 continue
+    #             if _dispatch(rid, cid, clusters[cid]):
+    #                 used.add(rid)
+    #
+    #         # Update unassigned list
+    #         self.unassigned_robots = [rid for rid in self.robot_ids if rid not in used]
+    #
+    #     else:
+    #         # Greedy: clusters in urgency order (min current F at anchor)
+    #         def cluster_urgency(cid):
+    #             aid = anchors[cid]
+    #             return self._area_current_F(aid) if aid is not None else float('inf')
+    #
+    #         cids_sorted = sorted(valid_cids, key=cluster_urgency)
+    #         free = candidate_rids.copy()
+    #
+    #         for cid in cids_sorted:
+    #             if not free:
+    #                 break
+    #             anchor = anchors[cid]
+    #             rid, _ = self._closest_robot_to_area(free, anchor)
+    #             if rid is None:
+    #                 continue
+    #             if _dispatch(rid, cid, clusters[cid]):
+    #                 free.remove(rid)
+    #
+    #         self.unassigned_robots = [rid for rid in self.robot_ids if rid not in (set(self.robot_ids) - set(free))]
+
+    # Crisis mitigation with surge binding release
+    # def _exp_decay(F_max, rate, t):
+    #     """Exponential decay g(δ, t)."""
+    #     return F_max * math.exp(-rate * max(0.0, t))
+
+    # def _area_current_F(area_id, tlapses, decay_rates, F_max):
+    #     """Current F estimate from tlapse & rate."""
+    #     return _exp_decay(F_max, decay_rates[area_id], tlapses[area_id])
+    #
+    # def _mean_duration_excluding_col(M, j):
+    #     """
+    #     taū_j := average duration entries when the 'committed' choice is NOT j.
+    #     (Delete column j per our definition and average the remainder.)
+    #     If you have per-robot matrices, average across them outside.
+    #     """
+    #     sub = np.delete(M, j, axis=1)
+    #     return float(np.mean(sub)) if sub.size > 0 else 0.0
+    #
+    def _tau_bar_from_robot_mats(self):
+        mats = [m for m in self.dist_matrices.values() if m is not None]
+        if not mats:
+            return {}
+        M = np.stack(mats, axis=0)  # (R, N, N)
+        M_mean = np.mean(M, axis=0)  # (N, N)
+        J = M_mean.shape[0] - 1  # 0=charging
+        tau_bar = {}
+        for aid in range(1, J + 1):
+            tau_bar[aid] = _mean_duration_excluding_col(M_mean, aid)
+        return tau_bar
+
+    # def _closest_robot_to_area(robot_id_list, area_id, dist_matrices, robots_location):
+    #     """
+    #     Pick the robot (id) whose current location is closest (duration) to area_id.
+    #     Uses that robot’s own distance matrix, from its current 'node index' to 'area_id'.
+    #     robots_location[robot_id] should be a node index (0 = charging, 1..N = area).
+    #     """
+    #     best = None
+    #     best_cost = float('inf')
+    #     for rid in robot_id_list:
+    #         M = dist_matrices[rid]
+    #         if M is None or robots_location[rid] is None:
+    #             continue
+    #         src = int(robots_location[rid])  # node index now
+    #         dst = int(area_id)  # area index in matrix
+    #         cost = float(M[src, dst])
+    #         if cost < best_cost:
+    #             best_cost = cost
+    #             best = rid
+    #     return best, best_cost
+    #
+    # def _most_urgent_area_in_set(area_ids, tlapses, decay_rates, F_max):
+    #     """Return area id with min current F (most urgent)."""
+    #     return min(area_ids, key=lambda aid: _area_current_F(aid, tlapses, decay_rates, F_max))
+    #
+    # def _npv_cluster_loss(area_ids, z, gamma, delta_t, tau_bar, decay_rates, F_max):
+    #     """
+    #     NPV_c = Σ_j Σ_{h=1..H_j} gamma^h * max(0, z - g(δ_j, h*delta_t)),
+    #     with H_j = ceil(|c| * taū_j / delta_t).
+    #     """
+    #     if not area_ids:
+    #         return 0.0
+    #     size = max(1, len(area_ids))
+    #     tot = 0.0
+    #     for aid in area_ids:
+    #         H = int(ceil(size * float(tau_bar.get(aid, 0.0)) / max(1e-9, delta_t)))
+    #         rate = decay_rates[aid]
+    #         for h in range(1, H + 1):
+    #             F_pred = _exp_decay(F_max, rate, h * delta_t)
+    #             loss = max(0.0, z - F_pred)
+    #             tot += (gamma ** h) * loss
+    #     return tot
+    #
+    # def _will_be_urgent(aid, tlapses, decay_rates, F_max, z, tau_bar, k, delta_t):
+    #     """
+    #     Predict if area aid will drop below z within k * taū_a (lookahead).
+    #     """
+    #     look = max(1, int(ceil(float(k) * float(tau_bar.get(aid, 0.0)) / max(1e-9, delta_t))))
+    #     t_future = look * delta_t
+    #     F_future = _exp_decay(F_max, decay_rates[aid], tlapses[aid] + t_future)
+    #     return F_future <= z
+
+    def check_crisis(self, k = 2, eta = 0.5, b = 1, delta_t = 1.0):
+        """
+        Returns (is_crisis, rho, Omega_size, tau_bar)
+        """
+        tau_bar = self._tau_bar_from_robot_mats()
+        rho = []
+        for aid in self.areas:
+            rate = float(self.decay_rates[aid])
+            look_steps = int(ceil(k * float(tau_bar.get(aid, 0.0)) / max(1e-9, delta_t)))
+            t_future = look_steps * delta_t
+            F_future = self.max_fmeasure * math.exp(-rate * (self.tlapses[aid] + t_future))
+            if F_future <= self.fcrit:
+                rho.append(aid)
+
+        R = self.nrobots
+        Omega_size = int(ceil(max(1, eta * R)))
+        is_crisis = len(rho) >= b * Omega_size and Omega_size > 0
+        return is_crisis, rho, Omega_size, tau_bar
+
+    def on_area_restored(self, area_id):
+        self.tlapses[area_id] = 0
+        self.last_reset_step[area_id] = self.sim_t
+
+    def _binding_completed(self, binding):
+        t_bind = int(binding['t_bind'])
+        return all(int(self.last_reset_step.get(aid, -1)) > t_bind for aid in binding['areas'])
+
+    def release_completed_surge_bindings(self, dwell_cap=None):
+        to_release = []
+        for rid, binding in list(self.surge_bindings.items()):
+            done = self._binding_completed(binding)
+            if not done and dwell_cap is not None:
+                done = (self.sim_t - int(binding['t_bind'])) >= int(dwell_cap)
+            if done:
+                to_release.append((rid, binding))
+        self.debug("To release surge binding: {}".format(to_release))
+        for rid, binding in to_release:
+            home_cid = binding.get('home_cid', None)
+            self.surge_bindings.pop(rid, None)
+            # Reassign back to home jurisdiction if known
+            if home_cid and home_cid in self.clusters:
+                area_ids = self.clusters[home_cid]
+                try:
+                    rospy.wait_for_service(f"/cluster_assignment_server_{rid}")
+                    srv = rospy.ServiceProxy(f"/cluster_assignment_server_{rid}", clusterAssignment2)
+                    tlapses = self.retrieve_tlapses(area_ids)
+                    rates = self.retrieve_decay_rates(area_ids)
+                    dist_matrix = self.dist_matrices[rid].astype(np.float32).ravel().tolist()
+                    resp = srv(area_ids, tlapses, rates, dist_matrix)
+                    if resp.availability:
+                        self.robots_assignment[rid] = home_cid
+                        self.clusters_assignment[home_cid] = rid
+                        self.debug(f"[SURGE-RELEASE] Robot {rid} → {home_cid}")
+                except rospy.ServiceException as e:
+                    rospy.logerr(f"[SURGE-RELEASE] reassign home failed for robot {rid}: {e}")
             else:
-                cluster_centrality[node] = 0.0  # For isolated nodes
+                self.robots_assignment.pop(rid, None)
+                self.debug(f"[SURGE-RELEASE] Robot {rid} released (no home)")
 
-        return cluster_centrality
-
-    def closeness_robot_to_cluster(self, distance_matrix, robot_location, cluster_nodes):
+    def mitigate_crisis(self, rho, Omega_size,
+                        alpha_decay=1.0,
+                        assign_method='hungarian'):
         """
-        Calculate the closeness of a node to a cluster of nodes.
-
-        Inputs:
-        distance_matrix (2D np.array): Distance matrix for the whole graph.
-        node (int): The node whose closeness to the cluster is to be measured.
-        cluster_nodes (list): The list of nodes representing the cluster.
-
-        Returns:
-        float: Closeness of the node to the cluster (lower values indicate closer proximity).
+        Form Ω and assign them to |Ω| urgent clusters using our standard assign_clusters,
+        tagging clusters as SURG_* and recording sticky bindings.
         """
-        avg_distance = np.mean([distance_matrix[robot_location][i] for i in cluster_nodes])
+        if not rho or Omega_size <= 0:
+            return
 
-        # PO: the minimum distance from the node to any node in the cluster
-        # min_distance = min(distance_matrix[robot_location][i] for i in cluster_nodes)
-        return avg_distance
+        # Select Ω robots by (home NPV asc, avg duration to rho asc)
+        def home_cluster_area_ids(rid):
+            cid = self.robots_assignment.get(rid, None)
+            return self.clusters.get(cid, []) if cid else []
 
+        def avg_duration_to_set(rid, area_set):
+            M = self.dist_matrices.get(rid, None)
+            src = self.robots_location.get(rid, None)
+            if M is None or src is None or not area_set:
+                return float('inf')
+            src = int(src)
+            return float(np.mean([M[src, int(aid)] for aid in area_set]))
 
-    def compute_clusters_scores_then_sort(self):
+        def home_npv(rid):
+            ids = home_cluster_area_ids(rid)
+            if not ids:
+                return float('inf')
+            # simple proxy: sum of current losses (closer to zero is better)
+            return sum(max(0.0, self.fcrit - self._area_current_F(aid)) for aid in ids)
+
+        rids = self.robot_ids.copy()
+        rids.sort(key=lambda rid: (home_npv(rid), avg_duration_to_set(rid, rho)))
+        Omega = rids[:Omega_size]
+
+        # Build urgent clusters with SciPy kmeans2
+        K = min(Omega_size, max(1, len(rho)))
+        surg_clusters = self.create_urgent_clusters(rho, K, alpha_decay=alpha_decay, seed=42)
+        self.debug("Surge robots: {}. Surge clusters: {}".format(Omega, surg_clusters))
+
+        # Reuse the assignment function (now supports surge & candidate_rids)
+        self.is_mitigating_crisis = True
+        self.assign_clusters(
+            clusters=surg_clusters,
+            method=assign_method,  # 'hungarian' (default) or 'greedy'
+            candidate_rids=Omega,
+            tag_prefix="SURG_",
+            surge=True  # record sticky bindings
+        )
+
+    def _init_jurisdictions(self, assign_method='hungarian', alpha_decay=1.0):
+        if not self.clusters:
+            # Optionally pause sim during planning if you prefer
+            self.request_pause(True)
+            self.clusters = self.create_clusters(alpha_decay=alpha_decay)
+            self.request_pause(False)
+
+            # Assign jurisdictions to all robots (uses greedy or Hungarian)
+            self.unassigned_robots = self.robot_ids.copy()
+            self.assign_clusters(self.clusters, method=assign_method, tag_prefix="C", surge=False)
+
+    def _crisis_cycle(self, k=2, eta=0.5, b=1, delta_t=1.0, alpha_decay=1.0, surge_assign_method='hungarian',
+                      dwell_cap=None):
         """
-        Computes cluster scores
-        :return:
+        One crisis-mitigation pass:
+          1) detect crisis -> (is_crisis, rho, Omega_size, tau_bar)
+          2) if crisis: mitigate (urgent clusters + surge assignment)
+          3) release completed surge bindings
         """
-        #Compute losses score
-            #Total losses of areas within the cluster
-            # Measure the loss which is a function of the tlapse of the areas within that cluster and their corresponding decay rate
+        is_crisis, rho, Omega_size, _ = self.check_crisis(k=k, eta=eta, b=b, delta_t=delta_t)
+        self.debug("Crisis check: {}".format(is_crisis))
+        if len(self.surge_bindings) == 0:
+            if is_crisis:
+                self.debug("Crisis detected. Mitigating...")
+                self.mitigate_crisis(rho, Omega_size, alpha_decay=alpha_decay, assign_method=surge_assign_method)
 
-        """
-        We call on the clusters with their corresponding areas. For each cluster, we measure the losses of the areas.
-            We do this by retrieving their tlapses and decay rates to compute the decay fmeasure,
-                then pair this with the max fmeasure to get the loss
-            We sum up the losses of the areas
-            We store in a dictionary wherein the cluster loss as the value while the cluster itself is the key
-            
-            PO: We may have a second score on which to sort the dictionary
-            We then sort the dictionary by value
-            We return the sorted keys of the sorted dictionary
-        """
-        clusters = dict()
-        for cluster in self.clusters:
-            total_losses = 0
-            for area in cluster:
-                #Measure losses
-                decayed_f = decay(self.decay_rates[area], self.tlapses[area], self.max_fmeasure)
-                loss = loss_fcn(self.max_fmeasure, decayed_f)
-                total_losses += loss
-
-            #Measure intra-cluster closeness
-            intra_closeness = self.intra_cluster_closeness(self.dist_matrix, self.clusters)
-        #Sort the clusters by losses descendingly and closeness descendingly
-
-        #Return the sorted clusters
-
-    def compute_robots_scores_then_sort(self):
-        """
-        Computes robots scores
-        :return:
-        """
-        #Compute robots scores
-            # Measure closeness to the cluster
-
-            # Retrieve remaining battery
-
-        #Sort the robots by closeness ascendingly then remaining battery descendingly
-        #Return sorted robots
-
-    def consider_reassignment(self):
-        """
-        Considers re-assignment of robots available whenever a cluster is unassigned. An unassigned cluster occurs
-            when a robot decides to charge up
-        """
-        # Get unassigned robots
-        # Create clusters based on the number of unassigned robots
-        # Measure the cluster scores then sort
-        # For each cluster in sorted clusters
-            # Find the best unassigned robot for that cluster
-            # If cluster assignment is not the cluster, update cluster assignment for that robot
-
+        # Always try to release completed surge bindings
+        #TODO: Need to sanity check the surge bindings and when they end
+        else:
+            self.debug("Still mitigating crisis. Surge bindings: {}".format(self.surge_bindings))
+            self.release_completed_surge_bindings(dwell_cap=dwell_cap)
 
     def wait_nodes_to_register(self):
         """
@@ -636,27 +1009,30 @@ class CentralPlanner:
         self.status = centralStatus.IDLE.value
         self.sim_t = 0
 
-        #TODO: PO. Is it possible to pause simulation until all areas have registered nodes? Although this might interfere in the publication of information/topics/msgs
-
         while not rospy.is_shutdown():
             self.central_status_pub.publish(self.status)
             self.print_state()
 
             if self.status == centralStatus.IDLE.value:
-                self.debug("Idle central state. Creating and assigning clusters") #TODO: It should not create clusters anymore if already did previously
+                # Build jurisdictions once, then switch to mission
+                self.debug("Idle central state. Creating and assigning clusters")
+                self._init_jurisdictions(assign_method='hungarian',
+                                         alpha_decay=1.0)  # Simulation is paused while thinking to create jurisdictions
+                # self.assign_clusters(self.clusters)
 
-                self.request_pause(True)
-                self.clusters = self.create_clusters() #Thinking. Pause
-                self.request_pause(False)
-                self.assign_clusters(self.clusters)
-
-                if len(self.unassigned_robots) == 0: #TODO: We need a validation whether the pause/unpause mechanism works, given that we are working/dealing with a queue and we wait until all requests have been resolved
+                if len(self.unassigned_robots) == 0:
                     self.update_central_status(centralStatus.IN_MISSION)
 
             elif self.status == centralStatus.IN_MISSION.value:
                 self.debug("Central in mission...")
 
-                self.update_tlapses_areas()
+                # Advance all tlapse by 1
+                self.update_tlapses_areas(dt=1)
+                self.sim_t += 1
+
+                # Crisis detection and mitigation
+                # self._crisis_cycle(k=1, eta=1.0, b=3, delta_t=1.0,
+                #                    alpha_decay=1.0, surge_assign_method='hungarian', dwell_cap=None)
 
             elif self.status == centralStatus.CONSIDER_REPLAN.value:
                 self.debug("Central considers re-assignment...")
@@ -664,13 +1040,13 @@ class CentralPlanner:
             self.shutdown_check()
 
             rospy.sleep(1)
-        # TODO: Save central data if any
 
     def shutdown_check(self):
         """
         Checks whether all areas have collected enough data points. If True, we shutdown all nodes
         :return:
         """
+        self.debug("Shutdown check: {}".format(self.collected_enough_data))
         if False not in list(self.collected_enough_data.values()):
             self.shutdown(sleep=10)
 
@@ -690,8 +1066,8 @@ class CentralPlanner:
         Checks the pause request to Stage
         :return:
         """
-        #Check time whether it is ticking
-        #Then check time again after pausing the simulation and whether it is likewise ticking
+        # Check time whether it is ticking
+        # Then check time again after pausing the simulation and whether it is likewise ticking
         time_new = rospy.get_time()
         for i in range(5):
             time_prev = time_new
@@ -701,7 +1077,7 @@ class CentralPlanner:
 
             rospy.sleep(1)
 
-        #We do the pausing here
+        # We do the pausing here
         # is_pause = False
         # if is_pause is False:
         #     self.request_pause()
@@ -764,4 +1140,3 @@ if __name__ == '__main__':
     filename = rospy.get_param('/file_data_dump')
     CentralPlanner('central_planner').run_operation(filename)
     # CentralPlanner('central_planner').check_pause()
-

@@ -8,17 +8,7 @@
                 <arg name="method" value="$(arg method)"/>
                 <arg name="initial_pose_x" value="-25.0"/>
                 <arg name="initial_pose_y" value="-23.0"/>
-                <arg name="battery" value="100"/>
-            </include>
-        </group>
-
-        <group if="$(eval world == 'open')">
-            <include file="$(find int_preservation)/launch/robots/nodes.launch">
-                <arg name="robot" value="1"/>
-                <arg name="method" value="$(arg method)"/>
-                <arg name="initial_pose_x" value="0.0"/>
-                <arg name="initial_pose_y" value="0.0"/>
-                <arg name="battery" value="100"/>
+                <arg name="max_battery" value="100"/>
             </include>
         </group>
 
@@ -28,7 +18,7 @@
                 <arg name="method" value="$(arg method)"/>
                 <arg name="initial_pose_x" value="2.0"/>
                 <arg name="initial_pose_y" value="0.0"/>
-                <arg name="battery" value="100"/>
+                <arg name="max_battery" value="100"/>
             </include>
         </group>
     </group>
@@ -39,7 +29,7 @@
             <arg name="method" value="$(arg method)"/>
             <arg name="initial_pose_x" value="-50"/>
             <arg name="initial_pose_y" value="-50"/>
-            <arg name="battery" value="100"/>
+            <arg name="max_battery" value="100"/>
         </include>
     </group>
 

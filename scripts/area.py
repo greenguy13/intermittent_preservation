@@ -219,7 +219,8 @@ class Area():
         while not rospy.is_shutdown():
             #TODO: rospy.time here
             status_record.append(self.status)
-            self.debug("Assigned robot: {}. Area status: {}. Fmeasure: {}. Tlapse: {}".format(self.robot_id, self.status, self.fmeasure, self.tlapse))
+            # self.debug("Assigned robot: {}. Area status: {}. Fmeasure: {}. Tlapse: {}".format(self.robot_id, self.status, self.fmeasure, self.tlapse))
+            self.debug("Area status: {}. Fmeasure: {}. Tlapse: {}".format(self.status, self.fmeasure, self.tlapse))
             if self.evolving_decay and (self.sim_t >= time_decay_evolves) and (self.sim_t < self.t_operation):
                 self.decay_rate = (1 + self.decay_evolution_list[evolve_decay_idx])*self.decay_rate
                 self.debug("Decay now evolved to {} beginning time {}".format(self.decay_rate, time_decay_evolves))

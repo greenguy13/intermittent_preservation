@@ -18,13 +18,12 @@ from status import areaStatus, battStatus, robotStatus
 from reset_simulation import *
 from heuristic_fcns import *
 from loss_fcns import *
-from int_preservation.srv import clusterAssignment, clusterAssignmentResponse
+# from int_preservation.srv import clusterAssignment, clusterAssignmentResponse
 from int_preservation.srv import areaAssignment
 from int_preservation.srv import assignmentAccomplishment
 from int_preservation.srv import registerRobot
 from int_preservation.srv import pauseSimulation
-
-
+from int_preservation.srv import clusterAssignment2, clusterAssignment2Response
 
 INDEX_FOR_X = 0
 INDEX_FOR_Y = 1
@@ -92,6 +91,8 @@ class Robot:
         self.robot_status = robotStatus.IDLE.value
         self.available = True
 
+        self.subscribe_fmeasures, self.subscribe_statuses = None, None
+
         self.state = list() #list of states
         self.strict_bounds_list = list() #list of strict lower and upper bounds
 
@@ -123,7 +124,7 @@ class Robot:
         self.robot_goal_client.wait_for_server()
 
         #Server for assigned cluster to monitor/preserve
-        self.cluster_assignment_server = rospy.Service("/cluster_assignment_server_" + str(self.robot_id), clusterAssignment, self.cluster_assignment_cb)
+        self.cluster_assignment_server = rospy.Service("/cluster_assignment_server_" + str(self.robot_id), clusterAssignment2, self.cluster_assignment_cb)
 
         #TODO: Need to publish assignment_status for the re-assignment case
 
@@ -172,19 +173,77 @@ class Robot:
             except rospy.ServiceException as e:
                 rospy.logerr(f"Service call failed: {e}")
 
+    #TODO: Could it be we have a method that cancels area_assignment?
+
+    # def cluster_assignment_cb(self, msg):
+    #     """
+    #     Sets the cluster assignment as the areas for restoration/preservation
+    #     :param msg:
+    #     :return:
+    #     """
+    #     self.robot_status = robotStatus.IDLE.value #Halts all operations of the robot to re-consider new assignment
+    #     assigned_areas, decay_rates, tlapses = msg.cluster, msg.decay_rates, msg.tlapses
+    #     assigned_areas, decay_rates, tlapses = list(assigned_areas), list(decay_rates), list(tlapses)
+    #     self.debug("Cluster assignment: {}, {}. Decay rates: {}. Tlapses: {}".format(type(assigned_areas), assigned_areas, decay_rates, tlapses))
+    #     self.instantiate_variables(assigned_areas=assigned_areas, decay_rates=decay_rates, tlapses=tlapses)
+    #     self.is_assigned = True
+    #     return clusterAssignmentResponse(self.is_assigned)
+
     def cluster_assignment_cb(self, msg):
         """
-        Sets the cluster assignment as the areas for restoration/preservation
-        :param msg:
-        :return:
+        Sets the cluster assignment as the areas for restoration/preservation.
+        This now also includes the cluster-specific distance matrix.
         """
-        self.robot_status = robotStatus.IDLE.value #Halts all operations of the robot to re-consider new assignment
-        assigned_areas, decay_rates, tlapses = msg.cluster, msg.decay_rates, msg.tlapses
-        assigned_areas, decay_rates, tlapses = list(assigned_areas), list(decay_rates), list(tlapses)
-        self.debug("Cluster assignment: {}, {}. Decay rates: {}. Tlapses: {}".format(type(assigned_areas), assigned_areas, decay_rates, tlapses))
-        self.instantiate_variables(assigned_areas=assigned_areas, decay_rates=decay_rates, tlapses=tlapses)
+        # Halt operations and prepare to reconsider new assignment
+        self.robot_status = robotStatus.IDLE.value
+        # TODO: Cancel any current goal if any.
+        if self.mission_area_idx is not None:
+            self.debug("Received new cluster. Cancelling current mission area: {}".format(self.get_assigned_area_id(self.mission_area_idx)))
+            self.robot_goal_client.cancel_goal()
+            self.available = True
+            self.mission_area_idx = None
+        self.dist_matrix = None
+
+
+        # Extract arrays
+        assigned_areas = list(msg.cluster) #TODO: Make sure this is correct
+        decay_rates = list(msg.decay_rates) #TODO: Make sure this is correct
+        tlapses = list(msg.tlapses) #TODO: Sanity check
+
+        # Distance matrix: assumed to be flattened in the .srv
+        # TODO: Ensure this is the same distance matrix as constructed previously. Ensure the id and idx are congruently used
+        n = rospy.get_param("/nareas") + 1 #len(assigned_areas)
+        if hasattr(msg, "dist_matrix_flat") and msg.dist_matrix_flat:
+            try:
+                dist_matrix = np.array(msg.dist_matrix_flat, dtype=float).reshape((n, n))
+            except Exception as e:
+                rospy.logwarn(f"[Robot {self.robot_id}] Failed to reshape dist_matrix_flat: {e}")
+                dist_matrix = None
+        # else:
+        #     self.dist_matrix = None
+
+        # Debug info
+        self.debug(
+            f"Cluster assignment: {assigned_areas}. "
+            f"Decay rates: {decay_rates}. Tlapses: {tlapses}. "
+            f"Distance matrix: {None if dist_matrix is None else (dist_matrix.shape, dist_matrix)}"
+        )
+
+        #Unsubscribe from previous topics
+        if self.subscribe_fmeasures is not None and self.subscribe_statuses is not None:
+            self.unsubscribe_previous_area_topics()
+
+        # Update internal variables
+        self.instantiate_variables(
+            assigned_areas=assigned_areas,
+            decay_rates=decay_rates,
+            tlapses=tlapses,
+            dist_matrix=dist_matrix
+        )
         self.is_assigned = True
-        return clusterAssignmentResponse(self.is_assigned)
+
+        return clusterAssignment2Response(self.is_assigned)
+
 
     # METHODS: Node poses and distance matrix
     def get_plan_request(self, start_pose, goal_pose, tolerance):
@@ -259,6 +318,8 @@ class Robot:
 
         self.debug("Dist matrix: {}".format(self.dist_matrix))
 
+        #TODO: Here the distance matrix is actually all of the areas. Whereas what we are providing is just the distance matrix of the cluster
+
     # METHODS: Send robot to area
     def go_to_target(self, goal_idx):
         """
@@ -267,7 +328,7 @@ class Robot:
         :param: goal_idx, index of goal in sampled_nodes_poses list
         :return:
         """
-        goal = self.sampled_nodes_poses[goal_idx]
+        goal = self.sampled_nodes_poses[goal_idx] #Here: 0 would be charging station
         self.send_robot_goal(goal)
 
     def send_robot_goal(self, goal):
@@ -305,7 +366,8 @@ class Robot:
                 self.update_robot_status(robotStatus.CHARGING)
             mission_area = self.get_assigned_area_id(self.mission_area_idx)
             self.decisions_accomplished.append(mission_area)
-            self.best_decision_idx = None
+            self.best_decision_idx = None #Reset best decision and mission area
+            self.mission_area_idx = None
 
     def mean_duration_decay(self, duration_matrix, area_idx):
         """
@@ -326,6 +388,7 @@ class Robot:
         :return:
         """
         # Battery consumed travel and preserve area (if not charging station)
+        #TODO: The fmeasures did not register here. Why?
         self.debug("Estimate battery params fmeasure, decision: {}, {}".format(fmeasures, decision))
         battery_consumption = self.consume_battery(start_area_idx=curr_loc, next_area_idx=decision,
                                                    curr_measure=fmeasures[decision],
@@ -382,7 +445,7 @@ class Robot:
                 # self.debug("Appending: {}".format((decision, evaluated_cost_decision, feasible_battery)))
                 decision_array.append((decision_idx, evaluated_cost_decision, feasible_battery))
 
-        best_decision_idx = self.charging_station
+        best_decision_idx = self.charging_station #Here it is set as charging station by default. TODO: What happens if we just have 1 area to decide about?
 
         if len(decision_array)>0:
             best_decision_idx = self.get_best_decision(decision_array)
@@ -481,8 +544,8 @@ class Robot:
         """
         # Sort the decisions: the cost is key while the value is decision
         sorted_decisions = sorted(dec_arr, key = lambda x: (x[-2], -x[-1]))
-        # self.debug("Decisions sorted by cost: {}".format(sorted_decisions))
-        # self.debug("Best decision (branch info): {}".format(sorted_decisions[0]))
+        self.debug("Decisions sorted by cost: {}".format(sorted_decisions))
+        self.debug("Best decision (branch info): {}".format(sorted_decisions[0]))
         best_decision_idx = sorted_decisions[0][0] #pick the decision with least net loss and most available feasible battery
 
         return best_decision_idx
@@ -566,15 +629,61 @@ class Robot:
         """
         for area_id in self.subscribe_fmeasures:
             if self.subscribe_fmeasures[area_id] is not None:
-                self.subscribe_fmeasures[area_id].unsubscribe()
+                self.subscribe_fmeasures[area_id].unregister()
                 self.debug("Unsubscribed from previously assigned Area {} fmeasure topic".format(area_id))
 
         for area_id in self.subscribe_statuses:
             if self.subscribe_statuses[area_id] is not None:
-                self.subscribe_statuses[area_id].unsubscribe()
+                self.subscribe_statuses[area_id].unregister()
                 self.debug("Unsubscribed from previously assigned Area {} status topic".format(area_id))
 
-    def instantiate_variables(self, assigned_areas, decay_rates, tlapses):
+    #TODO: Distance matrix is provided
+    # def instantiate_variables(self, assigned_areas, decay_rates, tlapses):
+    #     """
+    #     Instantiates variables for every new assigned areas/cluster
+    #     :param self:
+    #     :param assigned_areas:
+    #     :return:
+    #     """
+    #     self.debug("Instantiating variables")
+    #
+    #     self.assigned_areas = assigned_areas  # Has the same list indexing with self.areas
+    #     self.nareas = len(self.assigned_areas)  # Sample nodes from voronoi equal to area count #STAR
+    #     self.areas = [int(i + 1) for i in range(self.nareas)]  # list of int area indexes, starting at index=1
+    #
+    #     # Send notice to areas about their robot assignment
+    #     self.area_assignment_notice(self.assigned_areas)
+    #
+    #     self.curr_fmeasures = dict()  # container of current F-measure of areas
+    #     self.decay_rates_dict = dict()  # dictionary for decay rates
+    #     self.tlapses = dict()  # dictionary containing tlapses of areas
+    #
+    #     for area_idx in self.areas:
+    #         self.decay_rates_dict[area_idx] = decay_rates[area_idx-1] #Instantiate provided decay rates
+    #         self.tlapses[area_idx] = tlapses[area_idx-1] #Instantiate provided tlapses
+    #
+    #     # Unsubscribe from previous area topics
+    #     # self.unsubscribe_previous_area_topics() TODO: Debug this one for the case with re-assignment
+    #     self.subscribe_fmeasures = dict()
+    #     self.subscribe_statuses = dict()
+    #
+    #     for area_idx in self.areas:
+    #         area_id = self.get_assigned_area_id(area_idx)
+    #         # Decay rates provided by central.
+    #         # rospy.Subscriber('/area_{}/decay_rate'.format(area_id), Float32, self.decay_rate_cb, area_id)
+    #         self.subscribe_fmeasures[area_id] = rospy.Subscriber('/area_{}/fmeasure'.format(area_id), Float32, self.area_fmeasure_cb, area_id)  # REMARK: Here we assume that we have live measurements of the F-measures
+    #         self.subscribe_statuses[area_id] = rospy.Subscriber('/area_{}/status'.format(area_id), Int8, self.area_status_cb, area_id)
+    #
+    #     #Wait for self.curr_fmeasures to be populated
+    #     while set(list(self.curr_fmeasures.keys())) != set(self.areas):
+    #         self.debug("Subscribing to area topics...")
+    #         rospy.sleep(1)
+    #
+    #     # Sampled node poses and distance matrix
+    #     self.sampled_nodes_poses = self.extract_sampled_node_poses(self.assigned_areas)
+    #     self.build_dist_matrix() #TODO: No need for this since this will be provided by the central
+
+    def instantiate_variables(self, assigned_areas, decay_rates, tlapses, dist_matrix):
         """
         Instantiates variables for every new assigned areas/cluster
         :param self:
@@ -583,9 +692,11 @@ class Robot:
         """
         self.debug("Instantiating variables")
 
-        self.assigned_areas = assigned_areas  # Has the same list indexing with self.areas
-        self.nareas = len(self.assigned_areas)  # Sample nodes from voronoi equal to area count #STAR
-        self.areas = [int(i + 1) for i in range(self.nareas)]  # list of int area indexes, starting at index=1
+        self.assigned_areas = assigned_areas  # Original assigned area ids (e.g., Area 1, Area 4, etc.)
+        self.nareas = len(self.assigned_areas)
+        self.areas = [int(i + 1) for i in range(self.nareas)]  # list of int area indexes, starting at index=1 and so on
+        # self.sampled_nodes_poses = self.extract_sampled_node_poses(self.assigned_areas)
+        # self.dist_matrix = dist_matrix
 
         # Send notice to areas about their robot assignment
         self.area_assignment_notice(self.assigned_areas)
@@ -597,9 +708,7 @@ class Robot:
         for area_idx in self.areas:
             self.decay_rates_dict[area_idx] = decay_rates[area_idx-1] #Instantiate provided decay rates
             self.tlapses[area_idx] = tlapses[area_idx-1] #Instantiate provided tlapses
-
-        # Unsubscribe from previous area topics
-        # self.unsubscribe_previous_area_topics() TODO: Debug this one for the case with re-assignment
+        # Subscribe on new topics
         self.subscribe_fmeasures = dict()
         self.subscribe_statuses = dict()
 
@@ -615,9 +724,21 @@ class Robot:
             self.debug("Subscribing to area topics...")
             rospy.sleep(1)
 
+        self.debug("Subscribed area fmeasures: {}".format(self.curr_fmeasures))
+
         # Sampled node poses and distance matrix
         self.sampled_nodes_poses = self.extract_sampled_node_poses(self.assigned_areas)
-        self.build_dist_matrix()
+        self.dist_matrix = dist_matrix
+        # self.build_dist_matrix() #TODO: No need for this since this will be provided by the central
+
+        self.debug(
+            "Assigned areas: {}. Areas: {}. Sampled poses: {}. Decay rates: {}. Tlapses: {}. Dist matrix: {}".format(
+                self.assigned_areas,
+                self.areas,
+                self.sampled_nodes_poses,
+                self.decay_rates_dict,
+                self.tlapses,
+                self.dist_matrix))
 
     def get_assigned_area_index(self, area_id):
         """
@@ -666,8 +787,8 @@ class Robot:
 
             self.register_to_central()
 
-            while self.dist_matrix is None:
-                self.debug("Initialization: No cluster assignment yet. Waiting for assignment...")
+            while self.dist_matrix is None: #PO: This self.dist_matrix is crazy
+                self.debug("Initialization...")
                 rospy.sleep(1)
 
             #TODO: To take into account re-assignment of areas
@@ -675,11 +796,10 @@ class Robot:
             self.sim_t = 0
             # while not rospy.is_shutdown() and self.sim_t<self.t_operation:
             while not rospy.is_shutdown():
-                curr_state = self.get_current_state()
-                self.state.append(curr_state)
-                self.debug("Curr state: {}".format(curr_state))
+                # curr_state = self.get_current_state()
+                # self.state.append(curr_state)
+                # self.debug("Curr state: {}".format(curr_state))
                 self.robot_status_pub.publish(self.robot_status)
-                self.location_pub.publish(self.get_assigned_area_id(self.curr_loc_idx))
                 self.status_history.append(self.robot_status)
 
                 #I am learning something new! Each day
@@ -690,7 +810,7 @@ class Robot:
                 if self.robot_status == robotStatus.IDLE.value: # Here, robot is available but unassigned
                     self.debug('Robot idle')
                     self.debug("With dist_matrix: {}".format(bool(self.dist_matrix is not None)))
-                    if self.dist_matrix is not None:
+                    if self.dist_matrix is not None: #TODO: This has to do with area subscribed topics
                         self.update_robot_status(robotStatus.READY)
 
                 elif self.robot_status == robotStatus.READY.value:
@@ -710,7 +830,7 @@ class Robot:
 
                     self.process_time_counter.append(think_elapsed)
 
-                    self.debug('Best decision: {}. Process time: {}s'.format(self.get_assigned_area_id(self.best_decision_idx), think_elapsed))
+                    self.debug('Best decision: {}. idx: {}. Process time: {}s'.format(self.get_assigned_area_id(self.best_decision_idx), self.best_decision_idx, think_elapsed))
 
                     if self.requested_pause:
                         self.request_pause(False)
@@ -718,6 +838,11 @@ class Robot:
                     self.update_robot_status(robotStatus.IN_MISSION)
 
                 elif self.robot_status == robotStatus.IN_MISSION.value:
+                    # curr_state = self.get_current_state()
+                    # self.state.append(curr_state)
+                    # self.debug("Curr state: {}".format(curr_state))
+                    # self.location_pub.publish(self.get_assigned_area_id(self.curr_loc_idx))
+
                     self.debug('Robot in mission. Total distance travelled: {}'.format(self.total_dist_travelled))
                     if self.available: #TODO: Insert the variable self.assigned for re-assignment case
                         self.commence_mission()
@@ -809,6 +934,8 @@ class Robot:
         if self.best_decision_idx is not None:
             self.mission_area_idx = self.best_decision_idx #TODO: Will the robot charge up battery?
             mission_area_id = self.charging_station
+
+            #TODO: It appears there is a mistake here! If only 1 area, the index can be 0. And so it retains as charging station
             if self.mission_area_idx != self.charging_station:
                 mission_area_id = self.get_assigned_area_id(self.mission_area_idx) #TODO: Will the robot charge up battery?
             self.mission_area_idx_pub.publish(mission_area_id)
@@ -854,7 +981,7 @@ class Robot:
 
     def notify_assignment_accomplishment(self, area_id):
         """
-        Assigns clusters to robots
+        Notifies central of recent goal accomplishment
         :param clusters:
         :return:
         """
@@ -903,6 +1030,7 @@ class Robot:
         :param area_id:
         :return:
         """
+
         area_idx = self.get_assigned_area_index(area_id)
         self.curr_fmeasures[area_idx] = msg.data
 
