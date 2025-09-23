@@ -67,6 +67,7 @@ add_service_files(
         pauseSimulation.srv
         registerRobot.srv
         collectedEnoughData.srv
+        restoreFmeasure.srv
 )
 
 

@@ -1,5 +1,6 @@
 <launch>
 <arg name="task_scheduler"/>
+<arg name="crisis_mitigation"/>
 <arg name="robot_prefix" value="$(arg task_scheduler)"/>
 <param name="tf_prefix" type="string" value="$(arg task_scheduler)"/>
 

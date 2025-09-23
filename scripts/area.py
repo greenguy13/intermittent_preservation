@@ -26,7 +26,8 @@ import project_utils as pu
 import pickle
 from status import areaStatus, robotStatus, centralStatus
 from int_preservation.srv import flevel, flevelResponse
-from int_preservation.srv import areaAssignment, areaAssignmentResponse
+from int_preservation.srv import restoreFmeasure, restoreFmeasureResponse
+# from int_preservation.srv import areaAssignment, areaAssignmentResponse
 from int_preservation.srv import collectedEnoughData
 from loss_fcns import *
 
@@ -43,7 +44,7 @@ class Area():
         #   PO1: We can have a global msg that tells all areas to pause their simulation?
         #   PO2: Or by the robot assigned to them?
         #   Remark: These 2 are possible
-
+        self.central_status = centralStatus.IDLE.value
 
         self.robot_id = None #rospy.get_param("~robot_id") #TODO: Assigned robot should be actually correct
         decay_rate = rospy.get_param("~decay_rate")
@@ -68,7 +69,7 @@ class Area():
 
         # Subscribed topics
         # TODO Suggestion: General/multi-robots
-        #  Subscribe to task scheduler
+        #  Subscribe to task scheduler. Potentially, when the task scheduler is IN_MISSION
         #
         # rospy.Subscriber('/robot_{}/robot_status'.format(self.robot_id), Int8, self.robot_status_cb)
         # rospy.Subscriber('/robot_{}/mission_area'.format(self.robot_id), Int8, self.mission_area_cb)
@@ -76,8 +77,10 @@ class Area():
         rospy.Subscriber('/central_status', Int8, self.central_status_cb)
 
         # Service server: Fmeasure
-        self.fmeasure_server = rospy.Service("/flevel_server_" + str(self.area), flevel, self.report_flevel_cb)
-        self.area_assignment_server = rospy.Service("/area_assignment_server_" + str(self.area), areaAssignment, self.area_assignment_cb)
+        self.fmeasure_server = rospy.Service("/flevel_server_" + str(self.area), flevel, self.report_flevel_cb) #This part is where robot measures the F upon visit
+        self.fmeasure_restore_server = rospy.Service("/restore_fmeasure_server_" + str(self.area), restoreFmeasure, self.restore_flevel_cb) #This part is where robot finishes restoring area
+        # self.area_assignment_server = rospy.Service("/area_assignment_server_" + str(self.area), areaAssignment, self.area_assignment_cb)
+        # TODO: Construct a server to restore the area back to full measure
 
         self.status = areaStatus.IDLE.value
         self.robot_mission_area = None
@@ -95,34 +98,51 @@ class Area():
         status = msg.data
         self.central_status = int(status)
 
-    def area_assignment_cb(self, msg):
-        """
-        Callback function for area_assignment service
-        :param msg:
-        :return:
-        """
-        self.robot_id = int(msg.area)
-        rospy.Subscriber('/robot_{}/robot_status'.format(self.robot_id), Int8, self.robot_status_cb)
-        rospy.Subscriber('/robot_{}/mission_area'.format(self.robot_id), Int8, self.mission_area_cb)
+    # def restore_fmeasure_cb(self, msg):
+    #     """
+    #
+    #     :param msg:
+    #     :return:
+    #     """
+    #     if bool(msg.restore_flevel) is True:
+    #         self.fmeasure = self.max_fmeasure
+    #         return restoreFmeasureResponse(True)
 
-        self.debug("Newly assigned robot id: {}".format(self.robot_id))
-        return areaAssignmentResponse(True)
 
-    def robot_status_cb(self, msg):
-        """
-        Callback for robot status. If robot is not on mission, we pause decay simulation
-        :return:
-        """
-        robot_status = msg.data
-        if (robot_status == robotStatus.IDLE.value) or (robot_status == robotStatus.READY.value) or (robot_status == robotStatus.CONSIDER_REPLAN.value) \
-                or (self.central_status == centralStatus.IDLE.value or self.central_status == centralStatus.CONSIDER_REPLAN.value):
-            self.update_status(areaStatus.IDLE)
-        elif robot_status == robotStatus.IN_MISSION.value or (robot_status == robotStatus.RESTORING_F.value and self.robot_mission_area != self.area) \
-                or robot_status == robotStatus.CHARGING.value:
-            self.update_status(areaStatus.DECAYING)
-        elif (robot_status == robotStatus.RESTORING_F.value and self.robot_mission_area == self.area) and (self.fmeasure < self.max_fmeasure):
-            self.update_status(areaStatus.RESTORING_F)
-        self.debug('robot status: {}. area {} status: {}, decay: {}, fmeasure: {} tlapse: {}, sim_t: {}'.format(robot_status, self.area, self.status, self.decay_rate, self.fmeasure, self.tlapse, self.sim_t))
+    # def area_assignment_cb(self, msg):
+    #     """
+    #     Callback function for area_assignment service
+    #     :param msg:
+    #     :return:
+    #     """
+    #     self.robot_id = int(msg.area)
+    #     rospy.Subscriber('/robot_{}/robot_status'.format(self.robot_id), Int8, self.robot_status_cb)
+    #     rospy.Subscriber('/robot_{}/mission_area'.format(self.robot_id), Int8, self.mission_area_cb)
+    #
+    #     self.debug("Newly assigned robot id: {}".format(self.robot_id))
+    #     return areaAssignmentResponse(True)
+
+    # def robot_status_cb(self, msg):
+    #     """
+    #     Callback for robot status. If robot is not on mission, we pause decay simulation
+    #     :return:
+    #     """
+    #     robot_status = msg.data
+    #     if (robot_status == robotStatus.IDLE.value) or (robot_status == robotStatus.READY.value) or (robot_status == robotStatus.CONSIDER_REPLAN.value) \
+    #             or (self.central_status == centralStatus.IDLE.value or self.central_status == centralStatus.CONSIDER_REPLAN.value):
+    #         self.update_status(areaStatus.IDLE)
+    #     elif robot_status == robotStatus.IN_MISSION.value or (robot_status == robotStatus.RESTORING_F.value and self.robot_mission_area != self.area) \
+    #             or robot_status == robotStatus.CHARGING.value:
+    #         self.update_status(areaStatus.DECAYING)
+    #     elif (robot_status == robotStatus.RESTORING_F.value and self.robot_mission_area == self.area) and (self.fmeasure < self.max_fmeasure):
+    #         self.update_status(areaStatus.RESTORING_F)
+    #     self.debug('Area {} status: {}, decay rate: {}, fmeasure: {} tlapse: {}, sim_t: {}'.format(self.area, self.status, self.decay_rate, self.fmeasure, self.tlapse, self.sim_t))
+
+    #TODO: No need for this. Since we are pausing the simulation already. No need to subscribe to robot status. We just keep on decaying
+    # So the initial state is IDLE. Central then sends out commence mission.
+    # The area just keeps on decaying.
+    # The area will only restore upon request.
+    # Pause happens within simulation anyway
 
     def mission_area_cb(self, msg):
         """
@@ -142,6 +162,19 @@ class Area():
         if bool(msg.fmeasure_request) is True:
             record = self.fmeasure
             return flevelResponse(record)
+
+    #TODO: Restore F-measure
+    def restore_flevel_cb(self, msg):
+        """
+        Callback as Service Server to restore F-measure
+        :param msg:
+        :return:
+        """
+        if bool(msg.restore_flevel) is True:
+            self.status = areaStatus.RESTORING_F.value
+            return restoreFmeasureResponse(True)
+
+        #TODO: Here the robot would have to wait for the status of the area until it becomes RESTORED_F, until it moves on
 
     def restore_delay(self):
         """
@@ -210,14 +243,14 @@ class Area():
         if self.evolving_decay:
             time_decay_evolves, evolve_decay_idx = self.sim_t + self.decay_evolve_tframe, 0 #first time stamp where decay rate evolves
 
-        while self.robot_id is None:
-            self.debug("Waiting for robot assignment...")
-            self.publish_fmeasure()
-            rospy.sleep(1)
+        # while self.robot_id is None:
+        #     self.debug("Waiting for robot assignment...")
+        #     self.publish_fmeasure()
+        #     rospy.sleep(1)
 
-        #TODO: rospy.time here
+        # TODO: Set up the a signal from central to start the simulation
+
         while not rospy.is_shutdown():
-            #TODO: rospy.time here
             status_record.append(self.status)
             # self.debug("Assigned robot: {}. Area status: {}. Fmeasure: {}. Tlapse: {}".format(self.robot_id, self.status, self.fmeasure, self.tlapse))
             self.debug("Area status: {}. Fmeasure: {}. Tlapse: {}".format(self.status, self.fmeasure, self.tlapse))
@@ -227,6 +260,12 @@ class Area():
                 #Set the next evolution time stamp
                 time_decay_evolves = self.sim_t + self.decay_evolve_tframe
                 evolve_decay_idx += 1
+
+            if self.central_status == centralStatus.IDLE.value:
+                self.update_status(areaStatus.IDLE)
+            else:
+                if self.status != areaStatus.RESTORING_F.value:
+                    self.update_status(areaStatus.DECAYING) #This thing overwrites
 
             if self.status == areaStatus.IDLE.value:
                 pass

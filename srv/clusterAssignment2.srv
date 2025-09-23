@@ -1,0 +1,6 @@
+int16[] cluster
+int16[] tlapses
+float32[] decay_rates
+float32[] dist_matrix_flat
+---
+bool availability

@@ -14,16 +14,18 @@ from nav_msgs.msg import Odometry
 from nav_msgs.srv import GetPlan
 from std_msgs.msg import Int8, Float32
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
-from status import areaStatus, battStatus, robotStatus
+
+from status import areaStatus, battStatus, robotStatus, centralStatus
 from reset_simulation import *
 from heuristic_fcns import *
 from loss_fcns import *
 # from int_preservation.srv import clusterAssignment, clusterAssignmentResponse
-from int_preservation.srv import areaAssignment
+# from int_preservation.srv import areaAssignment
 from int_preservation.srv import assignmentAccomplishment
 from int_preservation.srv import registerRobot
 from int_preservation.srv import pauseSimulation
 from int_preservation.srv import clusterAssignment2, clusterAssignment2Response
+from int_preservation.srv import restoreFmeasure
 
 INDEX_FOR_X = 0
 INDEX_FOR_Y = 1
@@ -89,7 +91,9 @@ class Robot:
         # self.sampled_nodes_poses = None
         self.mission_area_idx = None
         self.robot_status = robotStatus.IDLE.value
+        self.central_status = centralStatus.IDLE.value
         self.available = True
+        self.areas = []
 
         self.subscribe_fmeasures, self.subscribe_statuses = None, None
 
@@ -104,6 +108,7 @@ class Robot:
         self.requested_pause = False #indicator variable whether requested Stage to pause simulation
 
         #Publishers/Subscribers
+        rospy.Subscriber('/central_status', Int8, self.central_status_cb)
         rospy.Subscriber('/robot_{}/odom'.format(self.robot_id), Odometry, self.distance_travelled_cb, queue_size=1)
 
         # Service request to move_base to get plan : make_Plan
@@ -126,8 +131,6 @@ class Robot:
         #Server for assigned cluster to monitor/preserve
         self.cluster_assignment_server = rospy.Service("/cluster_assignment_server_" + str(self.robot_id), clusterAssignment2, self.cluster_assignment_cb)
 
-        #TODO: Need to publish assignment_status for the re-assignment case
-
         """
         On charging:
             Robot's mission area is 0. It then changes its status to CHARGING once it reaches the charging station.
@@ -141,6 +144,31 @@ class Robot:
             Now, the current mission area, which subscribes to both robot_status and robot_mission_area topics, will restore F; while,
                 those other areas not the mission area will have their F continually decay 
         """
+
+    def central_status_cb(self, msg):
+        """
+        Moves state to IDLE when central is IDLE (cause of initialization or thinking) or CONSIDER_REPLAN, pausing the simulation/decay of areas
+        :param msg:
+        :return:
+        """
+        status = msg.data
+        self.central_status = int(status)
+
+    def restore_Fmeasure(self, area_idx):
+        """
+        Restores F-measure. Notifies area to restore F
+        :return:
+        """
+        area_id = self.get_assigned_area_id(area_idx) #Get the respective area id
+        rospy.wait_for_service('/restore_fmeasure_server_' + str(area_id))
+        try:
+            restore_request = rospy.ServiceProxy('/restore_fmeasure_server_' + str(area_id), restoreFmeasure)
+            resp = restore_request(True)
+            if resp:
+                self.debug("Initiating restoring Fmeasure of Area {}".format(area_id))
+                self.robot_status = robotStatus.RESTORING_F.value
+        except rospy.ServiceException as e:
+            rospy.logerr(f"Register to central service call failed: {e}")
 
     def register_to_central(self):
         """
@@ -195,15 +223,16 @@ class Robot:
         This now also includes the cluster-specific distance matrix.
         """
         # Halt operations and prepare to reconsider new assignment
+        self.is_assigned = False
         self.robot_status = robotStatus.IDLE.value
-        # TODO: Cancel any current goal if any.
+        self.dist_matrix = None
+
+        #Cancel any current goal if any
         if self.mission_area_idx is not None:
             self.debug("Received new cluster. Cancelling current mission area: {}".format(self.get_assigned_area_id(self.mission_area_idx)))
             self.robot_goal_client.cancel_goal()
             self.available = True
             self.mission_area_idx = None
-        self.dist_matrix = None
-
 
         # Extract arrays
         assigned_areas = list(msg.cluster) #TODO: Make sure this is correct
@@ -360,10 +389,12 @@ class Robot:
         """
         if state == SUCCEEDED:
             self.curr_loc_idx = self.mission_area_idx
-            self.update_robot_status(robotStatus.RESTORING_F)
+            # self.update_robot_status(robotStatus.RESTORING_F)
 
             if self.mission_area_idx == self.charging_station:
                 self.update_robot_status(robotStatus.CHARGING)
+            else:
+                self.restore_Fmeasure(self.curr_loc_idx)
             mission_area = self.get_assigned_area_id(self.mission_area_idx)
             self.decisions_accomplished.append(mission_area)
             self.best_decision_idx = None #Reset best decision and mission area
@@ -428,10 +459,9 @@ class Robot:
                 #Immediate loss in i=1
                 duration = self.compute_duration(self.curr_loc_idx, decision_idx, self.curr_fmeasures[decision_idx], self.restoration, self.noise)
 
-                #TODO: It is here where we edit, we don't reset the f-measure of the area we visit
                 updated_fmeasures = self.adjust_fmeasures(self.curr_fmeasures.copy(), decision_idx, duration)  # F-measure of areas adjusted accordingly, i.e., consequence of decision
 
-                #TODO: Po, add a dummy fmeasures for the immediate cost computation where the f-measure of the are is not reset
+
                 immediate_cost_decision = self.compute_opportunity_cost(updated_fmeasures) #immediate opportunity cost
                 # self.debug("Current F-measures: {}".format(self.curr_fmeasures))
                 # self.debug("Feasible decision: {}. Duration: {}. Updated F: {}. Immediate loss: {}".format(decision, duration, updated_fmeasures, immediate_cost_decision))
@@ -445,7 +475,7 @@ class Robot:
                 # self.debug("Appending: {}".format((decision, evaluated_cost_decision, feasible_battery)))
                 decision_array.append((decision_idx, evaluated_cost_decision, feasible_battery))
 
-        best_decision_idx = self.charging_station #Here it is set as charging station by default. TODO: What happens if we just have 1 area to decide about?
+        best_decision_idx = self.charging_station #Here it is set as charging station by default.
 
         if len(decision_array)>0:
             best_decision_idx = self.get_best_decision(decision_array)
@@ -517,7 +547,7 @@ class Robot:
 
         for area_idx in self.areas:
             if area_idx == visit_area_idx:
-                fmeasures[area_idx] = self.max_fmeasure #TODO: This may need to be fixed for the objective computation
+                fmeasures[area_idx] = self.max_fmeasure
             else:
                 tlapse_decay = get_time_given_decay(self.max_fmeasure, fmeasures[area_idx], self.decay_rates_dict[area_idx]) + duration
                 fmeasures[area_idx] = decay(self.decay_rates_dict[area_idx], tlapse_decay, self.max_fmeasure)
@@ -694,12 +724,20 @@ class Robot:
 
         self.assigned_areas = assigned_areas  # Original assigned area ids (e.g., Area 1, Area 4, etc.)
         self.nareas = len(self.assigned_areas)
+
+        # areas = [int(i + 1) for i in range(self.nareas)]
+
+        #New assignment
+        # if set(areas) != set(self.areas):
+        #     self.debug("Instantiating new assigned areas: {} from curr areas: {}".format(areas, self.areas))
+        #     if self.subscribe_fmeasures is not None and self.subscribe_statuses is not None:
+        #         self.unsubscribe_previous_area_topics()
         self.areas = [int(i + 1) for i in range(self.nareas)]  # list of int area indexes, starting at index=1 and so on
         # self.sampled_nodes_poses = self.extract_sampled_node_poses(self.assigned_areas)
         # self.dist_matrix = dist_matrix
 
-        # Send notice to areas about their robot assignment
-        self.area_assignment_notice(self.assigned_areas)
+        # No need to send notice to areas about their robot assignment
+        # self.area_assignment_notice(self.assigned_areas)
 
         self.curr_fmeasures = dict()  # container of current F-measure of areas
         self.decay_rates_dict = dict()  # dictionary for decay rates
@@ -728,8 +766,8 @@ class Robot:
 
         # Sampled node poses and distance matrix
         self.sampled_nodes_poses = self.extract_sampled_node_poses(self.assigned_areas)
-        self.dist_matrix = dist_matrix
-        # self.build_dist_matrix() #TODO: No need for this since this will be provided by the central
+        self.dist_matrix = dist_matrix #Distance matrix provided by central
+        # self.build_dist_matrix()
 
         self.debug(
             "Assigned areas: {}. Areas: {}. Sampled poses: {}. Decay rates: {}. Tlapses: {}. Dist matrix: {}".format(
@@ -746,7 +784,9 @@ class Robot:
         :param area_id:
         :return:
         """
+        # self.debug("Getting assigned areas: {}. Area id {}".format(self.assigned_areas, area_id))
         area_idx = self.assigned_areas.index(area_id) + 1
+        # self.debug("Area index: {}".format(area_idx))
         return area_idx
 
     def get_assigned_area_id(self, area_idx):
@@ -787,11 +827,9 @@ class Robot:
 
             self.register_to_central()
 
-            while self.dist_matrix is None: #PO: This self.dist_matrix is crazy
+            while self.dist_matrix is None and self.central_status == centralStatus.IDLE.value: #TODO: Add central status if not in mission
                 self.debug("Initialization...")
                 rospy.sleep(1)
-
-            #TODO: To take into account re-assignment of areas
 
             self.sim_t = 0
             # while not rospy.is_shutdown() and self.sim_t<self.t_operation:
@@ -807,18 +845,19 @@ class Robot:
                 # New wave. I create a new culture. A new trend people will appreciate and follow and love
                 # A brand new consciousness
 
+                #TODO: Can we actually restructure the initialization logic?
+                # For instance, we can base it on whether the central issues a message to commence mission?
+
                 if self.robot_status == robotStatus.IDLE.value: # Here, robot is available but unassigned
                     self.debug('Robot idle')
                     self.debug("With dist_matrix: {}".format(bool(self.dist_matrix is not None)))
-                    if self.dist_matrix is not None: #TODO: This has to do with area subscribed topics
+                    if (self.dist_matrix is not None) and (self.is_assigned is True) and (self.central_status != centralStatus.IDLE.value):
                         self.update_robot_status(robotStatus.READY)
 
                 elif self.robot_status == robotStatus.READY.value:
                     self.debug('Robot ready')
 
-                    #TODO: Insert pause request here
                     self.request_pause(True) #Request pause simulation
-
                     think_start = process_time()
                     self.think_decisions()
                     think_end = process_time()
@@ -844,11 +883,10 @@ class Robot:
                     # self.location_pub.publish(self.get_assigned_area_id(self.curr_loc_idx))
 
                     self.debug('Robot in mission. Total distance travelled: {}'.format(self.total_dist_travelled))
-                    if self.available: #TODO: Insert the variable self.assigned for re-assignment case
+                    if self.available:
                         self.commence_mission()
 
                 elif self.robot_status == robotStatus.CHARGING.value:
-                    #TODO: Po, we insert self.assign_status = unassigned here for central's reconsideration. HERE!
                     self.debug('Waiting for battery to charge up')
 
                 elif self.robot_status == robotStatus.RESTORING_F.value:
@@ -856,7 +894,7 @@ class Robot:
 
                 # Update tlapse for each area when all nodes have registered
                 if len(self.decisions_made) > 1 or (self.robot_status != robotStatus.IDLE.value) and (self.robot_status != robotStatus.READY.value):
-                    self.update_tlapses_areas() #TODO: We can potentially insert here the tlapse from rospy.get_time()
+                    self.update_tlapses_areas()
 
                 if self.save:
                     pu.dump_data(self.strict_bounds_list, '{}_strict_bounds'.format(filename))
@@ -869,7 +907,7 @@ class Robot:
                 rate.sleep()
 
             # #Store results
-            # self.update_robot_status(robotStatus.SHUTDOWN) #TODO: There should be a notice that come from central actually
+            # self.update_robot_status(robotStatus.SHUTDOWN)
             # self.robot_status_pub.publish(self.robot_status)
             # self.location_pub.publish(self.get_assigned_area_id(self.curr_loc_idx))
             # self.status_history.append(self.robot_status)
@@ -932,12 +970,10 @@ class Robot:
         :return:
         """
         if self.best_decision_idx is not None:
-            self.mission_area_idx = self.best_decision_idx #TODO: Will the robot charge up battery?
+            self.mission_area_idx = self.best_decision_idx
             mission_area_id = self.charging_station
-
-            #TODO: It appears there is a mistake here! If only 1 area, the index can be 0. And so it retains as charging station
             if self.mission_area_idx != self.charging_station:
-                mission_area_id = self.get_assigned_area_id(self.mission_area_idx) #TODO: Will the robot charge up battery?
+                mission_area_id = self.get_assigned_area_id(self.mission_area_idx)
             self.mission_area_idx_pub.publish(mission_area_id)
             self.debug('Heading to: {}. {}'.format(mission_area_id, self.sampled_nodes_poses[self.mission_area_idx]))
             self.decisions_made.append(mission_area_id) #store decisions made
@@ -1003,10 +1039,10 @@ class Robot:
         area_idx = self.get_assigned_area_index(area_id)
         status = msg.data
 
-        if msg.data == areaStatus.RESTORED_F.value:
+        if status == areaStatus.RESTORED_F.value:
             if self.robot_id < 999: self.debug("Area {} fully restored!".format(area_id))
             self.tlapses[area_idx] = 0  # Reset the tlapse since last restored for the newly restored area
-            self.debug("Notifying server for accomplishment of restoring Area {}".format(area_id))
+            self.debug("Notifying central for accomplishment of restoring Area {}".format(area_id))
             self.notify_assignment_accomplishment(area_id) #Notifies central that recent assignment is accomplished
             self.available = True
             self.update_robot_status(robotStatus.IN_MISSION)

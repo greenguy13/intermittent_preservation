@@ -33,7 +33,7 @@ def batch_sample_nodes_poses(worlds, nareas_list, nplacements):
 #Run the experiment
 def run_experiment(method, world, nareas, placement, decay, tframe, nrobots=1, inference=None, dec_steps=1, ntrials=(0, 1), discount=None, exploration=None, nvisits=None,
                    history_data=None, history_decisions=None,
-                   task_scheduler=None,
+                   task_scheduler=None, crisis_mitigation=False,
                    save=False):
     """
     Runs a single experiment
@@ -60,15 +60,16 @@ def run_experiment(method, world, nareas, placement, decay, tframe, nrobots=1, i
                           'tframe:={}'.format(tframe), 'placement:={}'.format(placement),
                           'fileposes:={}'.format(fileposes),
                           'task_scheduler:={}'.format(task_scheduler),
+                          'crisis_mitigation:={}'.format(crisis_mitigation),
                           'save:={}'.format(save)]
-                fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_{}robots_{}'.format(method, inference, world, nareas, placement, decay, dec_steps, i + 1, nrobots, task_scheduler)
+                fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_{}robots_{}_crisis{}'.format(method, inference, world, nareas, placement, decay, dec_steps, i + 1, nrobots, task_scheduler, crisis_mitigation)
 
                 if method == 'treebased_decision':
                     params.append('discount:={}'.format(discount))
 
                 elif (method == 'heuristic_uncertainty' and inference == 'timeseries') or method == 'heuristic_decision' or method == 'online_posterior_sampling':
-                    fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_disc{}_exp{}_nvisits{}_{}robots_{}'.format(method, inference, world, nareas, placement, decay,
-                                                                     dec_steps, i + 1, discount, exploration, nvisits, nrobots, task_scheduler)
+                    fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_disc{}_exp{}_nvisits{}_{}robots_{}_crisis{}'.format(method, inference, world, nareas, placement, decay,
+                                                                     dec_steps, i + 1, discount, exploration, nvisits, nrobots, task_scheduler, crisis_mitigation)
                     params.append('discount:={}'.format(discount))
                     params.append('exploration:={}'.format(exploration))
                     params.append('nvisits:={}'.format(nvisits))
@@ -77,19 +78,19 @@ def run_experiment(method, world, nareas, placement, decay, tframe, nrobots=1, i
                         params.append('history_decisions:={}'.format(history_decisions))
 
                 elif method == 'multiarmed_ucb' or method == 'correlated_ucb':
-                    fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_exp{}_{}robots_{}'.format(method, inference, world,
+                    fileresult = '{}_{}_{}_n{}_p{}_{}_k{}_{}_exp{}_{}robots_{}_crisis{}'.format(method, inference, world,
                                                                                             nareas, placement, decay,
                                                                                             dec_steps, i + 1, exploration,
-                                                                                            nrobots, task_scheduler)
+                                                                                            nrobots, task_scheduler, crisis_mitigation)
                     params.append('exploration:={}'.format(exploration))
 
                 params.append('fileresult:={}'.format(fileresult))
                 print(
-                    "Launching...method: {}, inference: {}, world: {}, nareas: {}, nrobots: {}, task_scheduler: {}, decay: {}, dsteps: {}, discount: {}, exploration: {}, nvisits: {}, tframe: {}, placement: {}, trial: {}, save: {}".format(
-                        method, inference, world, nareas, nrobots, task_scheduler, decay, dec_steps, discount, exploration, nvisits, tframe, placement, i + 1, save))
+                    "Launching...method: {}, inference: {}, world: {}, nareas: {}, nrobots: {}, task_scheduler: {}, crisis_mitigation: {}, decay: {}, dsteps: {}, discount: {}, exploration: {}, nvisits: {}, tframe: {}, placement: {}, trial: {}, save: {}".format(
+                        method, inference, world, nareas, nrobots, task_scheduler, crisis_mitigation, decay, dec_steps, discount, exploration, nvisits, tframe, placement, i + 1, save))
 
             else:
-                fileresult = '{}_{}_n{}_p{}_{}_k{}_{}_{}robots_{}'.format(method, world, nareas, placement, decay, dec_steps, i + 1, nrobots, task_scheduler)
+                fileresult = '{}_{}_n{}_p{}_{}_k{}_{}_{}robots_{}_crisis{}'.format(method, world, nareas, placement, decay, dec_steps, i + 1, nrobots, task_scheduler, crisis_mitigation)
                 params = ['method:={}'.format(method),
                           'world:={}'.format(world), 'nareas:={}'.format(nareas),
                           'decay:={}'.format(decay),
@@ -98,9 +99,10 @@ def run_experiment(method, world, nareas, placement, decay, tframe, nrobots=1, i
                           'tframe:={}'.format(tframe), 'placement:={}'.format(placement),
                           'fileposes:={}'.format(fileposes), 'fileresult:={}'.format(fileresult),
                           'task_scheduler:={}'.format(task_scheduler),
+                          'crisis_mitigation:={}'.format(crisis_mitigation),
                           'save:={}'.format(save)]
-                print("Launching...method: {}, world: {}, nareas: {}, nrobots: {}, task_scheduler: {}, decay: {}, dsteps: {}, tframe: {}, placement: {}, trial: {}, save: {}".format(
-                        method, world, nareas, nrobots, task_scheduler, decay, dec_steps, tframe, placement, i + 1, save))
+                print("Launching...method: {}, world: {}, nareas: {}, nrobots: {}, task_scheduler: {}, crisis_mitigation: {}, decay: {}, dsteps: {}, tframe: {}, placement: {}, trial: {}, save: {}".format(
+                        method, world, nareas, nrobots, task_scheduler, crisis_mitigation, decay, dec_steps, tframe, placement, i + 1, save))
             logfile = fileresult + '.txt'
             launch_file = 'mission.launch' #'/home/ameldocena/catkin_ws/src/intermittent_preservation/launch/mission.launch'
             launch_nodes('int_preservation', launch_file, params, logfile)
@@ -130,15 +132,14 @@ if __name__ == '__main__':
 
     #Sample node poses
     # worlds = ['cluttered']
-    # nareas_list = [24]
+    # nareas_list = [20]
     # nplacements = 2000
     # batch_sample_nodes_poses(worlds, nareas_list, nplacements)
 
     # worlds = ['office']
-    # nareas_list = [8]
+    # nareas_list = [20]
     # nplacements = 2000
     # batch_sample_nodes_poses(worlds, nareas_list, nplacements)
-
 
     #Office
     #Adjust acml.launch, laser_max_range=20
@@ -273,14 +274,18 @@ if __name__ == '__main__':
     # TODO: Add crisis mitigation as a parameter for central_planner
     placement = 1
 
-    # run_experiment('heuristic_decision', 'office', 4, placement, 'non_uniform', 500, nrobots=2,
-    #                inference='oracle', dec_steps=1, discount=0.00, exploration=0.0, ntrials=(0, 1),
-    #                task_scheduler='central_planner', save=False)
+    # run_experiment('heuristic_decision', 'office', 8, placement, 'non_uniform', 500, nrobots=2,
+    #                inference='oracle', dec_steps=1, discount=0.75, exploration=0.0, ntrials=(0, 1),
+    #                task_scheduler='central_planner', crisis_mitigation=True, save=False)
 
-    # run_experiment('heuristic_decision', 'office', 36, placement, 'non_uniform', 2100, nrobots=6,
-    #                inference='oracle', dec_steps=1, discount=0.00, exploration=0.0, ntrials=(0, 3),
-    #                task_scheduler='central_planner', save=True)
-    #
+    run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100, nrobots=3,
+                   inference='oracle', dec_steps=1, discount=0.75, exploration=0.0, ntrials=(0, 3),
+                   task_scheduler='central_planner', crisis_mitigation=False, save=True)
+
+    run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100, nrobots=3,
+                   inference='oracle', dec_steps=1, discount=0.75, exploration=0.0, ntrials=(0, 3),
+                   task_scheduler='central_planner', crisis_mitigation=True, save=True)
+
     # run_experiment('heuristic_decision', 'office', 36, placement, 'non_uniform', 2100, nrobots=6,
     #                inference='oracle', dec_steps=4, discount=0.75, exploration=0.0, ntrials=(0, 5), task_scheduler='central_planner', save=True)
     # #
@@ -288,13 +293,14 @@ if __name__ == '__main__':
     #                inference='oracle', dec_steps=6, discount=0.75, exploration=0.0, ntrials=(0, 5),
     #                task_scheduler='central_planner', save=True)
     # #
-    run_experiment('dynamic_programming', 'office', 12, placement, 'non_uniform', 2100,
-                   nrobots=3, inference='oracle', dec_steps=6, ntrials=(0, 5),
-                   task_scheduler='central_planner', save=True)  # 3100
 
-    run_experiment('dynamic_programming', 'cluttered', 12, placement, 'non_uniform', 2100,
-                   nrobots=3, inference='oracle', dec_steps=6, ntrials=(0, 5),
-                   task_scheduler='central_planner', save=True)  # 3100
+    # run_experiment('dynamic_programming', 'office', 20, placement, 'non_uniform', 2100,
+    #                nrobots=4, inference='oracle', dec_steps=6, ntrials=(0, 5),
+    #                task_scheduler='central_planner', save=True)  # 3100
+    #
+    # run_experiment('dynamic_programming', 'cluttered', 20, placement, 'non_uniform', 2100,
+    #                nrobots=4, inference='oracle', dec_steps=6, ntrials=(0, 5),
+    #                task_scheduler='central_planner', save=True)  # 3100
 
     # #
     # run_experiment('online_posterior_sampling', 'office', 36, placement, 'non_uniform', 2100, nrobots=6,
@@ -369,9 +375,6 @@ if __name__ == '__main__':
 
     #Cluttered
     #Adjust acml laser_max_range=10
-
-    #TODO: Run slower, inverted correlated areas
-
     # placement = 1
     #
     # run_experiment('treebased_decision', 'cluttered', 8, placement, 'non_uniform', 3100,

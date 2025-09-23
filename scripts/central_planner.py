@@ -35,13 +35,10 @@ INDEX_FOR_Y = 1
 SUCCEEDED = 3  # GoalStatus ID for succeeded, http://docs.ros.org/en/api/actionlib_msgs/html/msg/GoalStatus.html
 SHUTDOWN_CODE = 99
 
+#TODO: Use the decay function from loss_fcns script
 def _exp_decay(F_max, rate, t):
     """Exponential decay g(δ, t)."""
     return F_max * math.exp(-rate * max(0.0, t))
-
-def _area_current_F(area_id, tlapses, decay_rates, F_max):
-    """Current F estimate from tlapse & rate."""
-    return _exp_decay(F_max, decay_rates[area_id], tlapses[area_id])
 
 def _mean_duration_excluding_col(M, j):
     """
@@ -52,69 +49,25 @@ def _mean_duration_excluding_col(M, j):
     sub = np.delete(M, j, axis=1)
     return float(np.mean(sub)) if sub.size > 0 else 0.0
 
-# def _tau_bar_from_robot_mats(self) -> dict[int, float]:
-#     mats = [m for m in self.dist_matrices.values() if m is not None]
-#     if not mats:
-#         return {}
-#     M = np.stack(mats, axis=0)   # (R, N, N)
-#     M_mean = np.mean(M, axis=0)  # (N, N)
-#     J = M_mean.shape[0] - 1      # 0=charging
-#     tau_bar = {}
-#     for aid in range(1, J+1):
-#         tau_bar[aid] = _mean_duration_excluding_col(M_mean, aid)
-#     return tau_bar
-
-def _closest_robot_to_area(robot_id_list, area_id, dist_matrices, robots_location):
-    """
-    Pick the robot (id) whose current location is closest (duration) to area_id.
-    Uses that robot’s own distance matrix, from its current 'node index' to 'area_id'.
-    robots_location[robot_id] should be a node index (0 = charging, 1..N = area).
-    """
-    best = None
-    best_cost = float('inf')
-    for rid in robot_id_list:
-        M = dist_matrices[rid]
-        if M is None or robots_location[rid] is None:
-            continue
-        src = int(robots_location[rid])  # node index now
-        dst = int(area_id)  # area index in matrix
-        cost = float(M[src, dst])
-        if cost < best_cost:
-            best_cost = cost
-            best = rid
-    return best, best_cost
-
-def _most_urgent_area_in_set(area_ids, tlapses, decay_rates, F_max):
-    """Return area id with min current F (most urgent)."""
-    return min(area_ids, key=lambda aid: _area_current_F(aid, tlapses, decay_rates, F_max))
-
-def _npv_cluster_loss(area_ids, z, gamma, delta_t, tau_bar, decay_rates, F_max):
-    """
-    NPV_c = Σ_j Σ_{h=1..H_j} gamma^h * max(0, z - g(δ_j, h*delta_t)),
-    with H_j = ceil(|c| * taū_j / delta_t).
-    """
-    if not area_ids:
-        return 0.0
-    size = max(1, len(area_ids))
-    tot = 0.0
-    for aid in area_ids:
-        H = int(ceil(size * float(tau_bar.get(aid, 0.0)) / max(1e-9, delta_t)))
-        rate = decay_rates[aid]
-        for h in range(1, H + 1):
-            F_pred = _exp_decay(F_max, rate, h * delta_t)
-            loss = max(0.0, z - F_pred)
-            tot += (gamma ** h) * loss
-    return tot
-
-def _will_be_urgent(aid, tlapses, decay_rates, F_max, z, tau_bar, k, delta_t):
-    """
-    Predict if area aid will drop below z within k * taū_a (lookahead).
-    """
-    look = max(1, int(ceil(float(k) * float(tau_bar.get(aid, 0.0)) / max(1e-9, delta_t))))
-    t_future = look * delta_t
-    F_future = _exp_decay(F_max, decay_rates[aid], tlapses[aid] + t_future)
-    return F_future <= z
-
+# def _npv_cluster_loss(area_ids, z, gamma, tau_bar, decay_rates, F_max, delta_t=1):
+#     """
+#     NPV_c = Σ_j Σ_{h=1..H_j} gamma^h * max(0, z - g(δ_j, h*delta_t)),
+#     with H_j = |c|
+#     """
+#     if not area_ids:
+#         return 0.0
+#     size = max(1, len(area_ids))
+#     tot = 0.0
+#     self.debug("Calculating NPV cluster: {}".format(area_ids))
+#     for aid in area_ids:
+#         H = int(size)
+#         rate = decay_rates[aid]
+#         for h in range(1, H + 1):
+#             F_pred = _exp_decay(F_max, rate, h * float(tau_bar.get(aid, 0.0)))
+#             # loss = max(0.0, z - F_pred)
+#             loss = loss_fcn(max_fmeasure=F_max, decayed_fmeasure=F_pred)
+#             tot += (gamma ** h) * loss
+#     return tot
 
 class CentralPlanner:
     def __init__(self, node_name):
@@ -160,6 +113,8 @@ class CentralPlanner:
         # self.tolerance = rospy.get_param("/move_base_tolerance")
         self.t_operation = rospy.get_param("/t_operation")  # total duration of the operation
         self.save = rospy.get_param("/save")  # Whether to save data
+        self.crisis_mitigation = rospy.get_param("/crisis_mitigation") # Crisis mitigation toggle
+        self.debug("Crisis mitigation: {}".format(self.crisis_mitigation))
 
         # Sampled nodes poses
         # charging_station_coords = (0, 0) #rospy.get_param("~initial_pose_x"), rospy.get_param("~initial_pose_y")  # rospy.get_param("/charging_station_coords")
@@ -177,6 +132,8 @@ class CentralPlanner:
         self.dist_matrices = dict()  # Initialize distance matrices of each registered robot to the areas + charging station
         for robot in range(self.nrobots):
             self.dist_matrices[robot] = None
+
+        self.tau_bar = None
 
         self.charging_station = 0
 
@@ -378,6 +335,7 @@ class CentralPlanner:
         # Reset tlapse and stamp for surge-release logic
         self.tlapses[area_id] = 0
         self.on_area_restored(area_id)
+        self.note_surge_visit(rid=int(robot_id), aid=int(area_id))
         self.debug("Received notice from Robot: {} restored Area: {}. Tlapse reset: {}".format(robot_id, area_id,
                                                                                                self.tlapses[area_id]))
         return assignmentAccomplishmentResponse(True)
@@ -503,7 +461,157 @@ class CentralPlanner:
             clusters[f"SURG_{c + 1}"] = [idx2aid[i] for i, lab in enumerate(labels) if int(lab) == c]
         return clusters
 
-    ## Cluster-robot assignment
+    def _npv_cluster_loss(self, area_ids, z, gamma, tau_bar, decay_rates, F_max, delta_t=1):
+        """
+        NPV_c = Σ_j Σ_{h=1..H_j} gamma^h * max(0, z - g(δ_j, h*delta_t)),
+        with H_j = |c|
+        """
+        if not area_ids:
+            return 0.0
+        size = max(1, len(area_ids))
+        tot = 0.0
+        self.debug("Calculating NPV cluster: {}".format(area_ids))
+        for aid in area_ids:
+            H = int(size)
+            rate = decay_rates[aid]
+            for h in range(1, H + 1):
+                F_pred = _exp_decay(F_max, rate, h * float(tau_bar.get(aid, 0.0)))
+                # loss = max(0.0, z - F_pred)
+                loss = loss_fcn(max_fmeasure=F_max, decayed_fmeasure=F_pred)
+                tot += (gamma ** h) * loss
+                self.debug("Area: {}. Loss: {}. Running total: {}".format(aid, loss, tot))
+        return tot
+    
+    def detect_and_assign_surge_clusters(self,
+                                         delta_t=1.0,
+                                         alpha_decay=1.0,
+                                         k=2,
+                                         assign_method='hungarian'):
+        """
+        New surge mitigation per design:
+          - Identify surge clusters: clusters with >=2 urgent areas and urgent-only NPV >= median.
+          - Base surge robots = robots assigned to surge clusters.
+          - Expected surge load per robot L_surge = NPV_U(SurgeClusters) / min(R, |urgent_areas_in_surge_clusters|).
+          - Potential surge robots (only those not in base): if NPV_home(full cluster) < L_surge.
+          - Team size K = min(|S_cand|, |urgent_areas_in_surge_clusters|).
+          - Team S = base first, then add potential robots sorted by NPV_home ascending until size K.
+          - Cluster urgent areas in surge clusters into K groups and assign via Hungarian by distance-to-anchor.
+        """
+        # Ensure jurisdictions are initialized
+        if not getattr(self, "clusters", None):
+            self._init_jurisdictions(assign_method='hungarian', alpha_decay=alpha_decay)
+
+        # # Build tau_bar once
+        if self.tau_bar is None:
+            self.tau_bar = self._tau_bar_from_robot_mats()
+
+        # 1) Identify highly-urgent areas using existing helper (or fallback to threshold forecast)
+        rho = []
+        for aid in self.areas:
+            rate = float(self.decay_rates[aid])
+            look_steps = int(ceil(k * float(self.tau_bar.get(aid, 0.0))))
+            t_future = look_steps * delta_t
+            F_future = self.max_fmeasure * math.exp(-rate * (self.tlapses[aid] + t_future))
+            if F_future <= self.fcrit:
+                rho.append(aid)
+
+        if not rho:
+            self.debug("[SURGE] No highly-urgent areas; skipping surge.")
+            return False  # no surge done
+
+        # 2) Per-cluster urgent sets and urgent-only NPV (consider only clusters with >=2 urgents)
+        urgent_in_cluster = {}
+        NPV_U = {}
+        for cid, area_ids in self.clusters.items():
+            urg = [a for a in area_ids if a in rho]
+            urgent_in_cluster[cid] = urg
+            if len(urg) >= 2:
+                NPV_U[cid] = self._npv_cluster_loss(
+                    urg, self.fcrit, self.gamma, self.tau_bar, self.decay_rates, self.max_fmeasure
+                )
+
+        if not NPV_U:
+            self.debug("[SURGE] No clusters with >=2 urgent areas; skipping surge.")
+            return False
+        self.debug("Urgent in clusters: {}".format(urgent_in_cluster))
+
+        # 3) Surge clusters: urgent-only NPV >= median
+        values = list(NPV_U.values())
+        M = float(np.median(values)) if values else 0.0
+        surge_cids = [cid for cid, val in NPV_U.items() if val >= M]
+        if not surge_cids:
+            self.debug("[SURGE] No surge clusters (>= median) found; skipping surge.")
+            return False
+        self.debug("NPV highly urgents: {}. Median NPV: {}. surge_cids: {}".format(NPV_U, M, surge_cids))
+
+        # All urgent areas inside surge clusters
+        A_S = set().union(*(urgent_in_cluster[cid] for cid in surge_cids))
+        self.debug("[SURGE] Surge clusters {}".format(A_S))
+        if not A_S:
+            self.debug("[SURGE] Surge clusters have no urgent areas; skipping surge.")
+            return False
+
+        # 4) Base surge robots (originally assigned to surge clusters)
+        S0 = []
+        for cid in surge_cids:
+            rid = self.clusters_assignment.get(cid, None)
+            if rid is not None and rid not in S0:
+                S0.append(int(rid))
+        self.debug("Base surge robots: {}".format(S0))
+
+        # 5) Expected surge load per robot (with min(R, |A_S|) denominator)
+        NPV_surge_total = sum(NPV_U[cid] for cid in surge_cids)
+        denom = max(1, min(self.nrobots, len(A_S)))
+        L_surge = float(NPV_surge_total) / float(denom)
+        self.debug("Expected NPV per surge robot: {}".format(L_surge))
+
+        # 6) Potential surge robots (only those NOT in base), using FULL home-cluster NPV
+        def npv_full_cluster_for_robot(rid: int) -> float:
+            home_cid = self.robots_assignment.get(rid, None)
+            areas = self.clusters.get(home_cid, []) if home_cid else []
+            return self._npv_cluster_loss(areas, self.fcrit, self.gamma, self.tau_bar, self.decay_rates, self.max_fmeasure)
+
+        eligible = []
+        for rid in self.robot_ids:
+            # self.debug("Robot: {}. Home NPV: {}".format(rid, npv_full_cluster_for_robot(rid)))
+            if rid in S0:
+                continue
+            if npv_full_cluster_for_robot(rid) < L_surge:
+                self.debug("Appending: {}".format(rid))
+                eligible.append(int(rid))
+
+        # 7) Compose surge team
+        Scand = list(dict.fromkeys(S0 + eligible))  # preserve order, dedup
+        K = min(len(Scand), len(A_S))
+        if K <= 0:
+            self.debug("[SURGE] No feasible surge team; skipping surge.")
+            return False
+
+        # Team S: base first, then potential sorted by NPV_home asc
+        S = list(S0)
+        if len(S) < K:
+            pool = [r for r in eligible if r not in S0]
+            pool_sorted = sorted(pool, key=lambda r: npv_full_cluster_for_robot(r))
+            need = K - len(S)
+            S.extend(pool_sorted[:need])
+        S = S[:K]
+        self.debug("Selected surge robot: {}".format(S))
+
+        # 8) Create K surge subclusters from A_S and assign via Hungarian (distance-to-anchor)
+        surg_clusters = self.create_urgent_clusters(list(A_S), K, alpha_decay=alpha_decay, seed=42)
+        if not surg_clusters:
+            self.debug("[SURGE] Failed to create surge clusters; skipping surge.")
+            return False
+
+        self.debug(f"[SURGE] Median={M:.3f} surge_cids={surge_cids} |A_S|={len(A_S)} "
+                   f"S0={S0} eligible={eligible} K={K} L_surge={L_surge:.3f}")
+        self.assign_clusters(clusters=surg_clusters,
+                             method=assign_method,
+                             candidate_rids=S,
+                             tag_prefix="SURG_",
+                             surge=True)
+        return True
+## Cluster-robot assignment
     def _area_current_F(self, aid):
         rate = float(self.decay_rates[aid])
         t = float(self.tlapses[aid])
@@ -526,12 +634,280 @@ class CentralPlanner:
                 best, best_cost = rid, cost
         return best, best_cost
 
+    # def assign_clusters(self,
+    #                     clusters,
+    #                     method='greedy',
+    #                     candidate_rids=None,
+    #                     tag_prefix="C",
+    #                     surge=False,
+    #                     dwell_cap='default'):
+    #     """
+    #     Assign clusters to robots.
+    #
+    #     - method: 'greedy' or 'hungarian'
+    #     - candidate_rids: optional subset of robot ids to consider (e.g., surge set Ω).
+    #       If None, uses all currently unassigned robots (or all robots if none tracked).
+    #     - tag_prefix: prefix for cluster names when recording, e.g., "C" or "SURG_"
+    #     - surge: if True, we record sticky surge bindings (home_cid, t_bind, areas)
+    #     """
+    #     self.debug(f"Assigning clusters (method={method}, surge={surge}): {clusters}")
+    #
+    #     # 1) Choose an anchor (most urgent area) for each cluster
+    #     cluster_ids = list(clusters.keys())
+    #     anchors = {cid: self._most_urgent_anchor(clusters[cid]) for cid in cluster_ids}
+    #     valid_cids = [cid for cid in cluster_ids if anchors[cid] is not None]
+    #     if not valid_cids:
+    #         self.debug("No valid clusters to assign (no anchors).")
+    #         return
+    #
+    #     # 2) Which robots can we use?
+    #     if candidate_rids is None:
+    #         candidate_rids = (self.unassigned_robots.copy() or self.robot_ids.copy())
+    #
+    #     # 3) Utility to actually send an assignment to a robot
+    #     def _dispatch(rid, cid, area_ids):
+    #         try:
+    #             rospy.wait_for_service(f"/cluster_assignment_server_{rid}")
+    #             srv = rospy.ServiceProxy(f"/cluster_assignment_server_{rid}", clusterAssignment2)
+    #             tlapses = self.retrieve_tlapses(area_ids)
+    #             rates = self.retrieve_decay_rates(area_ids)
+    #             dist_matrix = self.dist_matrices[rid].astype(np.float32).ravel().tolist() #TODO: Here we are sending the dist_matrix for the robot
+    #             #TODO: Need to flatten this distance matrix
+    #             resp = srv(area_ids, tlapses, rates, dist_matrix)
+    #             if not resp.availability:
+    #                 return False
+    #
+    #             # If surge: remember where the robot came from and bind
+    #             named_cid = cid if cid.startswith(tag_prefix) else f"{tag_prefix}{cid}"
+    #             home_cid = self.robots_assignment.get(rid, None) if surge else None
+    #
+    #             # Bookkeeping
+    #             self.clusters[named_cid] = area_ids
+    #             self.robots_assignment[rid] = named_cid
+    #             self.clusters_assignment[named_cid] = rid
+    #             if rid in self.unassigned_robots:
+    #                 self.unassigned_robots.remove(rid)
+    #
+    #             if surge:
+    #                 if not hasattr(self, "surge_bindings"):
+    #                     self.surge_bindings = {}
+    #                 self.surge_bindings[rid] = {
+    #                     'home_cid': home_cid,
+    #                     'areas': set(int(a) for a in area_ids),
+    #                     # use sim time if you keep one; fall back to ROS time
+    #                     't_bind': int(getattr(self, "sim_t", rospy.get_time()))
+    #                 }
+    #                 self.debug(f"[SURGE-BIND] Robot {rid} → {named_cid} areas={area_ids} (home={home_cid})")
+    #             else:
+    #                 self.debug(f"[ASSIGN] Robot {rid} → {named_cid} areas={area_ids}")
+    #
+    #             return True
+    #         except rospy.ServiceException as e:
+    #             rospy.logerr(f"assign_clusters: service call failed for robot {rid}: {e}")
+    #             return False
+    #
+    #     # 4) Build assignment either via Hungarian or greedy
+    #     if method.lower() == "hungarian":
+    #         try:
+    #             rids = candidate_rids.copy()
+    #             cids = valid_cids.copy()
+    #
+    #             # Cost(i,j) = duration from robot i current node -> anchor of cluster j
+    #             C = np.full((len(rids), len(cids)), np.inf, dtype=float)
+    #             for i, rid in enumerate(rids):
+    #                 M = self.dist_matrices.get(rid, None)
+    #                 src = self.robots_location.get(rid, None)
+    #                 if M is None or src is None:
+    #                     continue
+    #                 src = int(src)
+    #                 for j, cid in enumerate(cids):
+    #                     aid_anchor = int(anchors[cid])
+    #                     if 0 <= src < M.shape[0] and 0 <= aid_anchor < M.shape[1]:
+    #                         C[i, j] = float(M[src, aid_anchor])
+    #
+    #             rr, cc = linear_sum_assignment(C)
+    #             used = set()
+    #             for i, j in zip(rr, cc):
+    #                 if not np.isfinite(C[i, j]):
+    #                     continue
+    #                 rid = rids[i]
+    #                 cid = cids[j]
+    #                 if rid in used:
+    #                     continue
+    #                 if _dispatch(rid, cid, clusters[cid]):
+    #                     used.add(rid)
+    #
+    #             # Update unassigned list
+    #             self.unassigned_robots = [rid for rid in self.robot_ids if rid not in used]
+    #
+    #         except Exception as e:
+    #             rospy.logwarn(f"Hungarian assignment failed ({e}); falling back to greedy.")
+    #             method = "greedy"  # fall through
+    #
+    #     if method.lower() == "greedy":
+    #         # sort clusters by urgency (min current F at anchor)
+    #         def cluster_urgency(cid):
+    #             aid = anchors[cid]
+    #             return self._area_current_F(aid) if aid is not None else float('inf')
+    #
+    #         cids_sorted = sorted(valid_cids, key=cluster_urgency)
+    #         free = candidate_rids.copy()
+    #
+    #         for cid in cids_sorted:
+    #             if not free:
+    #                 break
+    #             anchor = anchors[cid]
+    #             rid, _ = self._closest_robot_to_area(free, anchor)
+    #             if rid is None:
+    #                 continue
+    #             if _dispatch(rid, cid, clusters[cid]):
+    #                 free.remove(rid)
+    #
+    #         # any robot not used remains "unassigned"
+    #         used = set(candidate_rids) - set(free)
+    #         self.unassigned_robots = [rid for rid in self.robot_ids if rid not in used]
+
+    # def assign_clusters(self,
+    #                     clusters,
+    #                     method='greedy',
+    #                     candidate_rids=None,
+    #                     tag_prefix="C",
+    #                     surge=False,
+    #                     dwell_cap='default'):
+    #     """
+    #     Assign clusters to robots.
+    #
+    #     - method: 'greedy' or 'hungarian'
+    #     - candidate_rids: optional subset of robot ids to consider (e.g., surge set Ω).
+    #       If None, uses all currently unassigned robots (or all robots if none tracked).
+    #     - tag_prefix: prefix for cluster names when recording, e.g., "C" or "SURG_"
+    #     - surge: if True, we record sticky surge bindings (home_cid, t_bind, areas)
+    #     """
+    #     self.debug(f"Assigning clusters (method={method}, surge={surge}): {clusters}")
+    #
+    #     # 1) Choose an anchor (most urgent area) for each cluster
+    #     cluster_ids = list(clusters.keys())
+    #     anchors = {cid: self._most_urgent_anchor(clusters[cid]) for cid in cluster_ids}
+    #     valid_cids = [cid for cid in cluster_ids if anchors[cid] is not None]
+    #     if not valid_cids:
+    #         self.debug("No valid clusters to assign (no anchors).")
+    #         return
+    #
+    #     # 2) Which robots can we use?
+    #     if candidate_rids is None:
+    #         candidate_rids = (self.unassigned_robots.copy() or self.robot_ids.copy())
+    #
+    #     # 3) Utility to actually send an assignment to a robot
+    #     def _dispatch(rid, cid, area_ids):
+    #         try:
+    #             rospy.wait_for_service(f"/cluster_assignment_server_{rid}")
+    #             srv = rospy.ServiceProxy(f"/cluster_assignment_server_{rid}", clusterAssignment2)
+    #             tlapses = self.retrieve_tlapses(area_ids)
+    #             rates = self.retrieve_decay_rates(area_ids)
+    #             dist_matrix = self.dist_matrices[rid].astype(np.float32).ravel().tolist()
+    #             resp = srv(area_ids, tlapses, rates, dist_matrix)
+    #             if not resp.availability:
+    #                 return False
+    #
+    #             # If surge: remember where the robot came from and bind
+    #             named_cid = cid if cid.startswith(tag_prefix) else f"{tag_prefix}{cid}"
+    #             home_cid = self.robots_assignment.get(rid, None) if surge else None
+    #
+    #             # Bookkeeping
+    #             self.clusters[named_cid] = area_ids
+    #             self.robots_assignment[rid] = named_cid
+    #             self.clusters_assignment[named_cid] = rid
+    #             if rid in self.unassigned_robots:
+    #                 self.unassigned_robots.remove(rid)
+    #
+    #             if surge:
+    #                 if not hasattr(self, "surge_bindings"):
+    #                     self.surge_bindings = {}
+    #                 self.surge_bindings[rid] = {
+    #                     'home_cid': home_cid,
+    #                     'areas': set(int(a) for a in area_ids),
+    #                     't_bind': int(getattr(self, "sim_t", rospy.get_time())),
+    #                     'visited_areas': set(),
+    #                     'visit_count': 0,
+    #                     'dwell_cap': (len(area_ids) if (dwell_cap in (None, 'default')) else int(dwell_cap))
+    #                 }
+    #                 self.debug(f"[SURGE-BIND] Robot {rid} → {named_cid} areas={area_ids} (home={home_cid})")
+    #             else:
+    #                 self.debug(f"[ASSIGN] Robot {rid} → {named_cid} areas={area_ids}")
+    #
+    #             return True
+    #         except rospy.ServiceException as e:
+    #             rospy.logerr(f"assign_clusters: service call failed for robot {rid}: {e}")
+    #             return False
+    #
+    #     # 4) Build assignment either via Hungarian or greedy
+    #     if method.lower() == "hungarian":
+    #         try:
+    #             rids = candidate_rids.copy()
+    #             cids = valid_cids.copy()
+    #
+    #             # Cost(i,j) = duration from robot i current node -> anchor of cluster j
+    #             C = np.full((len(rids), len(cids)), np.inf, dtype=float)
+    #             for i, rid in enumerate(rids):
+    #                 M = self.dist_matrices.get(rid, None)
+    #                 src = self.robots_location.get(rid, None)
+    #                 if M is None or src is None:
+    #                     continue
+    #                 src = int(src)
+    #                 for j, cid in enumerate(cids):
+    #                     aid_anchor = int(anchors[cid])
+    #                     if 0 <= src < M.shape[0] and 0 <= aid_anchor < M.shape[1]:
+    #                         C[i, j] = float(M[src, aid_anchor])
+    #
+    #             rr, cc = linear_sum_assignment(C)
+    #             used = set()
+    #             for i, j in zip(rr, cc):
+    #                 if not np.isfinite(C[i, j]):
+    #                     continue
+    #                 rid = rids[i]
+    #                 cid = cids[j]
+    #                 if rid in used:
+    #                     continue
+    #                 if _dispatch(rid, cid, clusters[cid]):
+    #                     used.add(rid)
+    #
+    #             # Update unassigned list
+    #             self.unassigned_robots = [rid for rid in self.robot_ids if rid not in used]
+    #
+    #         except Exception as e:
+    #             rospy.logwarn(f"Hungarian assignment failed ({e}); falling back to greedy.")
+    #             method = "greedy"  # fall through
+    #
+    #     if method.lower() == "greedy":
+    #         # sort clusters by urgency (min current F at anchor)
+    #         def cluster_urgency(cid):
+    #             aid = anchors[cid]
+    #             return self._area_current_F(aid) if aid is not None else float('inf')
+    #
+    #         cids_sorted = sorted(valid_cids, key=cluster_urgency)
+    #         free = candidate_rids.copy()
+    #
+    #         for cid in cids_sorted:
+    #             if not free:
+    #                 break
+    #             anchor = anchors[cid]
+    #             rid, _ = self._closest_robot_to_area(free, anchor)
+    #             if rid is None:
+    #                 continue
+    #             if _dispatch(rid, cid, clusters[cid]):
+    #                 free.remove(rid)
+    #
+    #         # any robot not used remains "unassigned"
+    #         used = set(candidate_rids) - set(free)
+    #         self.unassigned_robots = [rid for rid in self.robot_ids if rid not in used]
+
     def assign_clusters(self,
                         clusters,
                         method='greedy',
                         candidate_rids=None,
                         tag_prefix="C",
-                        surge=False):
+                        surge=False,
+                        dwell_cap='default'):
         """
         Assign clusters to robots.
 
@@ -539,7 +915,10 @@ class CentralPlanner:
         - candidate_rids: optional subset of robot ids to consider (e.g., surge set Ω).
           If None, uses all currently unassigned robots (or all robots if none tracked).
         - tag_prefix: prefix for cluster names when recording, e.g., "C" or "SURG_"
-        - surge: if True, we record sticky surge bindings (home_cid, t_bind, areas)
+        - surge: if True, we record sticky surge bindings with dwell/visit fields and area locks
+        - dwell_cap: for surge bindings:
+            * 'default' or None  -> len(area_ids)
+            * int                -> explicit cap
         """
         self.debug(f"Assigning clusters (method={method}, surge={surge}): {clusters}")
 
@@ -555,39 +934,66 @@ class CentralPlanner:
         if candidate_rids is None:
             candidate_rids = (self.unassigned_robots.copy() or self.robot_ids.copy())
 
+        # Ensure lock/binding maps exist
+        if surge and not hasattr(self, "surge_bindings"):
+            self.surge_bindings = {}
+        if not hasattr(self, "area_locks"):
+            self.area_locks = {}
+
         # 3) Utility to actually send an assignment to a robot
         def _dispatch(rid, cid, area_ids):
             try:
+                # For non-surge dispatches, avoid sending areas that are currently locked by surge robots
+                if not surge and self.area_locks:
+                    filtered = [int(a) for a in area_ids if self.area_locks.get(int(a)) is None]
+                    if not filtered:
+                        self.debug(f"[DISPATCH-SKIP] rid={rid}: all requested areas locked by surge robots.")
+                        return False
+                    area_ids = filtered
+
                 rospy.wait_for_service(f"/cluster_assignment_server_{rid}")
                 srv = rospy.ServiceProxy(f"/cluster_assignment_server_{rid}", clusterAssignment2)
+
                 tlapses = self.retrieve_tlapses(area_ids)
                 rates = self.retrieve_decay_rates(area_ids)
-                dist_matrix = self.dist_matrices[rid].astype(np.float32).ravel().tolist() #TODO: Here we are sending the dist_matrix for the robot
-                #TODO: Need to flatten this distance matrix
+
+                # Flatten this robot's distance matrix
+                M = self.dist_matrices.get(rid, None)
+                if M is None:
+                    rospy.logwarn(f"assign_clusters: no distance matrix for robot {rid}")
+                    return False
+                dist_matrix = M.astype(np.float32).ravel().tolist()
+
                 resp = srv(area_ids, tlapses, rates, dist_matrix)
                 if not resp.availability:
                     return False
 
                 # If surge: remember where the robot came from and bind
-                named_cid = cid if cid.startswith(tag_prefix) else f"{tag_prefix}{cid}"
+                named_cid = cid if (tag_prefix == "" or str(cid).startswith(tag_prefix)) else f"{tag_prefix}{cid}"
                 home_cid = self.robots_assignment.get(rid, None) if surge else None
 
                 # Bookkeeping
-                self.clusters[named_cid] = area_ids
+                self.clusters[named_cid] = list(map(int, area_ids))
                 self.robots_assignment[rid] = named_cid
                 self.clusters_assignment[named_cid] = rid
                 if rid in self.unassigned_robots:
                     self.unassigned_robots.remove(rid)
 
                 if surge:
-                    if not hasattr(self, "surge_bindings"):
-                        self.surge_bindings = {}
+                    # Record surge binding with dwell/visit fields
+                    cap_val = (len(area_ids) if (dwell_cap in (None, 'default')) else int(dwell_cap))
                     self.surge_bindings[rid] = {
                         'home_cid': home_cid,
                         'areas': set(int(a) for a in area_ids),
-                        # use sim time if you keep one; fall back to ROS time
-                        't_bind': int(getattr(self, "sim_t", rospy.get_time()))
+                        't_bind': int(getattr(self, "sim_t", rospy.get_time())),
+                        'visited_areas': set(),
+                        'visit_count': 0,
+                        'dwell_cap': max(1, int(cap_val)),
                     }
+                    # Lock these areas for this surge robot
+                    for aid in area_ids:
+                        self.area_locks[int(aid)] = int(rid)
+
                     self.debug(f"[SURGE-BIND] Robot {rid} → {named_cid} areas={area_ids} (home={home_cid})")
                 else:
                     self.debug(f"[ASSIGN] Robot {rid} → {named_cid} areas={area_ids}")
@@ -595,6 +1001,9 @@ class CentralPlanner:
                 return True
             except rospy.ServiceException as e:
                 rospy.logerr(f"assign_clusters: service call failed for robot {rid}: {e}")
+                return False
+            except Exception as e:
+                rospy.logerr(f"assign_clusters: dispatch error for robot {rid}: {e}")
                 return False
 
         # 4) Build assignment either via Hungarian or greedy
@@ -658,131 +1067,315 @@ class CentralPlanner:
             used = set(candidate_rids) - set(free)
             self.unassigned_robots = [rid for rid in self.robot_ids if rid not in used]
 
-    # def assign_clusters(self,
-    #                     clusters,
-    #                     method = 'hungarian',
-    #                     candidate_rids = None,
-    #                     tag_prefix = "C",
-    #                     surge = False):
+    # def _dispatch_cluster_to_robot(self, rid, cid, area_ids, surge=False, dwell_cap='default', tag_prefix=""):
     #     """
-    #     Assign clusters to robots.
-    #       - method: 'greedy' or 'hungarian'
-    #       - candidate_rids: optional list of robot ids to use (e.g., Ω in crisis)
-    #       - tag_prefix: e.g., 'C' for jurisdictions, 'SURG_' for crisis clusters
-    #       - surge: if True, record sticky surge bindings (home_cid, t_bind, areas)
+    #     Send (dispatch) a specific cluster `cid -> area_ids` to a single robot `rid`,
+    #     updating all planner bookkeeping (no Hungarian/greedy; direct call).
+    #
+    #     - surge: if True, records a surge binding (home_cid, t_bind, visited_areas, visit_count, dwell_cap)
+    #     - dwell_cap: 'default' -> len(area_ids) for surge bindings; or int to override
+    #     - tag_prefix: optional prefix for cid (leave "" to keep cid unchanged)
     #     """
-    #     self.debug(f"Assigning clusters (method={method}, surge={surge}): {clusters}")
-    #
-    #     # Anchors (most urgent area per cluster)
-    #     cluster_ids = list(clusters.keys())
-    #     anchors = {cid: self._most_urgent_anchor(clusters[cid]) for cid in cluster_ids}
-    #     valid_cids = [cid for cid in cluster_ids if anchors[cid] is not None]
-    #     if not valid_cids:
-    #         self.debug("No valid clusters to assign (no anchors).")
-    #         return
-    #
-    #     # Candidate robots
-    #     if candidate_rids is None:
-    #         candidate_rids = (self.unassigned_robots.copy() or self.robot_ids.copy())
-    #
-    #     # Utility to actually send a cluster to a robot
-    #     def _dispatch(rid, cid, area_ids):
+    #     try:
     #         rospy.wait_for_service(f"/cluster_assignment_server_{rid}")
-    #         srv = rospy.ServiceProxy(f"/cluster_assignment_server_{rid}", clusterAssignment)
+    #         srv = rospy.ServiceProxy(f"/cluster_assignment_server_{rid}", clusterAssignment2)
+    #
     #         tlapses = self.retrieve_tlapses(area_ids)
     #         rates = self.retrieve_decay_rates(area_ids)
-    #         resp = srv(area_ids, tlapses, rates)
-    #         if resp.availability:
-    #             # If surge: remember home cid before overwriting
-    #             home_cid = self.robots_assignment.get(rid, None) if surge else None
-    #             # Assign
-    #             named_cid = cid if cid.startswith(tag_prefix) else f"{tag_prefix}{cid}"
-    #             self.clusters[named_cid] = area_ids
-    #             self.robots_assignment[rid] = named_cid
-    #             self.clusters_assignment[named_cid] = rid
-    #             # Sticky surge binding
-    #             if surge:
-    #                 self.surge_bindings[rid] = {
-    #                     'areas': set(int(a) for a in area_ids),
-    #                     't_bind': int(self.sim_t),
-    #                     'home_cid': home_cid
-    #                 }
-    #                 self.debug(f"[SURGE-BIND] Robot {rid} ← {named_cid} (home={home_cid}) :: {area_ids}")
-    #             else:
-    #                 self.debug(f"[ASSIGN] Robot {rid} ← {named_cid} :: {area_ids}")
-    #             return True
+    #
+    #         # Flatten this robot's distance matrix as you already do in assign_clusters
+    #         M = self.dist_matrices.get(rid, None)
+    #         if M is None:
+    #             raise RuntimeError(f"No distance matrix for robot {rid}")
+    #         dist_matrix = M.astype(np.float32).ravel().tolist()
+    #         self.debug("Dispatching Robot {} to Cluster: {}".format(rid, area_ids))
+    #
+    #         resp = srv(area_ids, tlapses, rates, dist_matrix)
+    #         if not getattr(resp, "availability", True):
+    #             # Robot rejected the assignment (busy/unavailable)
+    #             return False
+    #
+    #         # Bookkeeping
+    #         named_cid = cid if (tag_prefix == "" or str(cid).startswith(tag_prefix)) else f"{tag_prefix}{cid}"
+    #         home_cid = self.robots_assignment.get(rid, None) if surge else None
+    #
+    #         self.clusters[named_cid] = list(map(int, area_ids))
+    #         self.robots_assignment[rid] = named_cid
+    #         self.clusters_assignment[named_cid] = rid
+    #         if hasattr(self, "unassigned_robots") and rid in self.unassigned_robots:
+    #             self.unassigned_robots.remove(rid)
+    #
+    #         if surge:
+    #             if not hasattr(self, "surge_bindings"):
+    #                 self.surge_bindings = {}
+    #             self.surge_bindings[rid] = {
+    #                 'home_cid': home_cid,
+    #                 'areas': set(int(a) for a in area_ids),
+    #                 't_bind': int(getattr(self, "sim_t", rospy.get_time())),
+    #                 'visited_areas': set(),
+    #                 'visit_count': 0,
+    #                 'dwell_cap': (len(area_ids) if (dwell_cap in (None, 'default')) else int(dwell_cap)),
+    #             }
+    #             self.debug(f"[SURGE-BIND] Robot {rid} → {named_cid} areas={area_ids} (home={home_cid})")
+    #         else:
+    #             self.debug(f"[ASSIGN] Robot {rid} → {named_cid} areas={area_ids}")
+    #
+    #         return True
+    #
+    #     except Exception as e:
+    #         rospy.logerr(f"_dispatch_cluster_to_robot failed for robot {rid}: {e}")
     #         return False
-    #
-    #     if method.lower() == 'hungarian':
-    #         rids = candidate_rids
-    #         K = len(valid_cids)
-    #         R = len(rids)
-    #         C = np.full((R, K), np.inf, dtype=float)
-    #
-    #         for i, rid in enumerate(rids):
-    #             M = self.dist_matrices.get(rid, None)
-    #             src = self.robots_location.get(rid, None)
-    #             if M is None or src is None:
-    #                 continue
-    #             src = int(src)
-    #             for j, cid in enumerate(valid_cids):
-    #                 a = int(anchors[cid])
-    #                 C[i, j] = float(M[src, a])
-    #
-    #         rr, cc = linear_sum_assignment(C)
-    #         used = set()
-    #         for i, j in zip(rr, cc):
-    #             if not np.isfinite(C[i, j]):
-    #                 continue
-    #             rid = rids[i]
-    #             cid = valid_cids[j]
-    #             if rid in used:
-    #                 continue
-    #             if _dispatch(rid, cid, clusters[cid]):
-    #                 used.add(rid)
-    #
-    #         # Update unassigned list
-    #         self.unassigned_robots = [rid for rid in self.robot_ids if rid not in used]
-    #
-    #     else:
-    #         # Greedy: clusters in urgency order (min current F at anchor)
-    #         def cluster_urgency(cid):
-    #             aid = anchors[cid]
-    #             return self._area_current_F(aid) if aid is not None else float('inf')
-    #
-    #         cids_sorted = sorted(valid_cids, key=cluster_urgency)
-    #         free = candidate_rids.copy()
-    #
-    #         for cid in cids_sorted:
-    #             if not free:
-    #                 break
-    #             anchor = anchors[cid]
-    #             rid, _ = self._closest_robot_to_area(free, anchor)
-    #             if rid is None:
-    #                 continue
-    #             if _dispatch(rid, cid, clusters[cid]):
-    #                 free.remove(rid)
-    #
-    #         self.unassigned_robots = [rid for rid in self.robot_ids if rid not in (set(self.robot_ids) - set(free))]
 
-    # Crisis mitigation with surge binding release
-    # def _exp_decay(F_max, rate, t):
-    #     """Exponential decay g(δ, t)."""
-    #     return F_max * math.exp(-rate * max(0.0, t))
+    def _dispatch_cluster_to_robot(self, rid, cid, area_ids, surge=False, dwell_cap='default', tag_prefix=""):
+        """
+        Directly dispatch cluster (cid -> area_ids) to robot rid via the ROS service.
+        Updates all planner bookkeeping. If surge=True, records a surge binding (with dwell_cap/visited fields).
+        """
 
-    # def _area_current_F(area_id, tlapses, decay_rates, F_max):
-    #     """Current F estimate from tlapse & rate."""
-    #     return _exp_decay(F_max, decay_rates[area_id], tlapses[area_id])
-    #
-    # def _mean_duration_excluding_col(M, j):
+        try:
+            rospy.wait_for_service(f"/cluster_assignment_server_{rid}")
+            srv = rospy.ServiceProxy(f"/cluster_assignment_server_{rid}", clusterAssignment2)
+
+            tlapses = self.retrieve_tlapses(area_ids)
+            rates = self.retrieve_decay_rates(area_ids)
+
+            M = self.dist_matrices.get(rid, None)
+            if M is None:
+                raise RuntimeError(f"No distance matrix for robot {rid}")
+            dist_matrix = M.astype(np.float32).ravel().tolist()
+
+            resp = srv(area_ids, tlapses, rates, dist_matrix)
+            if not getattr(resp, "availability", True):
+                return False
+
+            # Bookkeeping
+            named_cid = cid if (not tag_prefix or str(cid).startswith(tag_prefix)) else f"{tag_prefix}{cid}"
+            home_cid = self.robots_assignment.get(rid, None) if surge else None
+
+            self.clusters[named_cid] = list(map(int, area_ids))
+            self.robots_assignment[rid] = named_cid
+            self.clusters_assignment[named_cid] = rid
+            if hasattr(self, "unassigned_robots") and rid in self.unassigned_robots:
+                self.unassigned_robots.remove(rid)
+
+            if surge:
+                if not hasattr(self, "surge_bindings"):
+                    self.surge_bindings = {}
+                self.surge_bindings[rid] = {
+                    'home_cid': home_cid,
+                    'areas': set(int(a) for a in area_ids),
+                    't_bind': int(getattr(self, "sim_t", rospy.get_time())),
+                    'visited_areas': set(),
+                    'visit_count': 0,
+                    'dwell_cap': (len(area_ids) if (dwell_cap in (None, 'default')) else int(dwell_cap)),
+                }
+                # Lock surge areas for this robot
+                if not hasattr(self, "area_locks"):
+                    self.area_locks = {}
+                for aid in area_ids:
+                    self.area_locks[int(aid)] = int(rid)
+                self.debug(f"[SURGE-BIND] Robot {rid} → {named_cid} areas={area_ids} (home={home_cid})")
+            else:
+                self.debug(f"[ASSIGN] Robot {rid} → {named_cid} areas={area_ids}")
+
+            return True
+
+        except Exception as e:
+            rospy.logerr(f"_dispatch_cluster_to_robot failed for robot {rid}: {e}")
+            return False
+
+    # def release_completed_surge_bindings(self, dwell_cap=None, reassign_tag_prefix=""):
     #     """
-    #     taū_j := average duration entries when the 'committed' choice is NOT j.
-    #     (Delete column j per our definition and average the remainder.)
-    #     If you have per-robot matrices, average across them outside.
-    #     """
-    #     sub = np.delete(M, j, axis=1)
-    #     return float(np.mean(sub)) if sub.size > 0 else 0.0
+    #     Release surge robots when:
+    #       (a) all areas in their surge subcluster have been visited at least once, OR
+    #       (b) visit_count >= dwell_cap (default = binding's dwell_cap = surge cluster size).
     #
+    #     Upon release, dispatch robot back to its home_cid directly (no Hungarian).
+    #     """
+    #     if not hasattr(self, 'surge_bindings') or not self.surge_bindings:
+    #         return
+    #
+    #     to_release = []
+    #
+    #     # Decide which robots to release
+    #     for rid, b in list(self.surge_bindings.items()):
+    #         if not isinstance(b, dict):
+    #             continue
+    #         areas = b.get('areas', set())
+    #         visited = b.get('visited_areas', set())
+    #         vcount = int(b.get('visit_count', 0))
+    #         default_cap = max(1, len(areas)) if areas else 1
+    #         binding_cap = int(b.get('dwell_cap', default_cap))
+    #         cap = int(dwell_cap) if dwell_cap is not None else binding_cap
+    #         cap = max(1, cap)
+    #
+    #         visited_all_once = bool(areas) and visited.issuperset(areas)
+    #         hit_cap = vcount >= cap
+    #
+    #         if visited_all_once or hit_cap:
+    #             to_release.append(int(rid))
+    #
+    #     # Release and re-dispatch
+    #     for rid in to_release:
+    #         try:
+    #             b = self.surge_bindings.pop(rid, None)
+    #             if not isinstance(b, dict):
+    #                 continue
+    #
+    #             home_cid = b.get('home_cid', None)
+    #
+    #             # Clean up temporary SURG_ cluster mapping if present
+    #             curr_cid = self.robots_assignment.get(rid, None)
+    #             if isinstance(curr_cid, str) and curr_cid.startswith("SURG_"):
+    #                 self.clusters.pop(curr_cid, None)
+    #                 self.clusters_assignment.pop(curr_cid, None)
+    #
+    #             # Re-dispatch to home_cid directly (no Hungarian)
+    #             if home_cid is not None:
+    #                 home_areas = self.clusters.get(home_cid, [])
+    #                 if home_areas:
+    #                     ok = self._dispatch_cluster_to_robot(
+    #                         rid=rid,
+    #                         cid=home_cid,
+    #                         area_ids=home_areas,
+    #                         surge=False,
+    #                         dwell_cap='default',
+    #                         tag_prefix=reassign_tag_prefix  # "" keeps cid unchanged
+    #                     )
+    #                     if not ok:
+    #                         # If dispatch failed, leave robot unassigned so next cycle can place it
+    #                         if rid not in getattr(self, "unassigned_robots", []):
+    #                             self.unassigned_robots.append(rid)
+    #                         self.robots_assignment[rid] = None
+    #                 else:
+    #                     # Empty home cluster: mark unassigned
+    #                     if rid not in getattr(self, "unassigned_robots", []):
+    #                         self.unassigned_robots.append(rid)
+    #                     self.robots_assignment[rid] = None
+    #             else:
+    #                 # No recorded home; mark unassigned
+    #                 if rid not in getattr(self, "unassigned_robots", []):
+    #                     self.unassigned_robots.append(rid)
+    #                 self.robots_assignment[rid] = None
+    #
+    #             va = b.get('visited_areas', set());
+    #             a = b.get('areas', set())
+    #             self.debug(f"[SURGE-RELEASE] rid={rid} visits={int(b.get('visit_count', 0))} "
+    #                        f"visited_once={len(va)}/{len(a)} "
+    #                        f"-> returned_to={home_cid}")
+    #         except Exception as e:
+    #             import rospy
+    #             rospy.logwarn(f"[SURGE-RELEASE] release failed for rid={rid}: {e}")
+
+    def release_completed_surge_bindings(self, dwell_cap=None, reassign_tag_prefix=""):
+        """
+        Release surge robots when EITHER:
+          (a) all areas in their surge subcluster have been visited at least once, OR
+          (b) visit_count >= dwell_cap (default = binding's dwell_cap = surge cluster size).
+
+        Linger policy:
+          - If the home jurisdiction still has ANY locked areas (locked by other surge robots),
+            the robot REMAINS on its current SURG_ assignment (productive linger).
+            We still UNLOCK *this* robot's surge areas.
+          - Once the home jurisdiction has NO locks, we dispatch the robot home directly (no Hungarian).
+        """
+        if not hasattr(self, 'surge_bindings') or not self.surge_bindings:
+            return
+        if not hasattr(self, "area_locks"):
+            self.area_locks = {}
+
+        to_process = []
+
+        # 1) Decide which robots hit release criteria
+        for rid, b in list(self.surge_bindings.items()):
+            if not isinstance(b, dict):
+                continue
+            areas = b.get('areas', set())
+            visited = b.get('visited_areas', set())
+            vcount = int(b.get('visit_count', 0))
+
+            default_cap = max(1, len(areas)) if areas else 1
+            binding_cap = int(b.get('dwell_cap', default_cap))
+            cap = int(dwell_cap) if dwell_cap is not None else binding_cap
+            cap = max(1, cap)
+
+            visited_all_once = bool(areas) and visited.issuperset(areas)
+            hit_cap = vcount >= cap
+
+            if visited_all_once or hit_cap:
+                to_process.append((int(rid), b))
+
+        # 2) Process: unlock own areas; either linger or go home
+        for rid, b in to_process:
+            try:
+                home_cid = b.get('home_cid', None)
+                curr_cid = self.robots_assignment.get(rid, None)
+
+                # 2a) Unlock ONLY the areas owned by this surge robot
+                for aid in list(b.get('areas', set())):
+                    if self.area_locks.get(int(aid)) == int(rid):
+                        self.area_locks.pop(int(aid), None)
+
+                # 2b) Check if home jurisdiction is fully free of locks
+                any_locked_in_home = False
+                if home_cid is not None:
+                    home_areas = list(map(int, self.clusters.get(home_cid, [])))
+                    any_locked_in_home = any(self.area_locks.get(a) is not None for a in home_areas)
+
+                if home_cid is not None and not any_locked_in_home:
+                    # ---- Go home now: clean SURG_ mapping, drop binding, dispatch home ----
+                    if isinstance(curr_cid, str) and curr_cid.startswith("SURG_"):
+                        self.clusters.pop(curr_cid, None)
+                        self.clusters_assignment.pop(curr_cid, None)
+
+                    # Remove surge binding
+                    self.surge_bindings.pop(rid, None)
+
+                    home_areas = list(map(int, self.clusters.get(home_cid, [])))
+                    if home_areas:
+                        self._dispatch_cluster_to_robot(
+                            rid=rid,
+                            cid=home_cid,
+                            area_ids=home_areas,
+                            surge=False,
+                            dwell_cap='default',
+                            tag_prefix=reassign_tag_prefix  # "" keeps cid unchanged
+                        )
+                    else:
+                        # No areas at home; leave unassigned
+                        if rid not in getattr(self, "unassigned_robots", []):
+                            self.unassigned_robots.append(rid)
+                        self.robots_assignment[rid] = None
+
+                    va = b.get('visited_areas', set());
+                    a = b.get('areas', set())
+                    self.debug(f"[SURGE-RELEASE] rid={rid} v={int(b.get('visit_count', 0))} "
+                               f"visited_once={len(va)}/{len(a)} -> returned_to={home_cid}")
+                else:
+                    # ---- LINGER: keep working on current SURG_ assignment to stay productive ----
+                    # Mark binding as 'linger' so we don't repeatedly try to release until home is clear.
+                    b['linger'] = True
+                    self.surge_bindings[rid] = b
+                    self.debug(f"[SURGE-LINGER] rid={rid} home={home_cid} still has locked areas; "
+                               f"continuing on current SURG_ assignment.")
+            except Exception as e:
+                rospy.logwarn(f"[SURGE-RELEASE] processing rid={rid} failed: {e}")
+
+    def note_surge_visit(self, rid: int, aid: int):
+        """Record a visit by a surge robot to an area in its surge binding."""
+        try:
+            b = getattr(self, 'surge_bindings', {}).get(rid)
+            if not b:
+                return
+            if aid in b.get('areas', set()):
+                self.debug("Robot: {} accomplished surge Area {} visit".format(rid, aid))
+                b['visit_count'] = int(b.get('visit_count', 0)) + 1
+                va = b.get('visited_areas', set())
+                va.add(int(aid))
+                b['visited_areas'] = va
+        except Exception as e:
+            rospy.logwarn(f"note_surge_visit failed for rid={rid}, aid={aid}: {e}")
+
     def _tau_bar_from_robot_mats(self):
         mats = [m for m in self.dist_matrices.values() if m is not None]
         if not mats:
@@ -795,75 +1388,24 @@ class CentralPlanner:
             tau_bar[aid] = _mean_duration_excluding_col(M_mean, aid)
         return tau_bar
 
-    # def _closest_robot_to_area(robot_id_list, area_id, dist_matrices, robots_location):
+    # def check_crisis(self, k = 2, eta = 0.5, b = 1, delta_t = 1.0):
     #     """
-    #     Pick the robot (id) whose current location is closest (duration) to area_id.
-    #     Uses that robot’s own distance matrix, from its current 'node index' to 'area_id'.
-    #     robots_location[robot_id] should be a node index (0 = charging, 1..N = area).
+    #     Returns (is_crisis, rho, Omega_size, tau_bar)
     #     """
-    #     best = None
-    #     best_cost = float('inf')
-    #     for rid in robot_id_list:
-    #         M = dist_matrices[rid]
-    #         if M is None or robots_location[rid] is None:
-    #             continue
-    #         src = int(robots_location[rid])  # node index now
-    #         dst = int(area_id)  # area index in matrix
-    #         cost = float(M[src, dst])
-    #         if cost < best_cost:
-    #             best_cost = cost
-    #             best = rid
-    #     return best, best_cost
+    #     tau_bar = self._tau_bar_from_robot_mats()
+    #     rho = []
+    #     for aid in self.areas:
+    #         rate = float(self.decay_rates[aid])
+    #         look_steps = int(ceil(k * float(tau_bar.get(aid, 0.0))))
+    #         t_future = look_steps * delta_t
+    #         F_future = self.max_fmeasure * math.exp(-rate * (self.tlapses[aid] + t_future))
+    #         if F_future <= self.fcrit:
+    #             rho.append(aid)
     #
-    # def _most_urgent_area_in_set(area_ids, tlapses, decay_rates, F_max):
-    #     """Return area id with min current F (most urgent)."""
-    #     return min(area_ids, key=lambda aid: _area_current_F(aid, tlapses, decay_rates, F_max))
-    #
-    # def _npv_cluster_loss(area_ids, z, gamma, delta_t, tau_bar, decay_rates, F_max):
-    #     """
-    #     NPV_c = Σ_j Σ_{h=1..H_j} gamma^h * max(0, z - g(δ_j, h*delta_t)),
-    #     with H_j = ceil(|c| * taū_j / delta_t).
-    #     """
-    #     if not area_ids:
-    #         return 0.0
-    #     size = max(1, len(area_ids))
-    #     tot = 0.0
-    #     for aid in area_ids:
-    #         H = int(ceil(size * float(tau_bar.get(aid, 0.0)) / max(1e-9, delta_t)))
-    #         rate = decay_rates[aid]
-    #         for h in range(1, H + 1):
-    #             F_pred = _exp_decay(F_max, rate, h * delta_t)
-    #             loss = max(0.0, z - F_pred)
-    #             tot += (gamma ** h) * loss
-    #     return tot
-    #
-    # def _will_be_urgent(aid, tlapses, decay_rates, F_max, z, tau_bar, k, delta_t):
-    #     """
-    #     Predict if area aid will drop below z within k * taū_a (lookahead).
-    #     """
-    #     look = max(1, int(ceil(float(k) * float(tau_bar.get(aid, 0.0)) / max(1e-9, delta_t))))
-    #     t_future = look * delta_t
-    #     F_future = _exp_decay(F_max, decay_rates[aid], tlapses[aid] + t_future)
-    #     return F_future <= z
-
-    def check_crisis(self, k = 2, eta = 0.5, b = 1, delta_t = 1.0):
-        """
-        Returns (is_crisis, rho, Omega_size, tau_bar)
-        """
-        tau_bar = self._tau_bar_from_robot_mats()
-        rho = []
-        for aid in self.areas:
-            rate = float(self.decay_rates[aid])
-            look_steps = int(ceil(k * float(tau_bar.get(aid, 0.0)) / max(1e-9, delta_t)))
-            t_future = look_steps * delta_t
-            F_future = self.max_fmeasure * math.exp(-rate * (self.tlapses[aid] + t_future))
-            if F_future <= self.fcrit:
-                rho.append(aid)
-
-        R = self.nrobots
-        Omega_size = int(ceil(max(1, eta * R)))
-        is_crisis = len(rho) >= b * Omega_size and Omega_size > 0
-        return is_crisis, rho, Omega_size, tau_bar
+    #     R = self.nrobots
+    #     Omega_size = int(ceil(max(1, eta * R)))
+    #     is_crisis = len(rho) >= b * Omega_size and Omega_size > 0
+    #     return is_crisis, rho, Omega_size, tau_bar
 
     def on_area_restored(self, area_id):
         self.tlapses[area_id] = 0
@@ -873,86 +1415,70 @@ class CentralPlanner:
         t_bind = int(binding['t_bind'])
         return all(int(self.last_reset_step.get(aid, -1)) > t_bind for aid in binding['areas'])
 
-    def release_completed_surge_bindings(self, dwell_cap=None):
-        to_release = []
-        for rid, binding in list(self.surge_bindings.items()):
-            done = self._binding_completed(binding)
-            if not done and dwell_cap is not None:
-                done = (self.sim_t - int(binding['t_bind'])) >= int(dwell_cap)
-            if done:
-                to_release.append((rid, binding))
-        self.debug("To release surge binding: {}".format(to_release))
-        for rid, binding in to_release:
-            home_cid = binding.get('home_cid', None)
-            self.surge_bindings.pop(rid, None)
-            # Reassign back to home jurisdiction if known
-            if home_cid and home_cid in self.clusters:
-                area_ids = self.clusters[home_cid]
-                try:
-                    rospy.wait_for_service(f"/cluster_assignment_server_{rid}")
-                    srv = rospy.ServiceProxy(f"/cluster_assignment_server_{rid}", clusterAssignment2)
-                    tlapses = self.retrieve_tlapses(area_ids)
-                    rates = self.retrieve_decay_rates(area_ids)
-                    dist_matrix = self.dist_matrices[rid].astype(np.float32).ravel().tolist()
-                    resp = srv(area_ids, tlapses, rates, dist_matrix)
-                    if resp.availability:
-                        self.robots_assignment[rid] = home_cid
-                        self.clusters_assignment[home_cid] = rid
-                        self.debug(f"[SURGE-RELEASE] Robot {rid} → {home_cid}")
-                except rospy.ServiceException as e:
-                    rospy.logerr(f"[SURGE-RELEASE] reassign home failed for robot {rid}: {e}")
-            else:
-                self.robots_assignment.pop(rid, None)
-                self.debug(f"[SURGE-RELEASE] Robot {rid} released (no home)")
+    # def release_completed_surge_bindings(self, dwell_cap=None):
+    #     #TODO: The dwell cap here can be the size of the cluster, by default. That is the number of visits
+    #     to_release = []
+    #     for rid, binding in list(self.surge_bindings.items()):
+    #         done = self._binding_completed(binding)
+    #         if not done and dwell_cap is not None:
+    #             done = (self.sim_t - int(binding['t_bind'])) >= int(dwell_cap)
+    #         if done:
+    #             to_release.append((rid, binding))
+    #     self.debug("To release surge binding: {}".format(to_release))
+    #     for rid, binding in to_release:
+    #         home_cid = binding.get('home_cid', None)
+    #         self.surge_bindings.pop(rid, None)
+    #         # Reassign back to home jurisdiction if known
+    #         if home_cid and home_cid in self.clusters:
+    #             area_ids = self.clusters[home_cid]
+    #             try:
+    #                 rospy.wait_for_service(f"/cluster_assignment_server_{rid}")
+    #                 srv = rospy.ServiceProxy(f"/cluster_assignment_server_{rid}", clusterAssignment2)
+    #                 tlapses = self.retrieve_tlapses(area_ids)
+    #                 rates = self.retrieve_decay_rates(area_ids)
+    #                 dist_matrix = self.dist_matrices[rid].astype(np.float32).ravel().tolist()
+    #                 resp = srv(area_ids, tlapses, rates, dist_matrix)
+    #                 if resp.availability:
+    #                     self.robots_assignment[rid] = home_cid
+    #                     self.clusters_assignment[home_cid] = rid
+    #                     self.debug(f"[SURGE-RELEASE] Robot {rid} → {home_cid}")
+    #             except rospy.ServiceException as e:
+    #                 rospy.logerr(f"[SURGE-RELEASE] reassign home failed for robot {rid}: {e}")
+    #         else:
+    #             self.robots_assignment.pop(rid, None)
+    #             self.debug(f"[SURGE-RELEASE] Robot {rid} released (no home)")
 
-    def mitigate_crisis(self, rho, Omega_size,
-                        alpha_decay=1.0,
-                        assign_method='hungarian'):
-        """
-        Form Ω and assign them to |Ω| urgent clusters using our standard assign_clusters,
-        tagging clusters as SURG_* and recording sticky bindings.
-        """
-        if not rho or Omega_size <= 0:
-            return
-
-        # Select Ω robots by (home NPV asc, avg duration to rho asc)
-        def home_cluster_area_ids(rid):
-            cid = self.robots_assignment.get(rid, None)
-            return self.clusters.get(cid, []) if cid else []
-
-        def avg_duration_to_set(rid, area_set):
-            M = self.dist_matrices.get(rid, None)
-            src = self.robots_location.get(rid, None)
-            if M is None or src is None or not area_set:
-                return float('inf')
-            src = int(src)
-            return float(np.mean([M[src, int(aid)] for aid in area_set]))
-
-        def home_npv(rid):
-            ids = home_cluster_area_ids(rid)
-            if not ids:
-                return float('inf')
-            # simple proxy: sum of current losses (closer to zero is better)
-            return sum(max(0.0, self.fcrit - self._area_current_F(aid)) for aid in ids)
-
-        rids = self.robot_ids.copy()
-        rids.sort(key=lambda rid: (home_npv(rid), avg_duration_to_set(rid, rho)))
-        Omega = rids[:Omega_size]
-
-        # Build urgent clusters with SciPy kmeans2
-        K = min(Omega_size, max(1, len(rho)))
-        surg_clusters = self.create_urgent_clusters(rho, K, alpha_decay=alpha_decay, seed=42)
-        self.debug("Surge robots: {}. Surge clusters: {}".format(Omega, surg_clusters))
-
-        # Reuse the assignment function (now supports surge & candidate_rids)
-        self.is_mitigating_crisis = True
-        self.assign_clusters(
-            clusters=surg_clusters,
-            method=assign_method,  # 'hungarian' (default) or 'greedy'
-            candidate_rids=Omega,
-            tag_prefix="SURG_",
-            surge=True  # record sticky bindings
-        )
+    # def release_completed_surge_bindings(self, dwell_cap=None):
+    #     """Release surge robots when either:
+    #        (a) all areas in the surge cluster have been visited at least once, OR
+    #        (b) visit_count >= dwell_cap (default = binding's dwell_cap, which defaults to cluster size).
+    #     """
+    #     self.debug("Surge bindings: {}".format(self.surge_bindings))
+    #     if not hasattr(self, 'surge_bindings'):
+    #         return
+    #     to_release = []
+    #     for rid, b in list(self.surge_bindings.items()):
+    #         if not isinstance(b, dict):
+    #             continue
+    #         areas = b.get('areas', set())
+    #         visited = b.get('visited_areas', set())
+    #         count = int(b.get('visit_count', 0))
+    #         cap = int(dwell_cap) if dwell_cap is not None else int(b.get('dwell_cap', max(1, len(areas))))
+    #         visited_all_once = bool(areas) and visited.issuperset(areas)
+    #         hit_cap = (count >= max(1, cap))
+    #         if visited_all_once or hit_cap:
+    #             to_release.append(rid)
+    #
+    #     for rid in to_release:
+    #         b = self.surge_bindings.pop(rid, None)
+    #         home_cid = b.get('home_cid') if isinstance(b, dict) else None
+    #         if home_cid is not None:
+    #             self.robots_assignment[rid] = home_cid
+    #             self.clusters_assignment[home_cid] = rid
+    #         self.debug(f"[SURGE-RELEASE] rid={rid} visits={b.get('visit_count',0)} "
+    #                    f"visited_once={len(b.get('visited_areas',()))}/{len(b.get('areas',()))} "
+    #                    f"cap={(int(dwell_cap) if dwell_cap is not None else int(b.get('dwell_cap', 0)))} "
+    #                    f"-> returned to {home_cid}")
 
     def _init_jurisdictions(self, assign_method='hungarian', alpha_decay=1.0):
         if not self.clusters:
@@ -973,15 +1499,13 @@ class CentralPlanner:
           2) if crisis: mitigate (urgent clusters + surge assignment)
           3) release completed surge bindings
         """
-        is_crisis, rho, Omega_size, _ = self.check_crisis(k=k, eta=eta, b=b, delta_t=delta_t)
-        self.debug("Crisis check: {}".format(is_crisis))
         if len(self.surge_bindings) == 0:
-            if is_crisis:
-                self.debug("Crisis detected. Mitigating...")
-                self.mitigate_crisis(rho, Omega_size, alpha_decay=alpha_decay, assign_method=surge_assign_method)
+            self.debug("Detecting potential crisis...")
+            self.detect_and_assign_surge_clusters(k=k, delta_t=delta_t,
+                                  alpha_decay=alpha_decay,
+                                  assign_method=surge_assign_method)
 
         # Always try to release completed surge bindings
-        #TODO: Need to sanity check the surge bindings and when they end
         else:
             self.debug("Still mitigating crisis. Surge bindings: {}".format(self.surge_bindings))
             self.release_completed_surge_bindings(dwell_cap=dwell_cap)
@@ -1016,6 +1540,7 @@ class CentralPlanner:
             if self.status == centralStatus.IDLE.value:
                 # Build jurisdictions once, then switch to mission
                 self.debug("Idle central state. Creating and assigning clusters")
+                #TODO: Record process time 
                 self._init_jurisdictions(assign_method='hungarian',
                                          alpha_decay=1.0)  # Simulation is paused while thinking to create jurisdictions
                 # self.assign_clusters(self.clusters)
@@ -1031,13 +1556,17 @@ class CentralPlanner:
                 self.sim_t += 1
 
                 # Crisis detection and mitigation
-                # self._crisis_cycle(k=1, eta=1.0, b=3, delta_t=1.0,
-                #                    alpha_decay=1.0, surge_assign_method='hungarian', dwell_cap=None)
+                #TODO: Record process time
+                if self.crisis_mitigation:
+                    self._crisis_cycle(k=1, eta=1.0, b=3, delta_t=1.0,
+                                       alpha_decay=1.0, surge_assign_method='hungarian', dwell_cap=None)
 
             elif self.status == centralStatus.CONSIDER_REPLAN.value:
                 self.debug("Central considers re-assignment...")
 
             self.shutdown_check()
+
+            #TODO: Save process time: init_jurisdiction, crisis_mitigation
 
             rospy.sleep(1)
 
@@ -1077,11 +1606,6 @@ class CentralPlanner:
 
             rospy.sleep(1)
 
-        # We do the pausing here
-        # is_pause = False
-        # if is_pause is False:
-        #     self.request_pause()
-        #     is_pause = True
         self.request_pause()
 
         time_prev = time_new
