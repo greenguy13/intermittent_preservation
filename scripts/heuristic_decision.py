@@ -185,7 +185,6 @@ class Robot:
             except rospy.ServiceException as e:
                 rospy.logerr(f"Register to central service call failed: {e}")
 
-
     def area_assignment_notice(self, assigned_areas):
         """
         Tags areas with the assigned robot
@@ -225,7 +224,7 @@ class Robot:
         # Halt operations and prepare to reconsider new assignment
         self.is_assigned = False
         self.robot_status = robotStatus.IDLE.value
-        self.dist_matrix = None
+        # self.dist_matrix = None
 
         #Cancel any current goal if any
         if self.mission_area_idx is not None:
@@ -235,12 +234,11 @@ class Robot:
             self.mission_area_idx = None
 
         # Extract arrays
-        assigned_areas = list(msg.cluster) #TODO: Make sure this is correct
-        decay_rates = list(msg.decay_rates) #TODO: Make sure this is correct
-        tlapses = list(msg.tlapses) #TODO: Sanity check
+        assigned_areas = list(msg.cluster)
+        decay_rates = list(msg.decay_rates)
+        tlapses = list(msg.tlapses)
 
         # Distance matrix: assumed to be flattened in the .srv
-        # TODO: Ensure this is the same distance matrix as constructed previously. Ensure the id and idx are congruently used
         n = rospy.get_param("/nareas") + 1 #len(assigned_areas)
         if hasattr(msg, "dist_matrix_flat") and msg.dist_matrix_flat:
             try:
@@ -347,8 +345,6 @@ class Robot:
 
         self.debug("Dist matrix: {}".format(self.dist_matrix))
 
-        #TODO: Here the distance matrix is actually all of the areas. Whereas what we are providing is just the distance matrix of the cluster
-
     # METHODS: Send robot to area
     def go_to_target(self, goal_idx):
         """
@@ -419,7 +415,6 @@ class Robot:
         :return:
         """
         # Battery consumed travel and preserve area (if not charging station)
-        #TODO: The fmeasures did not register here. Why?
         self.debug("Estimate battery params fmeasure, decision: {}, {}".format(fmeasures, decision))
         battery_consumption = self.consume_battery(start_area_idx=curr_loc, next_area_idx=decision,
                                                    curr_measure=fmeasures[decision],

@@ -278,13 +278,14 @@ if __name__ == '__main__':
     #                inference='oracle', dec_steps=1, discount=0.75, exploration=0.0, ntrials=(0, 1),
     #                task_scheduler='central_planner', crisis_mitigation=True, save=False)
 
-    run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100, nrobots=3,
-                   inference='oracle', dec_steps=1, discount=0.75, exploration=0.0, ntrials=(0, 3),
-                   task_scheduler='central_planner', crisis_mitigation=False, save=True)
+    # run_experiment('heuristic_decision', 'office', 36, placement, 'non_uniform', 2100, nrobots=6,
+    #                inference='oracle', dec_steps=1, discount=0.75, exploration=0.0, ntrials=(0, 2),
+    #                task_scheduler='central_planner', crisis_mitigation=False, save=True)
 
-    run_experiment('heuristic_decision', 'office', 12, placement, 'non_uniform', 2100, nrobots=3,
-                   inference='oracle', dec_steps=1, discount=0.75, exploration=0.0, ntrials=(0, 3),
-                   task_scheduler='central_planner', crisis_mitigation=True, save=True)
+    # DONE
+    # run_experiment('heuristic_decision', 'office', 36, placement, 'non_uniform', 2100, nrobots=6,
+    #                inference='oracle', dec_steps=1, discount=0.75, exploration=0.0, ntrials=(0, 3),
+    #                task_scheduler='central_planner', crisis_mitigation=True, save=True)
 
     # run_experiment('heuristic_decision', 'office', 36, placement, 'non_uniform', 2100, nrobots=6,
     #                inference='oracle', dec_steps=4, discount=0.75, exploration=0.0, ntrials=(0, 5), task_scheduler='central_planner', save=True)
@@ -293,9 +294,9 @@ if __name__ == '__main__':
     #                inference='oracle', dec_steps=6, discount=0.75, exploration=0.0, ntrials=(0, 5),
     #                task_scheduler='central_planner', save=True)
     # #
-
-    # run_experiment('dynamic_programming', 'office', 20, placement, 'non_uniform', 2100,
-    #                nrobots=4, inference='oracle', dec_steps=6, ntrials=(0, 5),
+    # TODO: Fix the dp.py script for the initialization and F-measure server assignment (deprecated)
+    # run_experiment('dynamic_programming', 'office', 36, placement, 'non_uniform', 2100,
+    #                nrobots=6, inference='oracle', dec_steps=6, ntrials=(0, 3),
     #                task_scheduler='central_planner', save=True)  # 3100
     #
     # run_experiment('dynamic_programming', 'cluttered', 20, placement, 'non_uniform', 2100,
@@ -309,6 +310,10 @@ if __name__ == '__main__':
 
 
     # 6 robots, cluttered, 36 areas
+    run_experiment('heuristic_decision', 'cluttered', 36, placement, 'non_uniform', 2100, nrobots=6,
+                   inference='oracle', dec_steps=1, discount=0.75, exploration=0.0, ntrials=(0, 3),
+                   task_scheduler='central_planner', crisis_mitigation=True, save=True)
+
     # run_experiment('heuristic_decision', 'cluttered', 36, placement, 'non_uniform', 2100, nrobots=6,
     #                inference='oracle', dec_steps=1, discount=0.00, exploration=0.0, ntrials=(0, 2),
     #                task_scheduler='central_planner', save=True)
@@ -324,8 +329,9 @@ if __name__ == '__main__':
     #                inference='oracle', dec_steps=1, discount=0.00, exploration=0.0, ntrials=(0, 5),
     #                task_scheduler='central_planner', save=True)
     #
+    # TODO: Fix the dp.py script for the initialization and F-measure server assignment (deprecated)
     # run_experiment('dynamic_programming', 'cluttered', 36, placement, 'non_uniform', 2100,
-    #                nrobots=6, inference='oracle', dec_steps=6, ntrials=(0, 5),
+    #                nrobots=6, inference='oracle', dec_steps=6, ntrials=(0, 3),
     #                task_scheduler='central_planner', save=True)
     #
     # run_experiment('online_posterior_sampling', 'cluttered', 36, placement, 'non_uniform', 2100, nrobots=6,

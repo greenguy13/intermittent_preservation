@@ -38,6 +38,15 @@ ABORTED = 4  # The goal was aborted during execution by the action server due to
 LOST = 9  # An action client can determine that a goal is LOST. This should not be sent over the wire by an action
 
 
+def _mean_duration_excluding_col(M, j):
+    """
+    taū_j := average duration entries when the 'committed' choice is NOT j.
+    (Delete column j per our definition and average the remainder.)
+    If you have per-robot matrices, average across them outside.
+    """
+    sub = np.delete(M, j, axis=1)
+    return float(np.mean(sub)) if sub.size > 0 else 0.0
+
 def add_entries_dicts(dict1, dict2):
     """
     Adds the entries of the dicts
