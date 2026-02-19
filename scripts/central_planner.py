@@ -395,7 +395,7 @@ class CentralPlanner:
         if not areas:
             return False
 
-        h = len([a for a in areas if a in rho])
+        h = len([a for a in areas if a in rho]) #TODO: Modify estimation of visits based on actual home robot battery
         if h == 0:
             return False
 
@@ -433,7 +433,7 @@ class CentralPlanner:
             return False
 
         t_ext = min(feasible_arrivals)
-        visits_home = t_ext / max(1e-6, tau_bar)
+        visits_home = t_ext / max(1e-6, tau_bar) #TODO: Shouldn't this be rounded down (or floor)? Yes!
         feasible = (visits_home < float(h))
         self.debug(f"[EXTERNAL-FEAS] cid={cid} h={h} t_ext={t_ext:.3f} taū={tau_bar:.3f} visits≈{visits_home:.2f} -> {feasible}")
         return feasible

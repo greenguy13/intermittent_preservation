@@ -294,7 +294,6 @@ if __name__ == '__main__':
     #                inference='oracle', dec_steps=6, discount=0.75, exploration=0.0, ntrials=(0, 5),
     #                task_scheduler='central_planner', save=True)
     # #
-    # TODO: Fix the dp.py script for the initialization and F-measure server assignment (deprecated)
     # run_experiment('dynamic_programming', 'office', 36, placement, 'non_uniform', 2100,
     #                nrobots=6, inference='oracle', dec_steps=6, ntrials=(0, 3),
     #                task_scheduler='central_planner', save=True)  # 3100
